@@ -1,0 +1,44 @@
+export const ErrorCodes = {
+    // Authentication errors
+    AUTH_INVALID_CREDENTIALS: 'AUTH_001',
+    AUTH_TOKEN_EXPIRED: 'AUTH_002',
+    AUTH_TOKEN_INVALID: 'AUTH_003',
+    AUTH_UNAUTHORIZED: 'AUTH_004',
+    AUTH_FORBIDDEN: 'AUTH_005',
+
+    // User errors
+    USER_NOT_FOUND: 'USER_001',
+    USER_ALREADY_EXISTS: 'USER_002',
+    USER_INVALID_PASSWORD: 'USER_003',
+    USER_INACTIVE: 'USER_004',
+
+    // Employee errors
+    EMPLOYEE_NOT_FOUND: 'EMP_001',
+    EMPLOYEE_ALREADY_EXISTS: 'EMP_002',
+    EMPLOYEE_CODE_DUPLICATE: 'EMP_003',
+
+    // Department errors
+    DEPARTMENT_NOT_FOUND: 'DEPT_001',
+    DEPARTMENT_ALREADY_EXISTS: 'DEPT_002',
+    DEPARTMENT_HAS_EMPLOYEES: 'DEPT_003',
+
+    // Attendance errors
+    ATTENDANCE_ALREADY_CHECKED_IN: 'ATT_001',
+    ATTENDANCE_NOT_CHECKED_IN: 'ATT_002',
+    ATTENDANCE_NOT_FOUND: 'ATT_003',
+
+    // Payroll errors
+    PAYROLL_NOT_FOUND: 'PAY_001',
+    PAYROLL_ALREADY_PROCESSED: 'PAY_002',
+    PAYROLL_INVALID_PERIOD: 'PAY_003',
+
+    // Validation errors
+    VALIDATION_FAILED: 'VAL_001',
+
+    // General errors
+    INTERNAL_SERVER_ERROR: 'ERR_001',
+    BAD_REQUEST: 'ERR_002',
+    NOT_FOUND: 'ERR_003',
+} as const;
+
+export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
