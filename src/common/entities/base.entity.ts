@@ -4,11 +4,12 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   Column,
+  BeforeSoftRemove,
 } from 'typeorm';
 
 export abstract class BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -19,9 +20,6 @@ export abstract class BaseEntity {
   @DeleteDateColumn({ name: 'deleted_at' })
   deletedAt: Date;
 
-  @Column({ name: 'created_by', nullable: true })
-  createdBy: string;
-
-  @Column({ name: 'updated_by', nullable: true })
-  updatedBy: string;
+  @Column({ name: 'is_deleted', default: false })
+  isDeleted: boolean;
 }
