@@ -31,7 +31,7 @@ const departmentsController = new DepartmentsController();
  *             $ref: '#/components/schemas/CreateDepartmentDto'
  *     responses:
  *       201:
- *         description: Department created successfully
+ *         description: Tạo phòng ban thành công
  *       400:
  *         description: Validation error
  *       401:
@@ -97,7 +97,7 @@ router.get('/chart', authMiddleware, permissionsMiddleware('DEPT_READ'), departm
  *       200:
  *         description: CSV file
  */
-router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), departmentsController.exportCsv);
+router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), departmentsController.export);
 
 /**
  * @swagger
@@ -139,7 +139,7 @@ router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), depa
  *             $ref: '#/components/schemas/UpdateDepartmentDto'
  *     responses:
  *       200:
- *         description: Department updated successfully
+ *         description: Cập nhật phòng ban thành công
  *       404:
  *         description: Department not found
  *   delete:
@@ -156,7 +156,7 @@ router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), depa
  *         description: Department ID
  *     responses:
  *       200:
- *         description: Department deleted successfully
+ *         description: Xóa phòng ban thành công
  *       404:
  *         description: Department not found
  */
