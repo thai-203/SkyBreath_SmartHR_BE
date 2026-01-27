@@ -38,17 +38,36 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
         const decoded: any = jwt.verify(token, secret);
 
         const userRepository = AppDataSource.getRepository(UserEntity);
-        const user = await userRepository.findOne({ where: { id: decoded.sub }, relations: ['userRoles', 'userRoles.role'] });
+        const user = await userRepository.findOne({
+            where: { id: decoded.sub },
+            relations: [
+                'userRoles',
+                'userRoles.role',
+                'userRoles.role.rolePermissions',
+                'userRoles.role.rolePermissions.permission'
+            ]
+        });
 
         if (!user || user.status !== 'ACTIVE') {
             next(new UnauthorizedException(AppMessages.Errors.User.INACTIVE));
             return;
         }
 
+        // Extract unique permissions
+        const permissions = new Set<string>();
+        user.userRoles?.forEach(ur => {
+            ur.role.rolePermissions?.forEach(rp => {
+                if (rp.permission && !rp.isDeleted) {
+                    permissions.add(rp.permission.permissionCode);
+                }
+            });
+        });
+
         req.user = {
             id: user.id,
             email: user.email,
             roles: user.userRoles?.map(ur => ur.role.roleName) || [],
+            permissions: Array.from(permissions),
         };
 
         next();

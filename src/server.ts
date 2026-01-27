@@ -8,6 +8,8 @@ import { config } from './config/env.config';
 import { authRoutes } from './routes/auth.routes';
 import { usersRoutes } from './routes/users.routes';
 import { rolesRoutes } from './routes/roles.routes';
+import { departmentsRoutes } from './routes/departments.routes';
+import { employeesRoutes } from './routes/employees.routes';
 import { errorMiddleware } from './common/middleware/error.middleware';
 
 const app = express();
@@ -26,6 +28,8 @@ app.use(morgan('dev'));
 app.use(`/${API_PREFIX}/${API_VERSION}/auth`, authRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/users`, usersRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/roles`, rolesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/departments`, departmentsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/employees`, employeesRoutes);
 
 app.get('/', (req, res) => {
     res.send('SkyBreath SmartHR API is running');

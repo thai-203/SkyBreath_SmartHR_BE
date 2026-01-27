@@ -5,6 +5,7 @@ import { PermissionEntity } from '../../models/entities/permission.entity';
 import { UserEntity } from '../../models/entities/user.entity';
 import { UserRoleEntity } from '../../models/entities/user-role.entity';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity';
+import { EmployeeEntity } from '../../models/entities/employee.entity';
 import { hashPassword } from '../../common/utils';
 
 const seed = async () => {
@@ -21,6 +22,11 @@ const seed = async () => {
             { permissionCode: 'USER_DELETE', description: 'Delete users' },
             { permissionCode: 'ROLE_READ', description: 'Read roles' },
             { permissionCode: 'ROLE_WRITE', description: 'Create/Update roles' },
+            { permissionCode: 'DEPT_READ', description: 'Read departments' },
+            { permissionCode: 'DEPT_CREATE', description: 'Create departments' },
+            { permissionCode: 'DEPT_UPDATE', description: 'Update departments' },
+            { permissionCode: 'DEPT_DELETE', description: 'Delete departments' },
+            { permissionCode: 'DEPT_EXPORT', description: 'Export departments' },
         ];
 
         const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -73,20 +79,60 @@ const seed = async () => {
         }
         console.log('Assigned permissions to ADMIN');
 
-        // 4. Create Users
+        // Manager gets DEPT_READ, DEPT_UPDATE
+        const managerPerms = ['DEPT_READ', 'DEPT_UPDATE'];
+        for (const code of managerPerms) {
+            const p = permissions.find(p => p.permissionCode === code);
+            if (p) {
+                const exists = await rolePermissionRepo.findOne({ where: { roleId: roles['MANAGER'].id, permissionId: p.id } });
+                if (!exists) {
+                    await rolePermissionRepo.save(rolePermissionRepo.create({ roleId: roles['MANAGER'].id, permissionId: p.id }));
+                }
+            }
+        }
+        console.log('Assigned permissions to MANAGER');
+
+        // HR gets DEPT_READ, DEPT_CREATE, DEPT_UPDATE, DEPT_EXPORT
+        const hrPerms = ['DEPT_READ', 'DEPT_CREATE', 'DEPT_UPDATE', 'DEPT_EXPORT'];
+        for (const code of hrPerms) {
+            const p = permissions.find(p => p.permissionCode === code);
+            if (p) {
+                const exists = await rolePermissionRepo.findOne({ where: { roleId: roles['HR'].id, permissionId: p.id } });
+                if (!exists) {
+                    await rolePermissionRepo.save(rolePermissionRepo.create({ roleId: roles['HR'].id, permissionId: p.id }));
+                }
+            }
+        }
+        console.log('Assigned permissions to HR');
+
+        // 4. Create Users and Employees
         const userRepo = dataSource.getRepository(UserEntity);
         const userRoleRepo = dataSource.getRepository(UserRoleEntity);
+        const employeeRepo = dataSource.getRepository(EmployeeEntity);
         const password = await hashPassword('password123');
 
         const usersData = [
-            { username: 'admin', email: 'admin@example.com', role: 'ADMIN' },
-            { username: 'manager', email: 'manager@example.com', role: 'MANAGER' },
-            { username: 'employee', email: 'employee@example.com', role: 'EMPLOYEE' },
-            { username: 'hr', email: 'hr@example.com', role: 'HR' },
+            { username: 'admin', email: 'admin@example.com', role: 'ADMIN', fullName: 'System Administrator' },
+            { username: 'manager', email: 'manager@example.com', role: 'MANAGER', fullName: 'John Manager' },
+            { username: 'employee', email: 'employee@example.com', role: 'EMPLOYEE', fullName: 'Jane Employee' },
+            { username: 'hr', email: 'hr@example.com', role: 'HR', fullName: 'Alice HR' },
         ];
 
         for (const u of usersData) {
-            let user = await userRepo.findOne({ where: { email: u.email } });
+            // Check by username first (most likely cause of duplicate error)
+            let user = await userRepo.findOne({
+                where: { username: u.username },
+                withDeleted: true
+            });
+
+            // If not found by username, check by email
+            if (!user) {
+                user = await userRepo.findOne({
+                    where: { email: u.email },
+                    withDeleted: true
+                });
+            }
+
             if (!user) {
                 user = userRepo.create({
                     username: u.username,
@@ -104,6 +150,25 @@ const seed = async () => {
                 });
                 await userRoleRepo.save(userRole);
                 console.log(`Assigned role ${u.role} to ${u.username}`);
+            } else if (user.isDeleted) {
+                // Restore user if it was soft-deleted
+                user.isDeleted = false;
+                user.deletedAt = null as any;
+                await userRepo.save(user);
+                console.log(`Restored soft-deleted user: ${u.username}`);
+            }
+
+            // Check if Employee record exists for this user
+            let employee = await employeeRepo.findOne({ where: { userId: user.id } });
+            if (!employee) {
+                employee = employeeRepo.create({
+                    userId: user.id,
+                    fullName: u.fullName,
+                    companyEmail: u.email,
+                    employmentStatus: 'ACTIVE',
+                });
+                await employeeRepo.save(employee);
+                console.log(`Created employee record for: ${u.fullName}`);
             }
         }
 
