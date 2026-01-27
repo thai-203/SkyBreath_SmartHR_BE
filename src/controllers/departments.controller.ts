@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { DepartmentsService } from '../services/departments.service';
 import { CreateDepartmentDto, UpdateDepartmentDto, DepartmentQueryDto } from '../models/dto/departments';
 import { plainToInstance } from 'class-transformer';
+import { AppMessages } from '../common/constants';
 
 export class DepartmentsController {
     private departmentsService: DepartmentsService;
@@ -17,7 +18,7 @@ export class DepartmentsController {
             res.status(201).json({
                 success: true,
                 data: department,
-                message: 'Department created successfully',
+                message: AppMessages.Success.Department.CREATED,
             });
         } catch (error) {
             next(error);
@@ -58,7 +59,7 @@ export class DepartmentsController {
             res.status(200).json({
                 success: true,
                 data: department,
-                message: 'Department updated successfully',
+                message: AppMessages.Success.Department.UPDATED,
             });
         } catch (error) {
             next(error);
@@ -71,7 +72,7 @@ export class DepartmentsController {
             await this.departmentsService.remove(id);
             res.status(200).json({
                 success: true,
-                message: 'Department deleted successfully',
+                message: AppMessages.Success.Department.DELETED,
             });
         } catch (error) {
             next(error);
@@ -90,12 +91,14 @@ export class DepartmentsController {
         }
     };
 
-    exportCsv = async (req: Request, res: Response, next: NextFunction) => {
+
+    export = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const csv = await this.departmentsService.exportCsv();
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', 'attachment; filename=departments.csv');
-            res.status(200).send(csv);
+            const buffer = await this.departmentsService.exportExcel();
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=departments.xlsx');
+            res.setHeader('Content-Length', buffer.length);
+            res.end(buffer);
         } catch (error) {
             next(error);
         }

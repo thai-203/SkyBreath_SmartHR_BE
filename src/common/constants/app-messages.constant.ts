@@ -1,9 +1,9 @@
 export const AppMessages = {
     Success: {
-        DEFAULT: 'Success',
-        CREATED: 'Resource created successfully',
-        UPDATED: 'Resource updated successfully',
-        DELETED: 'Resource deleted successfully',
+        DEFAULT: 'Thành công',
+        CREATED: 'Tạo mới thành công',
+        UPDATED: 'Cập nhật thành công',
+        DELETED: 'Xóa thành công',
 
         Auth: {
             LOGIN: 'Login successful',
@@ -28,6 +28,12 @@ export const AppMessages = {
             RETRIEVED: 'Role retrieved successfully',
             UPDATED: 'Role updated successfully',
             DELETED: 'Role deleted successfully',
+        },
+
+        Department: {
+            CREATED: 'Tạo phòng ban thành công',
+            UPDATED: 'Cập nhật phòng ban thành công',
+            DELETED: 'Xóa phòng ban thành công',
         }
     },
 
@@ -51,9 +57,9 @@ export const AppMessages = {
             CODE_DUPLICATE: { code: 'EMP_003', message: 'Employee code duplicate' },
         },
         Department: {
-            NOT_FOUND: { code: 'DEPT_001', message: 'Department not found' },
-            ALREADY_EXISTS: { code: 'DEPT_002', message: 'Department already exists' },
-            HAS_EMPLOYEES: { code: 'DEPT_003', message: 'Department has employees' },
+            NOT_FOUND: { code: 'DEPT_001', message: 'Không tìm thấy phòng ban' },
+            ALREADY_EXISTS: { code: 'DEPT_002', message: 'Phòng ban đã tồn tại' },
+            HAS_EMPLOYEES: { code: 'DEPT_003', message: 'Phòng ban đang có nhân viên' },
         },
         Attendance: {
             ALREADY_CHECKED_IN: { code: 'ATT_001', message: 'Already checked in' },
@@ -69,10 +75,10 @@ export const AppMessages = {
             FAILED: { code: 'VAL_001', message: 'Validation failed' },
         },
         General: {
-            INTERNAL_SERVER_ERROR: { code: 'ERR_001', message: 'Internal Server Error' },
-            BAD_REQUEST: { code: 'ERR_002', message: 'Bad Request' },
-            NOT_FOUND: { code: 'ERR_003', message: 'Resource not found' },
-            RESOURCE_ALREADY_EXISTS: { code: 'ERR_004', message: 'Resource already exists' },
+            INTERNAL_SERVER_ERROR: { code: 'ERR_001', message: 'Lỗi máy chủ nội bộ' },
+            BAD_REQUEST: { code: 'ERR_002', message: 'Yêu cầu không hợp lệ' },
+            NOT_FOUND: { code: 'ERR_003', message: 'Không tìm thấy tài nguyên' },
+            RESOURCE_ALREADY_EXISTS: { code: 'ERR_004', message: 'Tài nguyên đã tồn tại' },
         },
     }
 } as const;

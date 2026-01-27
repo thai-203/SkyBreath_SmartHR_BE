@@ -19,6 +19,7 @@
     "seed": "ts-node src/database/seeds/initial-seed.ts"
   },
   "dependencies": {
+    "@types/exceljs": "^0.5.3",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "bcrypt": "^6.0.0",
@@ -28,6 +29,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "joi": "^18.0.2",
