@@ -1,0 +1,23 @@
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { BaseEntity } from '../../common/entities/base.entity.js';
+import { EmployeeEntity } from './employee.entity.js';
+
+@Entity('departments')
+export class DepartmentEntity extends BaseEntity {
+    @Column({ name: 'department_name', type: 'varchar' })
+    departmentName;
+
+    @Column({ name: 'parent_department_id', nullable: true, type: 'int' })
+    parentDepartmentId;
+
+    @Column({ name: 'manager_employee_id', nullable: true, type: 'int' })
+    managerEmployeeId;
+
+    @ManyToOne(() => DepartmentEntity, { nullable: true })
+    @JoinColumn({ name: 'parent_department_id' })
+    parentDepartment;
+
+    @ManyToOne(() => EmployeeEntity, { nullable: true })
+    @JoinColumn({ name: 'manager_employee_id' })
+    manager;
+}
