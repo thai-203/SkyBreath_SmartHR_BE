@@ -1,18 +1,19 @@
-import 'reflect-metadata';
-import express from 'express';
 import cors from 'cors';
+import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { AppDataSource } from './database/data-source.js';
+import 'reflect-metadata';
+import swaggerUi from 'swagger-ui-express';
+import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { config } from './config/env.config.js';
+import { swaggerSpec } from './config/swagger.config.js';
+import { AppDataSource } from './database/data-source.js';
 import { authRoutes } from './routes/auth.routes.js';
-import { usersRoutes } from './routes/users.routes.js';
-import { rolesRoutes } from './routes/roles.routes.js';
 import { departmentsRoutes } from './routes/departments.routes.js';
 import { employeesRoutes } from './routes/employees.routes.js';
-import { errorMiddleware } from './common/middleware/error.middleware.js';
-import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec } from './config/swagger.config.js';
+import { permissionsRoutes } from './routes/permissions.routes.js';
+import { rolesRoutes } from './routes/roles.routes.js';
+import { usersRoutes } from './routes/users.routes.js';
 
 const app = express();
 const PORT = config.port;
@@ -32,6 +33,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/users`, usersRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/roles`, rolesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/departments`, departmentsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/employees`, employeesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/permissions`, permissionsRoutes);
 
 app.get('/', (req, res) => {
     res.send('SkyBreath SmartHR API is running');

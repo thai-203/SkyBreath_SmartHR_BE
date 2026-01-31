@@ -1,4 +1,4 @@
-import { IsString, IsOptional, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
  * @swagger
@@ -24,6 +24,12 @@ export class UpdateRoleDto {
 
     @IsOptional()
     @IsString()
+    @IsOptional()
+    @IsString()
     @MaxLength(255)
     description;
+
+    @IsOptional()
+    @IsString()
+    status;
 }
