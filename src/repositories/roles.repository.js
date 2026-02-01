@@ -1,6 +1,7 @@
 import { AppDataSource } from '../database/data-source.js';
 import { RolePermissionEntity } from '../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../models/entities/role.entity.js';
+import { UserRoleEntity } from '../models/entities/user-role.entity.js';
 
 
 export class RolesRepository {
