@@ -4,13 +4,28 @@ export class PermissionsService {
     }
 
     async findAll() {
-        const permissions = await this.permissionsRepository.findAll();
-        // Group permissions by module logic could go here if naming convention follows module:action
-        // For now, return flat list. Ideally, we can parse 'USER:CREATE' -> Module: USER, Action: CREATE
-        return permissions.map(p => {
-            const parts = p.permissionCode.split(':');
-            const module = parts.length > 1 ? parts[0] : 'GENERAL';
-            return { ...p, module };
-        });
+        try {
+            console.log('[Service] PermissionsService.findAll - Fetching from repository');
+            const permissions = await this.permissionsRepository.findAll();
+            console.log(`[Service] PermissionsService.findAll - Found ${permissions?.length || 0} raw records`);
+
+            if (!permissions) return [];
+
+            return permissions.map(p => {
+                if (!p) return null;
+                const code = p.permissionCode || 'UNKNOWN:UNKNOWN';
+                const parts = code.split(':');
+                const module = parts.length > 1 ? parts[0] : 'GENERAL';
+                return {
+                    id: p.id,
+                    permissionCode: code,
+                    description: p.description,
+                    module: module
+                };
+            }).filter(Boolean);
+        } catch (error) {
+            console.error('[Service] PermissionsService.findAll - Error:', error);
+            throw error;
+        }
     }
 }

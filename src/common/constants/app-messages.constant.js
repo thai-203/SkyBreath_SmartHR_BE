@@ -5,6 +5,10 @@ export const AppMessages = {
         UPDATED: 'Cập nhật thành công',
         DELETED: 'Xóa thành công',
 
+        General: {
+            SUCCESS: 'Thành công',
+        },
+
         Auth: {
             LOGIN: 'Login successful',
             REGISTER: 'User registered successfully',
@@ -34,6 +38,10 @@ export const AppMessages = {
             CREATED: 'Tạo phòng ban thành công',
             UPDATED: 'Cập nhật phòng ban thành công',
             DELETED: 'Xóa phòng ban thành công',
+        },
+
+        Permission: {
+            RETRIEVED_ALL: 'Permissions retrieved successfully',
         }
     },
 

@@ -1,5 +1,7 @@
 import { AppDataSource } from '../database/data-source.js';
+import { RolePermissionEntity } from '../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../models/entities/role.entity.js';
+
 
 export class RolesRepository {
     constructor() {
@@ -48,7 +50,7 @@ export class RolesRepository {
     }
 
     async isRoleInUse(roleId) {
-        const count = await this.roleRepository.manager.getRepository('UserRoleEntity')
+        const count = await this.roleRepository.manager.getRepository(UserRoleEntity)
             .createQueryBuilder('userRole')
             .where('userRole.role_id = :roleId', { roleId })
             .getCount();
@@ -57,7 +59,7 @@ export class RolesRepository {
     async updatePermissions(roleId, permissionIds) {
         return this.roleRepository.manager.transaction(async (transactionalEntityManager) => {
             // Delete existing permissions
-            await transactionalEntityManager.delete('RolePermissionEntity', { roleId });
+            await transactionalEntityManager.delete(RolePermissionEntity, { roleId });
 
             // Insert new permissions
             if (permissionIds && permissionIds.length > 0) {
@@ -65,13 +67,13 @@ export class RolesRepository {
                     roleId,
                     permissionId
                 }));
-                await transactionalEntityManager.save('RolePermissionEntity', rolePermissions);
+                await transactionalEntityManager.save(RolePermissionEntity, rolePermissions);
             }
         });
     }
 
     async getPermissions(roleId) {
-        const rolePermissions = await this.roleRepository.manager.getRepository('RolePermissionEntity')
+        const rolePermissions = await this.roleRepository.manager.getRepository(RolePermissionEntity)
             .find({
                 where: { roleId },
                 relations: ['permission']
