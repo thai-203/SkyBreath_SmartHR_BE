@@ -13,6 +13,7 @@ import { employeesRoutes } from './routes/employees.routes.js';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.config.js';
+import cookieParser from 'cookie-parser';
 
 const app = express();
 const PORT = config.port;
@@ -22,6 +23,7 @@ const API_VERSION = config.apiVersion;
 // Middleware
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -34,11 +36,11 @@ app.use(`/${API_PREFIX}/${API_VERSION}/departments`, departmentsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/employees`, employeesRoutes);
 
 app.get('/', (req, res) => {
-    res.send('SkyBreath SmartHR API is running');
+  res.send('SkyBreath SmartHR API is running');
 });
 
 app.get(`/${API_PREFIX}/${API_VERSION}/health`, (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Swagger
@@ -49,18 +51,20 @@ app.use(errorMiddleware);
 
 // Database Initialization and Server Start
 const startServer = async () => {
-    try {
-        await AppDataSource.initialize();
-        console.log('Data Source has been initialized!');
+  try {
+    await AppDataSource.initialize();
+    console.log('Data Source has been initialized!');
 
-        app.listen(PORT, () => {
-            console.log(`Server is running on http://localhost:${PORT}`);
-            console.log(`API Endpoint: http://localhost:${PORT}/${API_PREFIX}/${API_VERSION}`);
-        });
-    } catch (error) {
-        console.error('Error during Data Source initialization:', error);
-        process.exit(1);
-    }
+    app.listen(PORT, () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+      console.log(
+        `API Endpoint: http://localhost:${PORT}/${API_PREFIX}/${API_VERSION}`,
+      );
+    });
+  } catch (error) {
+    console.error('Error during Data Source initialization:', error);
+    process.exit(1);
+  }
 };
 
 startServer();
