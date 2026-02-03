@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
 import { AppDataSource } from './database/data-source.js';
 import { config } from './config/env.config.js';
 import { authRoutes } from './routes/auth.routes.js';
@@ -22,12 +23,15 @@ const API_PREFIX = config.apiPrefix;
 const API_VERSION = config.apiVersion;
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use('/uploads', express.static(path.resolve('uploads')));
 
 // Routes
 app.use(`/${API_PREFIX}/${API_VERSION}/auth`, authRoutes);

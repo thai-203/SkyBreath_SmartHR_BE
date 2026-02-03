@@ -6,6 +6,9 @@ import { UserEntity } from '../../models/entities/user.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
+import { DepartmentEntity } from '../../models/entities/department.entity.js';
+import { PositionEntity } from '../../models/entities/position.entity.js';
+import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
 import { hashPassword } from '../../common/utils/index.js';
 
 const seed = async () => {
@@ -105,7 +108,80 @@ const seed = async () => {
         }
         console.log('Assigned permissions to HR');
 
-        // 4. Create Users and Employees
+        console.log('Assigned permissions to HR');
+
+        // 4. Create Departments
+        const departmentRepo = dataSource.getRepository(DepartmentEntity);
+        const departmentsData = [
+            { departmentName: 'Software Development' },
+            { departmentName: 'Human Resources' },
+            { departmentName: 'Finance' },
+            { departmentName: 'Marketing' },
+        ];
+
+        const departments = {};
+        for (const d of departmentsData) {
+            let dept = await departmentRepo.findOne({ where: { departmentName: d.departmentName } });
+            if (!dept) {
+                dept = departmentRepo.create(d);
+                await departmentRepo.save(dept);
+                console.log(`Created department: ${d.departmentName}`);
+            }
+            departments[d.departmentName] = dept;
+        }
+
+        // 5. Create Positions
+        const positionRepo = dataSource.getRepository(PositionEntity);
+        const positionsData = [
+            { positionName: 'Frontend Developer' },
+            { positionName: 'Backend Developer' },
+            { positionName: 'Mobile Developer' },
+            { positionName: 'HR Specialist' },
+            { positionName: 'HR Manager' },
+            { positionName: 'Accountant' },
+            { positionName: 'Finance Manager' },
+            { positionName: 'Marketing Specialist' },
+        ];
+
+        for (const p of positionsData) {
+            let pos = await positionRepo.findOne({ where: { positionName: p.positionName } });
+            if (!pos) {
+                pos = positionRepo.create(p);
+                await positionRepo.save(pos);
+                console.log(`Created position: ${p.positionName}`);
+            }
+        }
+
+        // 6. Create Job Grades
+        const jobGradeRepo = dataSource.getRepository(JobGradeEntity);
+        const jobGradesData = [
+            { gradeName: 'Junior', departmentName: 'Software Development', minSalary: 800, maxSalary: 1500 },
+            { gradeName: 'Senior', departmentName: 'Software Development', minSalary: 1600, maxSalary: 3000 },
+            { gradeName: 'Lead', departmentName: 'Software Development', minSalary: 3100, maxSalary: 6000 },
+            { gradeName: 'Junior', departmentName: 'Human Resources', minSalary: 600, maxSalary: 1000 },
+            { gradeName: 'Senior', departmentName: 'Human Resources', minSalary: 1100, maxSalary: 2000 },
+        ];
+
+        for (const j of jobGradesData) {
+            let grade = await jobGradeRepo.findOne({
+                where: {
+                    gradeName: j.gradeName,
+                    departmentId: departments[j.departmentName].id
+                }
+            });
+            if (!grade) {
+                grade = jobGradeRepo.create({
+                    gradeName: j.gradeName,
+                    departmentId: departments[j.departmentName].id,
+                    minSalary: j.minSalary,
+                    maxSalary: j.maxSalary
+                });
+                await jobGradeRepo.save(grade);
+                console.log(`Created job grade: ${j.gradeName} for ${j.departmentName}`);
+            }
+        }
+
+        // 7. Create Users and Employees
         const userRepo = dataSource.getRepository(UserEntity);
         const userRoleRepo = dataSource.getRepository(UserRoleEntity);
         const employeeRepo = dataSource.getRepository(EmployeeEntity);
@@ -160,6 +236,7 @@ const seed = async () => {
                     userId: user.id,
                     fullName: u.fullName,
                     companyEmail: u.email,
+                    departmentId: u.role === 'HR' ? departments['Human Resources'].id : (u.role === 'MANAGER' ? departments['Software Development'].id : departments['Software Development'].id),
                     employmentStatus: 'ACTIVE',
                 });
                 await employeeRepo.save(employee);

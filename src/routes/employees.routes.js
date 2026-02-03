@@ -3,6 +3,7 @@ import { EmployeesController } from '../controllers/employees.controller.js';
 import { EmployeesService } from '../services/employees.service.js';
 import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
+import { upload } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
 
@@ -50,7 +51,16 @@ const employeesController = new EmployeesController(employeesService);
  *       401:
  *         description: Unauthorized
  */
+router.post('/', authMiddleware, upload.fields([
+    { name: 'frontIdCard', maxCount: 1 },
+    { name: 'backIdCard', maxCount: 1 }
+]), employeesController.create);
+router.get('/meta-data', authMiddleware, employeesController.getMetadata);
 router.get('/list', authMiddleware, employeesController.list);
+router.get('/', authMiddleware, employeesController.all);
+router.get('/validation-data', authMiddleware, employeesController.getValidationData);
+router.get('/export', authMiddleware, employeesController.export);
+router.get('/:id', authMiddleware, employeesController.findOne);
 
 /**
  * @swagger
@@ -94,7 +104,10 @@ router.get('/list', authMiddleware, employeesController.list);
  *       401:
  *         description: Unauthorized
  */
-router.patch('/:id', authMiddleware, employeesController.update);
+router.put('/:id', authMiddleware, upload.fields([
+    { name: 'frontIdCard', maxCount: 1 },
+    { name: 'backIdCard', maxCount: 1 }
+]), employeesController.update);
 
 /**
  * @swagger
