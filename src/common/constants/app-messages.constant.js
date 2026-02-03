@@ -36,11 +36,11 @@ export const AppMessages = {
             DELETED: 'Xóa phòng ban thành công',
         },
 
-        Contract: {
-            CREATED: 'Hợp đồng được tạo thành công',
-            UPDATED: 'Hợp đồng được cập nhật thành công',
-            DELETED: 'Hợp đồng được xóa thành công',
-            TERMINATED: 'Hợp đồng được kết thúc thành công',
+        Employee: {
+            RETRIEVED_ALL: 'Lấy danh sách nhân viên thành công',
+            RETRIEVED: 'Lấy thông tin nhân viên thành công',
+            UPDATED: 'Cập nhật thông tin nhân viên thành công',
+            DELETED: 'Xóa nhân viên thành công',
         }
     },
 
@@ -59,9 +59,12 @@ export const AppMessages = {
             INACTIVE: { code: 'USER_004', message: 'User account is inactive' },
         },
         Employee: {
-            NOT_FOUND: { code: 'EMP_001', message: 'Employee not found' },
-            ALREADY_EXISTS: { code: 'EMP_002', message: 'Employee already exists' },
-            CODE_DUPLICATE: { code: 'EMP_003', message: 'Employee code duplicate' },
+            NOT_FOUND: { code: 'EMP_001', message: 'Không tìm thấy nhân viên' },
+            ALREADY_EXISTS: { code: 'EMP_002', message: 'Nhân viên đã tồn tại' },
+            CODE_DUPLICATE: { code: 'EMP_003', message: 'Mã nhân viên bị trùng lặp' },
+            EMAIL_DUPLICATE: { code: 'EMP_004', message: 'Email đã được sử dụng' },
+            PHONE_DUPLICATE: { code: 'EMP_005', message: 'Số điện thoại đã được sử dụng' },
+            NATIONAL_ID_DUPLICATE: { code: 'EMP_006', message: 'Số CMND/CCCD đã được sử dụng' },
         },
         Department: {
             NOT_FOUND: { code: 'DEPT_001', message: 'Không tìm thấy phòng ban' },
