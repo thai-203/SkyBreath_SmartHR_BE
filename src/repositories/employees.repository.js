@@ -6,6 +6,17 @@ export class EmployeesRepository {
         this.repository = AppDataSource.getRepository(EmployeeEntity);
     }
 
+    async findAll() {
+    return this.repository
+        .createQueryBuilder('employee')
+        .leftJoinAndSelect('employee.user', 'user')
+        .leftJoinAndSelect('employee.department', 'department')
+        .leftJoinAndSelect('employee.position', 'position')
+        .where('employee.isDeleted = :isDeleted', { isDeleted: false })
+        .orderBy('employee.fullName', 'ASC')
+        .getMany();
+    }
+
     async findList() {
         return this.repository.createQueryBuilder('employee')
             .innerJoin('employee.user', 'user')
@@ -16,5 +27,12 @@ export class EmployeesRepository {
             .select(['employee.id', 'employee.fullName'])
             .orderBy('employee.fullName', 'ASC')
             .getMany();
+    }
+
+    async findById(id) {
+        return this.repository.findOne({
+            where: { id, isDeleted: false },
+            relations: ['user', 'department', 'position', 'jobGrade', 'directManager', 'hrMentor'],
+        });
     }
 }

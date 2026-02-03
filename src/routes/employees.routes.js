@@ -5,6 +5,8 @@ import { authMiddleware } from '../common/middleware/auth.middleware.js';
 const router = Router();
 const employeesController = new EmployeesController();
 
+router.get('/', authMiddleware, employeesController.all);
+
 router.get('/list', authMiddleware, employeesController.list);
 
 export const employeesRoutes = router;

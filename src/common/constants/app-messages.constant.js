@@ -34,6 +34,13 @@ export const AppMessages = {
             CREATED: 'Tạo phòng ban thành công',
             UPDATED: 'Cập nhật phòng ban thành công',
             DELETED: 'Xóa phòng ban thành công',
+        },
+
+        Contract: {
+            CREATED: 'Hợp đồng được tạo thành công',
+            UPDATED: 'Hợp đồng được cập nhật thành công',
+            DELETED: 'Hợp đồng được xóa thành công',
+            TERMINATED: 'Hợp đồng được kết thúc thành công',
         }
     },
 
@@ -60,6 +67,12 @@ export const AppMessages = {
             NOT_FOUND: { code: 'DEPT_001', message: 'Không tìm thấy phòng ban' },
             ALREADY_EXISTS: { code: 'DEPT_002', message: 'Phòng ban đã tồn tại' },
             HAS_EMPLOYEES: { code: 'DEPT_003', message: 'Phòng ban đang có nhân viên' },
+        },
+        Contract: {
+            NOT_FOUND: { code: 'CONTRACT_001', message: 'Hợp đồng không tìm thấy' },
+            ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'Hợp đồng đã tồn tại' },
+            INVALID_DATE: { code: 'CONTRACT_003', message: 'Ngày kết thúc phải sau ngày bắt đầu' },
+            ALREADY_TERMINATED: { code: 'CONTRACT_004', message: 'Hợp đồng đã được kết thúc' },
         },
         Attendance: {
             ALREADY_CHECKED_IN: { code: 'ATT_001', message: 'Already checked in' },

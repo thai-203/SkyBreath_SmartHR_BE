@@ -10,6 +10,7 @@ import { usersRoutes } from './routes/users.routes.js';
 import { rolesRoutes } from './routes/roles.routes.js';
 import { departmentsRoutes } from './routes/departments.routes.js';
 import { employeesRoutes } from './routes/employees.routes.js';
+import { contractsRoutes } from './routes/contracts.routes.js';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.config.js';
@@ -32,6 +33,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/users`, usersRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/roles`, rolesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/departments`, departmentsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/employees`, employeesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/contracts`, contractsRoutes);
 
 app.get('/', (req, res) => {
     res.send('SkyBreath SmartHR API is running');
