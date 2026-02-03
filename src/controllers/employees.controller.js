@@ -6,6 +6,18 @@ export class EmployeesController {
         this.employeesService = employeesService;
     }
 
+    all = async (req, res, next) => {
+        try {
+            const all = await this.employeesService.findAll();
+            res.status(200).json({
+                success: true,
+                data: all,
+            });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     list = async (req, res, next) => {
         try {
             const { page = 1, limit = 10, search = '' } = req.query;

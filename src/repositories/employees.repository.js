@@ -57,4 +57,11 @@ export class EmployeesRepository {
 
         return query.getOne();
     }
+
+    async findById(id) {
+        return this.repository.findOne({
+            where: { id, isDeleted: false },
+            relations: ['user', 'department', 'position', 'jobGrade', 'directManager', 'hrMentor'],
+        });
+    }
 }
