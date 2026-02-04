@@ -2,7 +2,12 @@ import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { LoginDto, RegisterDto, ChangePasswordDto, RefreshTokenDto } from '../models/dto/auth/index.js';
+import {
+  LoginDto,
+  RegisterDto,
+  ChangePasswordDto,
+  RefreshTokenDto,
+} from '../models/dto/auth/index.js';
 
 const router = Router();
 const authController = new AuthController();
@@ -45,7 +50,11 @@ router.post('/login', validationMiddleware(LoginDto), authController.login);
  *       400:
  *         description: Validation error
  */
-router.post('/register', validationMiddleware(RegisterDto), authController.register);
+router.post(
+  '/register',
+  validationMiddleware(RegisterDto),
+  authController.register,
+);
 /**
  * @swagger
  * /auth/refresh:
@@ -64,7 +73,12 @@ router.post('/register', validationMiddleware(RegisterDto), authController.regis
  *       401:
  *         description: Invalid refresh token
  */
-router.post('/refresh', authMiddleware, validationMiddleware(RefreshTokenDto), authController.refreshTokens);
+router.post(
+  '/refresh',
+  authMiddleware,
+  validationMiddleware(RefreshTokenDto),
+  authController.refreshTokens,
+);
 
 /**
  * @swagger
@@ -104,7 +118,12 @@ router.post('/logout', authMiddleware, authController.logout);
  *       401:
  *         description: Unauthorized
  */
-router.post('/change-password', authMiddleware, validationMiddleware(ChangePasswordDto), authController.changePassword);
+router.post(
+  '/change-password',
+  authMiddleware,
+  validationMiddleware(ChangePasswordDto),
+  authController.changePassword,
+);
 
 /**
  * @swagger
