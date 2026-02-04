@@ -13,7 +13,7 @@ export class AuthController {
     try {
       const { email, password } = req.body;
       const user = await this.authService.validateUser(email, password);
-
+      
       if (!user) {
         const error = new Error('Invalid credentials');
         error.statusCode = 401;
@@ -85,6 +85,13 @@ export class AuthController {
     try {
       const userId = req.user.id;
       const result = await this.authService.logout(userId);
+      res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        path: '/',
+      });
+
       ResponseUtil.sendResponse(res, AppMessages.Success.Auth.LOGOUT, result);
     } catch (error) {
       next(error);
@@ -113,6 +120,35 @@ export class AuthController {
         res,
         AppMessages.Success.Auth.PROFILE_RETRIEVED,
         result,
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+  forgotPassword = async (req, res, next) => {
+    try {
+      const { email } = req.body;
+
+      await this.authService.forgotPassword(email);
+
+      return ResponseUtil.sendResponse(
+        res,
+        AppMessages.Success.Auth.PASSWORD_RESET_REQUESTED,
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  resetPassword = async (req, res, next) => {
+    try {
+      const { token, newPassword } = req.body;
+
+      await this.authService.resetPassword(token, newPassword);
+
+      return ResponseUtil.sendResponse(
+        res,
+        AppMessages.Success.Auth.PASSWORD_RESET_SUCCESS,
       );
     } catch (error) {
       next(error);

@@ -4,7 +4,6 @@ import { AppMessages } from '../constants/index.js';
 export const permissionsMiddleware = (requiredPermission) => {
     return (req, res, next) => {
         const user = req.user;
-
         if (!user) {
             next(new UnauthorizedException(AppMessages.Errors.Auth.UNAUTHORIZED));
             return;
