@@ -1,21 +1,29 @@
 import * as jwt from 'jsonwebtoken';
 import { UsersService } from './users.service.js';
-import { UsersRepository } from '../repositories/users.repository.js';
-import { RolesRepository } from '../repositories/roles.repository.js';
-import { hashPassword, comparePassword } from '../common/utils/index.js';
+import {
+  hashPassword,
+  comparePassword,
+  hashResetPasswordToken,
+} from '../common/utils/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import {
   UnauthorizedException,
   BadRequestException,
-  ConflictException,
   NotFoundException,
 } from '../common/exceptions/index.js';
-
+import crypto from 'crypto';
+import { RedisService } from './redis.service.js';
+import { MailService } from './mail.service.js';
+import { config } from '../config/env.config.js';
 export class AuthService {
-  constructor() {
-    this.usersService = new UsersService();
-    this.usersRepository = new UsersRepository();
-    this.rolesRepository = new RolesRepository();
+  constructor(
+    usersService = new UsersService(),
+    cacheService = new RedisService(),
+    mailServiceInstance = new MailService(),
+  ) {
+    this.usersService = usersService;
+    this.cacheService = cacheService;
+    this.mailService = mailServiceInstance;
   }
 
   async validateUser(email, password) {
@@ -167,5 +175,61 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+  async forgotPassword(email) {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      return {
+        message: AppMessages.Success.Auth.PASSWORD_RESET_REQUESTED,
+      };
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    const hashedToken = hashResetPasswordToken(resetToken);
+
+    const redisKey = `reset-password:${hashedToken}`;
+
+    await this.cacheService.set(redisKey, user.id, 5 * 60);
+
+    // 4. Tạo link reset
+    const resetUrl = `${config.frontEndUrl}/forgot-password?token=${resetToken}`;
+
+    // 5. Gửi email
+    await this.mailService.sendResetPasswordEmail(
+      user.email,
+      user.username,
+      resetUrl,
+    );
+
+    return {
+      message: AppMessages.Success.Auth.PASSWORD_RESET_REQUESTED,
+    };
+  }
+
+  async resetPassword(token, newPassword) {
+    const hashedToken = hashResetPasswordToken(token);
+
+    const redisKey = `reset-password:${hashedToken}`;
+
+    const userId = await this.cacheService.get(redisKey);
+
+    if (!userId) {
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.RESET_TOKEN_INVALID,
+      );
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+
+    await this.usersService.update(userId, {
+      password: hashedPassword,
+    });
+
+    // Xóa token sau khi dùng
+    await this.cacheService.del(redisKey);
+
+    return { message: AppMessages.Success.Auth.PASSWORD_RESET_SUCCESS };
   }
 }

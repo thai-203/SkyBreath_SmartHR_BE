@@ -16,6 +16,13 @@ import { errorMiddleware } from './common/middleware/error.middleware.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.config.js';
 import cookieParser from 'cookie-parser';
+import redis from './config/redis.config.js';
+
+process.on('SIGINT', async () => {
+  console.log('Shutting down...');
+  await redis.quit();
+  process.exit(0);
+});
 
 const app = express();
 const PORT = config.port;
@@ -23,9 +30,11 @@ const API_PREFIX = config.apiPrefix;
 const API_VERSION = config.apiVersion;
 
 // Middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }),
+);
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(express.json());
