@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsInt, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, Min, Matches } from 'class-validator';
 
 /**
  * @swagger
@@ -25,6 +25,7 @@ import { IsString, IsNotEmpty, IsOptional, IsInt, Min } from 'class-validator';
 export class CreateDepartmentDto {
     @IsString()
     @IsNotEmpty()
+    @Matches(/^[a-zA-Z0-9À-ỹ\s]+$/, { message: 'Tên phòng ban chỉ được chứa chữ cái, số và khoảng trắng' })
     departmentName;
 
     @IsOptional()
