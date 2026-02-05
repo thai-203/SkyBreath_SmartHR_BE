@@ -133,7 +133,7 @@ export class AuthService {
     }
 
     const hashedPassword = await hashPassword(changePasswordDto.newPassword);
-    await this.usersRepository.update(userId, { password: hashedPassword });
+    await this.usersService.update(userId, { password: hashedPassword });
 
     return { message: 'Password changed successfully' };
   }
