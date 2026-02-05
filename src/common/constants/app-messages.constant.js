@@ -83,7 +83,11 @@ export const AppMessages = {
       ALREADY_EXISTS: { code: 'DEPT_002', message: 'Phòng ban đã tồn tại' },
       HAS_EMPLOYEES: {
         code: 'DEPT_003',
-        message: 'Phòng ban đang có nhân viên',
+        message: 'Không thể xóa phòng ban đang có nhân viên',
+      },
+      HAS_CHILDREN: {
+        code: 'DEPT_004',
+        message: 'Không thể xóa phòng ban đang có phòng ban con',
       },
     },
     Contract: {

@@ -45,6 +45,17 @@ export class DepartmentsService {
 
     async remove(id) {
         await this.findById(id);
+
+        const hasChildren = await this.departmentsRepository.hasChildren(id);
+        if (hasChildren) {
+            throw new ConflictException(AppMessages.Errors.Department.HAS_CHILDREN);
+        }
+
+        const hasEmployees = await this.departmentsRepository.hasEmployees(id);
+        if (hasEmployees) {
+            throw new ConflictException(AppMessages.Errors.Department.HAS_EMPLOYEES);
+        }
+
         await this.departmentsRepository.delete(id);
     }
 
