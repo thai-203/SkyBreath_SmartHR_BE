@@ -21,13 +21,7 @@ redis.on('connect', () => {
 });
 
 redis.on('error', (err) => {
-  if (err.code === 'ECONNREFUSED') {
-    console.error(
-      '❌ Redis connection refused at 127.0.0.1:6379. Is Redis running? Please check README.md for instructions.',
-    );
-  } else {
-    console.error('❌ Redis error:', err);
-  }
+  console.error('❌ Redis error:', err);
 });
 
 export default redis;
