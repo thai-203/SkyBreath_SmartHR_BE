@@ -17,7 +17,8 @@ export class RolesController {
 
     findAll = async (req, res, next) => {
         try {
-            const result = await this.rolesService.findAll();
+            const query = req.query;
+            const result = await this.rolesService.findAll(query);
             ResponseUtil.sendResponse(res, AppMessages.Success.Role.RETRIEVED_ALL, result);
         } catch (error) {
             next(error);

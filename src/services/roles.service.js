@@ -26,8 +26,12 @@ export class RolesService {
         return newRole;
     }
 
-    async findAll() {
-        return this.rolesRepository.findAll();
+    async findAll(query = {}) {
+        const filters = {
+            search: query.search || '',
+            status: query.status || null
+        };
+        return this.rolesRepository.findAll(filters);
     }
 
     async findById(id) {

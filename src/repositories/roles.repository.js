@@ -1,3 +1,4 @@
+import { Like } from 'typeorm';
 import { AppDataSource } from '../database/data-source.js';
 import { RolePermissionEntity } from '../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../models/entities/role.entity.js';
@@ -14,8 +15,22 @@ export class RolesRepository {
         return this.roleRepository.save(role);
     }
 
-    async findAll() {
-        return this.roleRepository.find({ where: { isDeleted: false } });
+    async findAll(filters = {}) {
+        const { search, status } = filters;
+        const where = { isDeleted: false };
+
+        if (search) {
+            where.roleName = Like(`%${search}%`);
+        }
+
+        if (status) {
+            where.status = status;
+        }
+
+        return this.roleRepository.find({
+            where,
+            order: { createdAt: 'DESC' }
+        });
     }
 
     async findById(id) {
