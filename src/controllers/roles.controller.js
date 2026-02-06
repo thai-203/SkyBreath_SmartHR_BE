@@ -1,5 +1,5 @@
-import { ResponseUtil } from '../common/utils/response.util.js';
 import { AppMessages } from '../common/constants/index.js';
+import { ResponseUtil } from '../common/utils/response.util.js';
 
 export class RolesController {
     constructor(rolesService) {
@@ -37,6 +37,25 @@ export class RolesController {
         try {
             const result = await this.rolesService.update(parseInt(req.params.id), req.body);
             ResponseUtil.sendResponse(res, AppMessages.Success.Role.UPDATED, result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    assignPermissions = async (req, res, next) => {
+        try {
+            const { permissionIds } = req.body;
+            const result = await this.rolesService.assignPermissions(parseInt(req.params.id), permissionIds);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Role.UPDATED, result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    getPermissions = async (req, res, next) => {
+        try {
+            const result = await this.rolesService.getPermissions(parseInt(req.params.id));
+            ResponseUtil.sendResponse(res, AppMessages.Success.Role.RETRIEVED, result);
         } catch (error) {
             next(error);
         }

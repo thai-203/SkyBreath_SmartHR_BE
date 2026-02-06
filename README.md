@@ -14,6 +14,13 @@ Backend API for SkyBreath SmartHR system, built with Express, TypeScript, and Ty
 
 - [Node.js](https://nodejs.org/) (v22.0.1 or higher)
 - [MySQL](https://www.mysql.com/)
+- [Redis](https://redis.io/) (For caching and password resets)
+
+### Running Redis with Docker (Recommended)
+If you have Docker installed, you can start Redis with:
+```bash
+docker run -d --name smarthr-redis -p 6379:6379 redis
+```
 
 ## Installation
 

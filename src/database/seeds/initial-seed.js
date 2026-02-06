@@ -1,15 +1,15 @@
 import { DataSource } from 'typeorm';
-import { databaseConfig } from '../../config/database.config.js';
-import { RoleEntity } from '../../models/entities/role.entity.js';
-import { PermissionEntity } from '../../models/entities/permission.entity.js';
-import { UserEntity } from '../../models/entities/user.entity.js';
-import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
-import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
-import { EmployeeEntity } from '../../models/entities/employee.entity.js';
-import { DepartmentEntity } from '../../models/entities/department.entity.js';
-import { PositionEntity } from '../../models/entities/position.entity.js';
-import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
 import { hashPassword } from '../../common/utils/index.js';
+import { databaseConfig } from '../../config/database.config.js';
+import { DepartmentEntity } from '../../models/entities/department.entity.js';
+import { EmployeeEntity } from '../../models/entities/employee.entity.js';
+import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
+import { PermissionEntity } from '../../models/entities/permission.entity.js';
+import { PositionEntity } from '../../models/entities/position.entity.js';
+import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
+import { RoleEntity } from '../../models/entities/role.entity.js';
+import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
+import { UserEntity } from '../../models/entities/user.entity.js';
 
 const seed = async () => {
     const dataSource = new DataSource(databaseConfig);
