@@ -77,6 +77,10 @@ export const AppMessages = {
         code: 'EMP_006',
         message: 'Số CMND/CCCD đã được sử dụng',
       },
+      CODE_DUPLICATE: {
+        code: 'EMP_007',
+        message: 'Mã nhân viên đã tồn tại',
+      },
     },
     Department: {
       NOT_FOUND: { code: 'DEPT_001', message: 'Không tìm thấy phòng ban' },
