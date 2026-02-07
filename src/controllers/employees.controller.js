@@ -17,7 +17,7 @@ export class EmployeesController {
             const errors = await validate(createDto);
             if (errors.length > 0) {
                 const message = Object.values(errors[0].constraints)[0];
-                return ResponseUtil.sendResponse(res, message, null, false, 400);
+                return ResponseUtil.sendResponse(res, message, null, 400);
             }
 
             // Handle uploaded files
@@ -92,7 +92,7 @@ export class EmployeesController {
             const errors = await validate(updateDto);
             if (errors.length > 0) {
                 const message = Object.values(errors[0].constraints)[0];
-                return ResponseUtil.sendResponse(res, message, null, false, 400);
+                return ResponseUtil.sendResponse(res, message, null, 400);
             }
 
             const result = await this.employeesService.update(parseInt(req.params.id), updateDto);

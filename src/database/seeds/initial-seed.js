@@ -30,6 +30,11 @@ const seed = async () => {
             { permissionCode: 'DEPT_UPDATE', description: 'Update departments' },
             { permissionCode: 'DEPT_DELETE', description: 'Delete departments' },
             { permissionCode: 'DEPT_EXPORT', description: 'Export departments' },
+            { permissionCode: 'Employee.View', description: 'View employees' },
+            { permissionCode: 'Employee.Create', description: 'Create employees' },
+            { permissionCode: 'Employee.Update', description: 'Update employees' },
+            { permissionCode: 'Employee.Delete', description: 'Delete employees' },
+            { permissionCode: 'Employee.Export', description: 'Export employees' },
         ];
 
         const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -82,8 +87,8 @@ const seed = async () => {
         }
         console.log('Assigned permissions to ADMIN');
 
-        // Manager gets DEPT_READ, DEPT_UPDATE
-        const managerPerms = ['DEPT_READ', 'DEPT_UPDATE'];
+        // Manager gets DEPT_READ, DEPT_UPDATE, Employee.View
+        const managerPerms = ['DEPT_READ', 'DEPT_UPDATE', 'Employee.View'];
         for (const code of managerPerms) {
             const p = permissions.find(perm => perm.permissionCode === code);
             if (p) {
@@ -95,8 +100,11 @@ const seed = async () => {
         }
         console.log('Assigned permissions to MANAGER');
 
-        // HR gets DEPT_READ, DEPT_CREATE, DEPT_UPDATE, DEPT_EXPORT
-        const hrPerms = ['DEPT_READ', 'DEPT_CREATE', 'DEPT_UPDATE', 'DEPT_EXPORT'];
+        // HR gets DEPT_READ, DEPT_CREATE, DEPT_UPDATE, DEPT_EXPORT, Employee.*
+        const hrPerms = [
+            'DEPT_READ', 'DEPT_CREATE', 'DEPT_UPDATE', 'DEPT_EXPORT',
+            'Employee.View', 'Employee.Create', 'Employee.Update', 'Employee.Delete', 'Employee.Export'
+        ];
         for (const code of hrPerms) {
             const p = permissions.find(perm => perm.permissionCode === code);
             if (p) {

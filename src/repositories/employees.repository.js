@@ -12,7 +12,7 @@ export class EmployeesRepository {
     }
 
     async findAll(options = {}) {
-        const { skip = 0, take = 10, search = '', departmentId } = options;
+        const { skip = 0, take = 10, search = '', departmentId, positionId, employmentStatus } = options;
         const query = this.repository.createQueryBuilder('employee')
             .leftJoinAndSelect('employee.user', 'user')
             .leftJoinAndSelect('employee.department', 'department')
@@ -23,11 +23,22 @@ export class EmployeesRepository {
             .where('employee.isDeleted = :isDeleted', { isDeleted: false });
 
         if (search) {
-            query.andWhere('employee.fullName LIKE :search', { search: `%${search}%` });
+            query.andWhere(
+                '(employee.fullName LIKE :search OR employee.employeeCode LIKE :search OR employee.companyEmail LIKE :search)',
+                { search: `%${search}%` }
+            );
         }
 
         if (departmentId) {
             query.andWhere('employee.departmentId = :departmentId', { departmentId });
+        }
+
+        if (positionId) {
+            query.andWhere('employee.positionId = :positionId', { positionId });
+        }
+
+        if (employmentStatus) {
+            query.andWhere('employee.employmentStatus = :employmentStatus', { employmentStatus });
         }
 
         const [items, total] = await query
@@ -84,7 +95,7 @@ export class EmployeesRepository {
     async findValidationData() {
         return this.repository.find({
             where: { isDeleted: false },
-            select: ['id', 'fullName', 'personalEmail', 'companyEmail', 'phoneNumber', 'nationalId']
+            select: ['id', 'employeeCode', 'fullName', 'personalEmail', 'companyEmail', 'phoneNumber', 'nationalId']
         });
     }
 }
