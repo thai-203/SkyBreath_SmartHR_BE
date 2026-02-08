@@ -95,15 +95,15 @@ export const AppMessages = {
       },
     },
     Contract: {
-      NOT_FOUND: { code: 'CONTRACT_001', message: 'Hợp đồng không tìm thấy' },
-      ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'Hợp đồng đã tồn tại' },
+      NOT_FOUND: { code: 'CONTRACT_001', message: 'Contract not found' },
+      ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'The contract already exists' },
       INVALID_DATE: {
         code: 'CONTRACT_003',
-        message: 'Ngày kết thúc phải sau ngày bắt đầu',
+        message: 'The end date must be after the start date',
       },
       ALREADY_TERMINATED: {
         code: 'CONTRACT_004',
-        message: 'Hợp đồng đã được kết thúc',
+        message: 'The contract has been terminated',
       },
     },
     Attendance: {

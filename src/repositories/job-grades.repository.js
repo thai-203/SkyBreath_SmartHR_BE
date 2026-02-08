@@ -19,7 +19,7 @@ export class JobGradesRepository {
         if (sortBy) {
             order[sortBy] = sortOrder;
         } else {
-            order.createdAt = 'DESC';
+            order.minSalary = 'DESC';
         }
 
         const where = {
