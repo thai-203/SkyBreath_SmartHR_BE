@@ -44,6 +44,17 @@ export const AppMessages = {
       UPDATED: 'Cập nhật thông tin nhân viên thành công',
       DELETED: 'Xóa nhân viên thành công',
     },
+
+    ActionLog: {
+      RETRIEVED_ALL: 'Action logs retrieved successfully',
+      RETRIEVED: 'Action log retrieved successfully',
+      CREATED: 'Action log recorded successfully',
+    },
+
+    ActionLog: {
+      RETRIEVED_ALL: 'Action logs retrieved successfully',
+      RETRIEVED: 'Action log retrieved successfully',
+    },
   },
 
   Errors: {
@@ -114,6 +125,9 @@ export const AppMessages = {
         message: 'Payroll already processed',
       },
       INVALID_PERIOD: { code: 'PAY_003', message: 'Invalid payroll period' },
+    },
+    ActionLog: {
+      NOT_FOUND: { code: 'ACTLOG_001', message: 'Action log not found' },
     },
     Validation: {
       FAILED: { code: 'VAL_001', message: 'Validation failed' },

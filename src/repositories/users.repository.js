@@ -1,6 +1,7 @@
 import ms from 'ms';
 import { AppDataSource } from '../database/data-source.js';
 import { UserEntity } from '../models/entities/user.entity.js';
+import { hashRefreshToken } from '../common/utils/hash.util.js';
 
 export class UsersRepository {
   constructor() {
@@ -95,7 +96,7 @@ export class UsersRepository {
 
   async updateRefreshToken(id, refreshToken) {
     await this.userRepository.update(id, {
-      refreshToken: refreshToken,
+      refreshToken: refreshToken ? hashRefreshToken(refreshToken) : null,
       refreshTokenExpireAt: refreshToken
         ? new Date(Date.now() + ms(process.env.JWT_REFRESH_EXPIRES_IN || '7d'))
         : null,
