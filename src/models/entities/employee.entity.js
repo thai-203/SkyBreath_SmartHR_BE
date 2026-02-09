@@ -7,6 +7,9 @@ import { JobGradeEntity } from './job-grade.entity.js';
 
 @Entity('employees')
 export class EmployeeEntity extends BaseEntity {
+    @Column({ name: 'employee_code', unique: true, type: 'varchar', length: 20, nullable: true })
+    employeeCode;
+
     @Column({ name: 'user_id', nullable: true, type: 'int' })
     userId;
 

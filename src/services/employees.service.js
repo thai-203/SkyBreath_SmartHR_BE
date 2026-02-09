@@ -13,6 +13,11 @@ import { UserRoleEntity } from '../models/entities/user-role.entity.js';
 import { hashPassword } from '../common/utils/index.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
 import { mailService } from './mail.service.js';
+import crypto from 'crypto';
+
+const generateRandomPassword = () => {
+  return crypto.randomBytes(6).toString('base64').slice(0, 10) + 'A1!';
+};
 
 export class EmployeesService {
   constructor(employeesRepository) {
@@ -30,6 +35,19 @@ export class EmployeesService {
   }
 
   async create(createDto) {
+    // Check employeeCode uniqueness
+    if (createDto.employeeCode) {
+      const existingCode = await this.employeesRepository.findByField(
+        'employeeCode',
+        createDto.employeeCode,
+      );
+      if (existingCode) {
+        throw new ConflictException(
+          AppMessages.Errors.Employee.CODE_DUPLICATE,
+        );
+      }
+    }
+
     if (createDto.personalEmail) {
       const existing = await this.employeesRepository.findByField(
         'personalEmail',
@@ -78,7 +96,8 @@ export class EmployeesService {
       });
 
       if (!user) {
-        const password = await hashPassword('password123'); // Default password
+        const randomPassword = generateRandomPassword();
+        const password = await hashPassword(randomPassword);
         user = userRepo.create({
           username: createDto.companyEmail.split('@')[0],
           email: createDto.companyEmail,
@@ -99,12 +118,12 @@ export class EmployeesService {
           await userRoleRepo.save(userRole);
         }
 
-        // Send email notification
+        // Send email notification with random password
         await mailService.sendAccountInfo(
           user.email,
           createDto.fullName,
           user.username,
-          'password123',
+          randomPassword,
         );
       }
       createDto.userId = user.id;
@@ -247,6 +266,7 @@ export class EmployeesService {
 
     const data = items.map((e, index) => ({
       index: index + 1,
+      employeeCode: e.employeeCode || '',
       fullName: e.fullName,
       gender: genderLabels[e.gender] || e.gender,
       dateOfBirth: e.dateOfBirth
@@ -282,6 +302,7 @@ export class EmployeesService {
 
     const columns = [
       { header: 'STT', key: 'index', width: 8 },
+      { header: 'Mã nhân viên', key: 'employeeCode', width: 15 },
       { header: 'Họ và tên', key: 'fullName', width: 25 },
       { header: 'Giới tính', key: 'gender', width: 12 },
       { header: 'Ngày sinh', key: 'dateOfBirth', width: 15 },

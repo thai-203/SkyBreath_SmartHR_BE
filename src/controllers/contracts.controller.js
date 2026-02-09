@@ -1,6 +1,11 @@
 import { ContractsService } from '../services/contracts.service.js';
-import { CreateContractDto, UpdateContractDto, ContractQueryDto } from '../models/dto/contracts/index.js';
+import {
+    CreateContractDto,
+    UpdateContractDto,
+    ContractQueryDto,
+} from '../models/dto/contracts/index.js';
 import { plainToInstance } from 'class-transformer';
+import { validateOrReject } from 'class-validator';
 import { AppMessages } from '../common/constants/index.js';
 
 export class ContractsController {
@@ -8,27 +13,36 @@ export class ContractsController {
         this.contractsService = new ContractsService();
     }
 
+    /* ================= CREATE ================= */
     create = async (req, res, next) => {
         try {
-            const createDto = plainToInstance(CreateContractDto, req.body);
-            const contract = await this.contractsService.create(createDto);
-            res.status(201).json({
+            const dto = plainToInstance(CreateContractDto, req.body);
+            await validateOrReject(dto);
+
+            const contract = await this.contractsService.create(dto);
+
+            return res.status(201).json({
                 success: true,
                 data: contract,
-                message: AppMessages.Success.Contract.CREATED,
+                message:
+                    AppMessages?.Success?.Contract?.CREATED ??
+                    'Contract created successfully',
             });
         } catch (error) {
             next(error);
         }
     };
 
+    /* ================= READ ================= */
     findAll = async (req, res, next) => {
         try {
             const queryDto = plainToInstance(ContractQueryDto, req.query);
-            const result = await this.contractsService.findAll(queryDto);
-            res.status(200).json({
+            const { data, meta } = await this.contractsService.findAll(queryDto);
+
+            return res.status(200).json({
                 success: true,
-                ...result,
+                data,
+                meta,
             });
         } catch (error) {
             next(error);
@@ -37,9 +51,10 @@ export class ContractsController {
 
     findOne = async (req, res, next) => {
         try {
-            const id = parseInt(req.params.id);
+            const id = Number(req.params.id);
             const contract = await this.contractsService.findById(id);
-            res.status(200).json({
+
+            return res.status(200).json({
                 success: true,
                 data: contract,
             });
@@ -50,9 +65,11 @@ export class ContractsController {
 
     findByEmployee = async (req, res, next) => {
         try {
-            const employeeId = parseInt(req.params.employeeId);
-            const contracts = await this.contractsService.findByEmployeeId(employeeId);
-            res.status(200).json({
+            const employeeId = Number(req.params.employeeId);
+            const contracts =
+                await this.contractsService.findByEmployeeId(employeeId);
+
+            return res.status(200).json({
                 success: true,
                 data: contracts,
             });
@@ -61,15 +78,43 @@ export class ContractsController {
         }
     };
 
+    /* ================= UPDATE ================= */
     update = async (req, res, next) => {
         try {
-            const id = parseInt(req.params.id);
-            const updateDto = plainToInstance(UpdateContractDto, req.body);
-            const contract = await this.contractsService.update(id, updateDto);
-            res.status(200).json({
+            const numberFields = [
+                'employeeId',
+                'departmentId',
+                'positionId',
+                'jobGradeId',
+                'workingHours',
+                'baseSalary',
+                'performanceSalary',
+                'phoneAllowance',
+                'lunchAllowance',
+                'fuelAllowance',
+                'otherAllowance',
+            ];
+
+            numberFields.forEach((field) => {
+                if (req.body[field] !== undefined) {
+                    req.body[field] = Number(req.body[field]);
+                }
+            });
+
+            const dto = plainToInstance(UpdateContractDto, req.body);
+            await validateOrReject(dto);
+
+            const result = await this.contractsService.update(
+                Number(req.params.id),
+                dto
+            );
+
+            return res.status(200).json({
                 success: true,
-                data: contract,
-                message: AppMessages.Success.Contract.UPDATED,
+                data: result,
+                message:
+                    AppMessages?.Success?.Contract?.UPDATED ??
+                    'Contract updated successfully',
             });
         } catch (error) {
             next(error);
@@ -78,37 +123,48 @@ export class ContractsController {
 
     terminate = async (req, res, next) => {
         try {
-            const id = parseInt(req.params.id);
-            const terminationData = req.body;
-            const contract = await this.contractsService.terminate(id, terminationData);
-            res.status(200).json({
+            const contractId = Number(req.params.id);
+            const result = await this.contractsService.terminate(
+                contractId,
+                req.body,
+                req.user.id
+            );
+
+            return res.status(200).json({
                 success: true,
-                data: contract,
-                message: AppMessages.Success.Contract.TERMINATED,
+                data: result,
+                message: 'Contract terminated successfully',
             });
         } catch (error) {
             next(error);
         }
     };
 
+    /* ================= DELETE ================= */
     remove = async (req, res, next) => {
         try {
-            const id = parseInt(req.params.id);
+            const id = Number(req.params.id);
             await this.contractsService.remove(id);
-            res.status(200).json({
+
+            return res.status(200).json({
                 success: true,
-                message: AppMessages.Success.Contract.DELETED,
+                message:
+                    AppMessages?.Success?.Contract?.DELETED ??
+                    'Contract deleted successfully',
             });
         } catch (error) {
             next(error);
         }
     };
 
+    /* ================= EXTRA ================= */
     search = async (req, res, next) => {
         try {
-            const keyword = req.query.keyword;
-            const results = await this.contractsService.searchContracts(keyword);
-            res.status(200).json({
+            const { keyword } = req.query;
+            const results =
+                await this.contractsService.searchContracts(keyword);
+
+            return res.status(200).json({
                 success: true,
                 data: results,
             });
@@ -119,9 +175,11 @@ export class ContractsController {
 
     getByStatus = async (req, res, next) => {
         try {
-            const status = req.params.status;
-            const contracts = await this.contractsService.getContractsByStatus(status);
-            res.status(200).json({
+            const { status } = req.params;
+            const contracts =
+                await this.contractsService.getContractsByStatus(status);
+
+            return res.status(200).json({
                 success: true,
                 data: contracts,
             });
@@ -132,8 +190,10 @@ export class ContractsController {
 
     getExpired = async (req, res, next) => {
         try {
-            const expiredContracts = await this.contractsService.getExpiredContracts();
-            res.status(200).json({
+            const expiredContracts =
+                await this.contractsService.getExpiredContracts();
+
+            return res.status(200).json({
                 success: true,
                 data: expiredContracts,
             });
@@ -145,11 +205,20 @@ export class ContractsController {
     export = async (req, res, next) => {
         try {
             const queryDto = plainToInstance(ContractQueryDto, req.query);
-            const buffer = await this.contractsService.exportExcel(queryDto);
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', 'attachment; filename=contracts.xlsx');
+            const buffer =
+                await this.contractsService.exportExcel(queryDto);
+
+            res.setHeader(
+                'Content-Type',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            );
+            res.setHeader(
+                'Content-Disposition',
+                'attachment; filename=contracts.xlsx'
+            );
             res.setHeader('Content-Length', buffer.length);
-            res.end(buffer);
+
+            return res.end(buffer);
         } catch (error) {
             next(error);
         }

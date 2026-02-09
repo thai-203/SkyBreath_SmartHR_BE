@@ -1,52 +1,107 @@
 import { AppDataSource } from '../database/data-source.js';
 import { ContractEntity } from '../models/entities/contract.entity.js';
+import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
 import { Like } from 'typeorm';
 
 export class ContractsRepository {
     constructor() {
+        this.dataSource = AppDataSource;
         this.repository = AppDataSource.getRepository(ContractEntity);
     }
 
+    /* =====================================================
+     * CREATE CONTRACT + EMPLOYEE_SALARY + UPDATE EMPLOYEE
+     * ===================================================== */
     async create(data) {
-        const contract = this.repository.create(data);
-        return this.repository.save(contract);
+        const queryRunner = this.dataSource.createQueryRunner();
+
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            /* ========= 1. CREATE CONTRACT ========= */
+            const contract = queryRunner.manager.create(ContractEntity, {
+                employeeId: data.employeeId,
+                contractNumber: data.contractNumber,
+                contractType: data.contractType,
+                startDate: data.startDate,
+                endDate: data.endDate,
+                contractStatus: data.contractStatus ?? 'ACTIVE',
+                signedDate: data.signedDate,
+                workingHours: data.workingHours ?? 8,
+            });
+
+            const savedContract = await queryRunner.manager.save(contract);
+
+            /* ========= 2. CREATE EMPLOYEE SALARY ========= */
+            const employeeSalary = queryRunner.manager.create(EmployeeSalaryEntity, {
+                employeeId: data.employeeId,
+                jobGradeId: data.jobGradeId,
+
+                baseSalary: data.baseSalary,
+                performanceSalary: data.performanceSalary ?? 0,
+                lunchAllowance: data.lunchAllowance ?? 0,
+                fuelAllowance: data.fuelAllowance ?? 0,
+                phoneAllowance: data.phoneAllowance ?? 0,
+                otherAllowance: data.otherAllowance ?? 0,
+
+                salaryType: data.salaryType ?? '1',
+                salaryStatus: 'ACTIVE',
+                effectiveFrom: data.startDate,
+                effectiveTo: data.endDate,
+            });
+
+            await queryRunner.manager.save(employeeSalary);
+
+            /* ========= 3. UPDATE EMPLOYEE ========= */
+            await queryRunner.manager.update(
+                EmployeeEntity,
+                { id: data.employeeId },
+                {
+                    departmentId: data.departmentId,
+                    positionId: data.positionId,
+                    jobGradeId: data.jobGradeId,
+                    employmentStatus: 'ACTIVE',
+                }
+            );
+
+            await queryRunner.commitTransaction();
+            return savedContract;
+
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
     }
 
+    /* ================= FIND ================= */
     async findAll(queryDto) {
         const { skip, limit, sortBy, sortOrder, search, contractStatus, contractType } = queryDto;
 
-        const order = {};
-        if (sortBy) {
-            order[sortBy] = sortOrder;
-        } else {
-            order.createdAt = 'DESC';
-        }
+        const order = sortBy ? { [sortBy]: sortOrder } : { createdAt: 'DESC' };
 
-        const where = {
-            isDeleted: false,
-        };
+        const where = { isDeleted: false };
 
         if (search) {
             where.contractNumber = Like(`%${search}%`);
         }
-
         if (contractStatus) {
             where.contractStatus = contractStatus;
         }
-
         if (contractType) {
             where.contractType = contractType;
         }
 
-        const [contracts, total] = await this.repository.findAndCount({
+        return this.repository.findAndCount({
             where,
             relations: ['employee', 'employee.user', 'employee.department', 'employee.position'],
             order,
             skip,
             take: limit,
         });
-
-        return [contracts, total];
     }
 
     async findById(id) {
@@ -65,9 +120,155 @@ export class ContractsRepository {
     }
 
     async update(id, data) {
-        await this.repository.update(id, data);
-        return this.findById(id);
+        const queryRunner = this.dataSource.createQueryRunner();
+
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            /* ========= 1. CHECK CONTRACT ========= */
+            const contract = await queryRunner.manager.findOne(ContractEntity, {
+                where: { id, isDeleted: false },
+            });
+
+            if (!contract) {
+                throw new Error('Contract not found');
+            }
+
+            /* ========= 2. UPDATE CONTRACT ========= */
+            await queryRunner.manager.update(
+                ContractEntity,
+                { id },
+                {
+                    contractType: data.contractType ?? contract.contractType,
+                    startDate: data.startDate ?? contract.startDate,
+                    endDate: data.endDate ?? contract.endDate,
+                    signedDate: data.signedDate ?? contract.signedDate,
+                    workingHours: data.workingHours ?? contract.workingHours,
+                    contractStatus: data.contractStatus ?? contract.contractStatus,
+                }
+            );
+
+            /* ========= 3. UPDATE EMPLOYEE ========= */
+            if (data.departmentId || data.positionId || data.jobGradeId) {
+                await queryRunner.manager.update(
+                    EmployeeEntity,
+                    { id: contract.employeeId },
+                    {
+                        departmentId: data.departmentId ?? undefined,
+                        positionId: data.positionId ?? undefined,
+                        jobGradeId: data.jobGradeId ?? undefined,
+                    }
+                );
+            }
+
+            /* ========= 4. UPDATE EMPLOYEE SALARY ========= */
+            const hasSalaryChange =
+                data.baseSalary !== undefined ||
+                data.performanceSalary !== undefined ||
+                data.lunchAllowance !== undefined ||
+                data.fuelAllowance !== undefined ||
+                data.phoneAllowance !== undefined ||
+                data.otherAllowance !== undefined;
+
+            if (hasSalaryChange) {
+                // 4.1 deactivate current salary
+                await queryRunner.manager.update(
+                    EmployeeSalaryEntity,
+                    {
+                        employeeId: contract.employeeId,
+                        salaryStatus: 'ACTIVE',
+                    },
+                    {
+                        salaryStatus: 'INACTIVE',
+                        effectiveTo: new Date(),
+                    }
+                );
+
+                // 4.2 create new salary record
+                const newSalary = queryRunner.manager.create(
+                    EmployeeSalaryEntity,
+                    {
+                        employeeId: contract.employeeId,
+                        jobGradeId:
+                            data.jobGradeId ?? contract.jobGradeId,
+
+                        baseSalary: data.baseSalary,
+                        performanceSalary: data.performanceSalary ?? 0,
+                        lunchAllowance: data.lunchAllowance ?? 0,
+                        fuelAllowance: data.fuelAllowance ?? 0,
+                        phoneAllowance: data.phoneAllowance ?? 0,
+                        otherAllowance: data.otherAllowance ?? 0,
+
+                        salaryType: data.salaryType ?? '1',
+                        salaryStatus: 'ACTIVE',
+                        effectiveFrom: data.startDate ?? new Date(),
+                        effectiveTo: data.endDate ?? null,
+                    }
+                );
+
+                await queryRunner.manager.save(newSalary);
+            }
+
+            await queryRunner.commitTransaction();
+            return this.findById(id);
+
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
     }
+
+    async terminate(id, data, userId) {
+        const queryRunner = this.dataSource.createQueryRunner();
+
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            const contract = await queryRunner.manager.findOne(ContractEntity, {
+                where: { id, isDeleted: false },
+            });
+
+            if (!contract) {
+                throw new Error('Contract not found');
+            }
+
+            if (contract.contractStatus === 'terminated') {
+                throw new Error('Contract already terminated');
+            }
+            
+            if (!data.terminationDate || !data.terminationReason) {
+                throw new Error('terminationDate and terminationReason are required');
+            }
+
+            await queryRunner.manager.update(
+                ContractEntity,
+                { id },
+                {
+                    contractStatus: 'terminated',
+                    terminationDate: data.terminationDate,
+                    terminationReason: data.terminationReason,
+                    terminationCompensation: data.terminationCompensation ?? 0,
+                    terminationNote: data.terminationNote ?? null,
+                    terminatedAt: new Date(),
+                    terminatedBy: userId,
+                }
+            );
+
+            await queryRunner.commitTransaction();
+            return this.findById(id);
+
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
 
     async delete(id) {
         await this.repository.update(id, {
@@ -87,28 +288,5 @@ export class ContractsRepository {
             where: { contractStatus: status, isDeleted: false },
             relations: ['employee'],
         });
-    }
-
-    async findExpiredContracts() {
-        const today = new Date();
-        return this.repository
-            .createQueryBuilder('contract')
-            .where('contract.endDate < :today', { today })
-            .andWhere('contract.contractStatus = :status', { status: 'Active' })
-            .andWhere('contract.isDeleted = :isDeleted', { isDeleted: false })
-            .leftJoinAndSelect('contract.employee', 'employee')
-            .orderBy('contract.endDate', 'ASC')
-            .getMany();
-    }
-
-    async search(keyword) {
-        return this.repository
-            .createQueryBuilder('contract')
-            .leftJoinAndSelect('contract.employee', 'employee')
-            .where('contract.contractNumber LIKE :keyword', { keyword: `%${keyword}%` })
-            .orWhere('employee.fullName LIKE :keyword', { keyword: `%${keyword}%` })
-            .andWhere('contract.isDeleted = :isDeleted', { isDeleted: false })
-            .orderBy('contract.startDate', 'DESC')
-            .getMany();
     }
 }
