@@ -302,7 +302,7 @@ router.get(
 router.put(
   '/:id',
   authMiddleware,
-//   permissionsMiddleware('CONTRACT_UPDATE'),
+  permissionsMiddleware('CONTRACT_UPDATE'),
   contractsController.update,
 );
 
@@ -356,7 +356,7 @@ router.put(
 router.put(
   '/:id/terminate',
   authMiddleware,
-  // permissionsMiddleware('CONTRACT_UPDATE'),
+  permissionsMiddleware('CONTRACT_UPDATE'),
   contractsController.terminate,
 );
 

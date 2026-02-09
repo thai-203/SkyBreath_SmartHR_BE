@@ -5,13 +5,11 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
-import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { config } from './config/env.config.js';
 import redis from './config/redis.config.js';
-import { swaggerSpec } from './config/swagger.config.js';
 import { AppDataSource } from './database/data-source.js';
 import { authRoutes } from './routes/auth.routes.js';
-import { contractsRoutes } from './routes/contracts.routes.js';
+import { usersRoutes } from './routes/users.routes.js';
 import { departmentsRoutes } from './routes/departments.routes.js';
 import { employeesRoutes } from './routes/employees.routes.js';
 import { contractsRoutes } from './routes/contracts.routes.js';
@@ -19,10 +17,9 @@ import { jobGradesRoutes } from './routes/job-grades.routes.js';
 import { positionsRoutes } from './routes/positions.routes.js';
 import { employeeSalariesRoutes } from './routes/employee-salaries.routes.js';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
-import swaggerUi from 'swagger-ui-express';
+import { rolesRoutes } from './routes/roles.routes.js';
+import { permissionsRoutes } from './routes/permissions.routes.js';
 import { swaggerSpec } from './config/swagger.config.js';
-import cookieParser from 'cookie-parser';
-import redis from './config/redis.config.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
