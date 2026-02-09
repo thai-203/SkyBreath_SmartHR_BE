@@ -13,7 +13,9 @@ export class AuthController {
     try {
       const { email, password } = req.body;
       const user = await this.authService.validateUser(email, password);
-      
+      const ip = req.headers['x-forwarded-for']?.split(',')[0];
+      console.log(req.ip);
+
       if (!user) {
         const error = new Error('Invalid credentials');
         error.statusCode = 401;
@@ -55,26 +57,19 @@ export class AuthController {
 
   refreshTokens = async (req, res, next) => {
     try {
-      const refreshToken = req.body.refreshToken;
-      if (!refreshToken) {
-        const error = new Error('Refresh token is required');
-        error.statusCode = 400;
-        throw error;
-      }
-
-      const decoded = jwt.decode(refreshToken);
-      if (!decoded || !decoded.sub) {
-        const error = new Error('Invalid refresh token');
-        error.statusCode = 401;
-        throw error;
-      }
-
-      const userId = decoded.sub;
+      const refreshToken = req.cookies?.refreshToken;
+      const userId = req.user.id;
       const result = await this.authService.refreshTokens(userId, refreshToken);
+      res.cookie('refreshToken', result.refreshToken, {
+        httpOnly: true, // JS frontend không đọc được
+        secure: false,
+        sameSite: 'lax', // cross-site
+        maxAge: ms(process.env.JWT_REFRESH_EXPIRES_IN), // 7 ngày
+      });
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.Auth.TOKENS_REFRESHED,
-        result,
+        result.accessToken,
       );
     } catch (error) {
       next(error);

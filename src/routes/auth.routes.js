@@ -10,6 +10,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
 } from '../models/dto/auth/index.js';
+import { refreshTokenMiddleware } from '../common/middleware/refresh-token.middleware.js';
 
 const router = Router();
 const authController = new AuthController();
@@ -75,12 +76,7 @@ router.post(
  *       401:
  *         description: Invalid refresh token
  */
-router.post(
-  '/refresh',
-  authMiddleware,
-  validationMiddleware(RefreshTokenDto),
-  authController.refreshTokens,
-);
+router.post('/refresh', refreshTokenMiddleware, authController.refreshTokens);
 
 /**
  * @swagger

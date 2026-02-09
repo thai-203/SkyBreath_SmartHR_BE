@@ -27,7 +27,7 @@ export class UserEntity extends BaseEntity {
     @Column({ name: 'last_login_time', nullable: true, type: 'datetime' })
     lastLoginTime;
 
-    @Column({ name: 'refresh_token', nullable: true, select: false, type: 'varchar' })
+    @Column({ name: 'refresh_token', nullable: true, type: 'varchar' })
     @Exclude()
     refreshToken;
 
