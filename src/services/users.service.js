@@ -3,91 +3,94 @@ import { RolesRepository } from '../repositories/roles.repository.js';
 import { hashPassword } from '../common/utils/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
-import { ConflictException, NotFoundException } from '../common/exceptions/index.js';
+import {
+  ConflictException,
+  NotFoundException,
+} from '../common/exceptions/index.js';
 
 export class UsersService {
-    constructor() {
-        this.usersRepository = new UsersRepository();
-        this.rolesRepository = new RolesRepository();
+  constructor() {
+    this.usersRepository = new UsersRepository();
+    this.rolesRepository = new RolesRepository();
+  }
+
+  async create(createUserDto) {
+    const existingUser = await this.usersRepository.findByEmail(
+      createUserDto.email,
+    );
+
+    if (existingUser) {
+      throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
     }
 
-    async create(createUserDto) {
-        const existingUser = await this.usersRepository.findByEmail(
-            createUserDto.email,
-        );
+    const hashedPassword = await hashPassword(createUserDto.password);
 
-        if (existingUser) {
-            throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
-        }
+    // Note: Role assignment needs to be handled via UserRoleEntity
 
-        const hashedPassword = await hashPassword(createUserDto.password);
+    const user = await this.usersRepository.create({
+      email: createUserDto.email,
+      username: createUserDto.email, // Default username
+      password: hashedPassword,
+      status: 'ACTIVE',
+    });
 
-        // Note: Role assignment needs to be handled via UserRoleEntity
+    // TODO: Handle role assignment
 
-        const user = await this.usersRepository.create({
-            email: createUserDto.email,
-            username: createUserDto.email, // Default username
-            password: hashedPassword,
-            status: 'ACTIVE',
-        });
+    return user;
+  }
 
-        // TODO: Handle role assignment
+  async findAll(paginationDto) {
+    const [users, total] = await this.usersRepository.findAll(paginationDto);
+    return new PaginatedResponseDto(users, total, paginationDto);
+  }
 
-        return user;
+  async findById(id) {
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
+    }
+    return user;
+  }
+
+  async findByEmail(email) {
+    return this.usersRepository.findByEmail(email);
+  }
+
+  async findByEmailWithPassword(email) {
+    return this.usersRepository.findByEmailWithPasswordBuilder(email);
+  }
+
+  async findByIdWithPassword(id) {
+    return this.usersRepository.findByIdWithPassword(id);
+  }
+
+  async update(id, updateUserDto) {
+    const user = await this.findById(id);
+
+    if (updateUserDto.email && updateUserDto.email !== user.email) {
+      const existingUser = await this.usersRepository.findByEmail(
+        updateUserDto.email,
+      );
+      if (existingUser) {
+        throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
+      }
     }
 
-    async findAll(paginationDto) {
-        const [users, total] = await this.usersRepository.findAll(paginationDto);
-        return new PaginatedResponseDto(users, total, paginationDto);
-    }
+    // TODO: Handle role updates via UserRoleEntity
 
-    async findById(id) {
-        const user = await this.usersRepository.findById(id);
-        if (!user) {
-            throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
-        }
-        return user;
-    }
+    return this.usersRepository.update(id, updateUserDto);
+  }
 
-    async findByEmail(email) {
-        return this.usersRepository.findByEmail(email);
-    }
+  async remove(id) {
+    await this.findById(id);
+    await this.usersRepository.delete(id);
+  }
 
-    async findByEmailWithPassword(email) {
-        return this.usersRepository.findByEmailWithPasswordBuilder(email);
-    }
+  async updateRefreshToken(id, refreshToken) {
+    await this.usersRepository.updateRefreshToken(id, refreshToken);
+  }
 
-    async findByIdWithPassword(id) {
-        return this.usersRepository.findByIdWithPassword(id);
-    }
-
-    async update(id, updateUserDto) {
-        const user = await this.findById(id);
-
-        if (updateUserDto.email && updateUserDto.email !== user.email) {
-            const existingUser = await this.usersRepository.findByEmail(
-                updateUserDto.email,
-            );
-            if (existingUser) {
-                throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
-            }
-        }
-
-        // TODO: Handle role updates via UserRoleEntity
-
-        return this.usersRepository.update(id, updateUserDto);
-    }
-
-    async remove(id) {
-        await this.findById(id);
-        await this.usersRepository.delete(id);
-    }
-
-    async updateRefreshToken(id, refreshToken) {
-        await this.usersRepository.updateRefreshToken(id, refreshToken);
-    }
-
-    async updateLastLogin(id) {
-        await this.usersRepository.updateLastLogin(id);
-    }
+  async updateLastLogin(id) {
+    await this.usersRepository.updateLastLogin(id);
+  }
 }
