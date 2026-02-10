@@ -16,6 +16,7 @@ import { contractsRoutes } from './routes/contracts.routes.js';
 import { jobGradesRoutes } from './routes/job-grades.routes.js';
 import { positionsRoutes } from './routes/positions.routes.js';
 import { employeeSalariesRoutes } from './routes/employee-salaries.routes.js';
+import { onboardingRoutes } from './routes/onboarding.routes.js';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { rolesRoutes } from './routes/roles.routes.js';
 import { permissionsRoutes } from './routes/permissions.routes.js';
@@ -56,6 +57,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/contracts`, contractsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/job-grades`, jobGradesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/positions`, positionsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/employee-salaries`, employeeSalariesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/onboarding`, onboardingRoutes);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');

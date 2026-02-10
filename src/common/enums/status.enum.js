@@ -28,3 +28,33 @@ export const PayrollStatus = {
     PAID: 'paid',
     CANCELLED: 'cancelled',
 };
+
+export const OnboardingStatus = {
+    IN_PROGRESS: 'IN_PROGRESS',
+    COMPLETED: 'COMPLETED',
+    ON_HOLD: 'ON_HOLD',
+    CANCELLED: 'CANCELLED',
+};
+
+export const TaskStatus = {
+    NOT_STARTED: 'NOT_STARTED',
+    IN_PROGRESS: 'IN_PROGRESS',
+    COMPLETED: 'COMPLETED',
+    ON_HOLD: 'ON_HOLD',
+    CANCELLED: 'CANCELLED',
+};
+
+export const TaskAssignmentStatus = {
+    PENDING: 'PENDING',
+    IN_PROGRESS: 'IN_PROGRESS',
+    COMPLETED: 'COMPLETED',
+    OVERDUE: 'OVERDUE',
+    CANCELLED: 'CANCELLED',
+};
+
+export const TaskPriority = {
+    LOW: 'LOW',
+    NORMAL: 'NORMAL',
+    HIGH: 'HIGH',
+    URGENT: 'URGENT',
+};
