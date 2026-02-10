@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { RolesController } from '../controllers/roles.controller.js';
-import { validationMiddleware } from '../common/middleware/validation.middleware.js';
+import { Role } from '../common/enums/index.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
+import { validationMiddleware } from '../common/middleware/validation.middleware.js';
+import { RolesController } from '../controllers/roles.controller.js';
 import { CreateRoleDto, UpdateRoleDto } from '../models/dto/roles/index.js';
-import { Role } from '../common/enums/index.js';
 
 import { RolesRepository } from '../repositories/roles.repository.js';
 import { RolesService } from '../services/roles.service.js';
@@ -136,5 +136,7 @@ router.get('/', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.f
 router.get('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.findOne);
 router.put('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), validationMiddleware(UpdateRoleDto), rolesController.update);
 router.delete('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.remove);
+router.get('/:id/permissions', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.getPermissions);
+router.post('/:id/permissions', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.assignPermissions);
 
 export const rolesRoutes = router;

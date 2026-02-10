@@ -38,10 +38,15 @@ export const AppMessages = {
       DELETED: 'Xóa phòng ban thành công',
     },
 
+    Permission: {
+      RETRIEVED_ALL: 'Permissions retrieved successfully',
+    },
+
     Employee: {
-      RETRIEVED_ALL: 'Lấy danh sách nhân viên thành công',
-      RETRIEVED: 'Lấy thông tin nhân viên thành công',
-      UPDATED: 'Cập nhật thông tin nhân viên thành công',
+      CREATED: 'Nhân viên đã được tạo thành công',
+      RETRIEVED_ALL: 'Danh sách nhân viên đã được tải',
+      RETRIEVED: 'Thông tin nhân viên đã được tải',
+      UPDATED: 'Cập nhật nhân viên thành công',
       DELETED: 'Xóa nhân viên thành công',
     },
 
@@ -54,6 +59,15 @@ export const AppMessages = {
     ActionLog: {
       RETRIEVED_ALL: 'Action logs retrieved successfully',
       RETRIEVED: 'Action log retrieved successfully',
+    },
+
+    Contract: {
+      CREATED: 'Hợp đồng đã được tạo thành công',
+      RETRIEVED_ALL: 'Danh sách hợp đồng đã được tải',
+      RETRIEVED: 'Thông tin hợp đồng đã được tải',
+      UPDATED: 'Cập nhật hợp đồng thành công',
+      TERMINATED: 'Hợp đồng đã được chấm dứt thành công',
+      DELETED: 'Xóa hợp đồng thành công',
     },
   },
 

@@ -21,17 +21,17 @@ const employeesController = new EmployeesController(employeesService);
  */
 
 // View permissions
-router.get('/meta-data', authMiddleware, permissionsMiddleware('Employee.View'), employeesController.getMetadata);
-router.get('/list', authMiddleware, permissionsMiddleware('Employee.View'), employeesController.list);
-router.get('/', authMiddleware, permissionsMiddleware('Employee.View'), employeesController.all);
-router.get('/validation-data', authMiddleware, permissionsMiddleware('Employee.View'), employeesController.getValidationData);
-router.get('/:id', authMiddleware, permissionsMiddleware('Employee.View'), employeesController.findOne);
+router.get('/meta-data', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.getMetadata);
+router.get('/list', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.list);
+router.get('/', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.all);
+router.get('/validation-data', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.getValidationData);
+router.get('/:id', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.findOne);
 
 // Export permission
 router.get('/export', authMiddleware, permissionsMiddleware('Employee.Export'), employeesController.export);
 
 // Create permission
-router.post('/', authMiddleware, permissionsMiddleware('Employee.Create'), upload.fields([
+router.post('/', authMiddleware, permissionsMiddleware('EMPLOYEE_CREATE'), upload.fields([
     { name: 'frontIdCard', maxCount: 1 },
     { name: 'backIdCard', maxCount: 1 }
 ]), employeesController.create);

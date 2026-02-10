@@ -10,9 +10,6 @@ export class ContractsRepository {
         this.repository = AppDataSource.getRepository(ContractEntity);
     }
 
-    /* =====================================================
-     * CREATE CONTRACT + EMPLOYEE_SALARY + UPDATE EMPLOYEE
-     * ===================================================== */
     async create(data) {
         const queryRunner = this.dataSource.createQueryRunner();
 
@@ -20,7 +17,6 @@ export class ContractsRepository {
         await queryRunner.startTransaction();
 
         try {
-            /* ========= 1. CREATE CONTRACT ========= */
             const contract = queryRunner.manager.create(ContractEntity, {
                 employeeId: data.employeeId,
                 contractNumber: data.contractNumber,
@@ -34,7 +30,6 @@ export class ContractsRepository {
 
             const savedContract = await queryRunner.manager.save(contract);
 
-            /* ========= 2. CREATE EMPLOYEE SALARY ========= */
             const employeeSalary = queryRunner.manager.create(EmployeeSalaryEntity, {
                 employeeId: data.employeeId,
                 jobGradeId: data.jobGradeId,
@@ -54,7 +49,6 @@ export class ContractsRepository {
 
             await queryRunner.manager.save(employeeSalary);
 
-            /* ========= 3. UPDATE EMPLOYEE ========= */
             await queryRunner.manager.update(
                 EmployeeEntity,
                 { id: data.employeeId },
@@ -77,31 +71,62 @@ export class ContractsRepository {
         }
     }
 
-    /* ================= FIND ================= */
     async findAll(queryDto) {
-        const { skip, limit, sortBy, sortOrder, search, contractStatus, contractType } = queryDto;
+    const {
+        skip,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        contractStatus,
+        contractType,
+    } = queryDto;
 
-        const order = sortBy ? { [sortBy]: sortOrder } : { createdAt: 'DESC' };
+    const order = sortBy
+        ? { [sortBy]: sortOrder || 'DESC' }
+        : { createdAt: 'DESC' };
 
-        const where = { isDeleted: false };
+    const baseWhere = {
+        isDeleted: false,
+    };
 
-        if (search) {
-            where.contractNumber = Like(`%${search}%`);
-        }
-        if (contractStatus) {
-            where.contractStatus = contractStatus;
-        }
-        if (contractType) {
-            where.contractType = contractType;
-        }
+    if (contractStatus) {
+        baseWhere.contractStatus = contractStatus;
+    }
 
-        return this.repository.findAndCount({
-            where,
-            relations: ['employee', 'employee.user', 'employee.department', 'employee.position'],
-            order,
-            skip,
-            take: limit,
-        });
+    if (contractType) {
+        baseWhere.contractType = contractType;
+    }
+
+    let where = baseWhere;
+
+    if (search) {
+        where = [
+        {
+            ...baseWhere,
+            contractNumber: Like(`%${search}%`),
+        },
+        {
+            ...baseWhere,
+            employee: {
+            fullName: Like(`%${search}%`),
+            },
+        },
+        ];
+    }
+
+    return this.repository.findAndCount({
+        where,
+        relations: [
+        'employee',
+        'employee.user',
+        'employee.department',
+        'employee.position',
+        ],
+        order,
+        skip,
+        take: limit,
+    });
     }
 
     async findById(id) {
@@ -126,7 +151,6 @@ export class ContractsRepository {
         await queryRunner.startTransaction();
 
         try {
-            /* ========= 1. CHECK CONTRACT ========= */
             const contract = await queryRunner.manager.findOne(ContractEntity, {
                 where: { id, isDeleted: false },
             });
@@ -135,7 +159,6 @@ export class ContractsRepository {
                 throw new Error('Contract not found');
             }
 
-            /* ========= 2. UPDATE CONTRACT ========= */
             await queryRunner.manager.update(
                 ContractEntity,
                 { id },
@@ -149,7 +172,6 @@ export class ContractsRepository {
                 }
             );
 
-            /* ========= 3. UPDATE EMPLOYEE ========= */
             if (data.departmentId || data.positionId || data.jobGradeId) {
                 await queryRunner.manager.update(
                     EmployeeEntity,
@@ -162,7 +184,6 @@ export class ContractsRepository {
                 );
             }
 
-            /* ========= 4. UPDATE EMPLOYEE SALARY ========= */
             const hasSalaryChange =
                 data.baseSalary !== undefined ||
                 data.performanceSalary !== undefined ||
@@ -172,7 +193,6 @@ export class ContractsRepository {
                 data.otherAllowance !== undefined;
 
             if (hasSalaryChange) {
-                // 4.1 deactivate current salary
                 await queryRunner.manager.update(
                     EmployeeSalaryEntity,
                     {
@@ -185,7 +205,6 @@ export class ContractsRepository {
                     }
                 );
 
-                // 4.2 create new salary record
                 const newSalary = queryRunner.manager.create(
                     EmployeeSalaryEntity,
                     {
@@ -268,7 +287,6 @@ export class ContractsRepository {
             await queryRunner.release();
         }
     }
-
 
     async delete(id) {
         await this.repository.update(id, {

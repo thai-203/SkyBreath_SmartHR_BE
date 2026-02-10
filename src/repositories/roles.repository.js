@@ -1,5 +1,8 @@
 import { AppDataSource } from '../database/data-source.js';
+import { RolePermissionEntity } from '../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../models/entities/role.entity.js';
+import { UserRoleEntity } from '../models/entities/user-role.entity.js';
+
 
 export class RolesRepository {
     constructor() {
@@ -38,5 +41,44 @@ export class RolesRepository {
 
     async delete(id) {
         await this.roleRepository.softDelete(id);
+    }
+
+    async findByNameExcludeId(name, excludeId) {
+        return this.roleRepository.createQueryBuilder('role')
+            .where('role.role_name = :name', { name })
+            .andWhere('role.id != :excludeId', { excludeId })
+            .getOne();
+    }
+
+    async isRoleInUse(roleId) {
+        const count = await this.roleRepository.manager.getRepository(UserRoleEntity)
+            .createQueryBuilder('userRole')
+            .where('userRole.role_id = :roleId', { roleId })
+            .getCount();
+        return count > 0;
+    }
+    async updatePermissions(roleId, permissionIds) {
+        return this.roleRepository.manager.transaction(async (transactionalEntityManager) => {
+            // Delete existing permissions
+            await transactionalEntityManager.delete(RolePermissionEntity, { roleId });
+
+            // Insert new permissions
+            if (permissionIds && permissionIds.length > 0) {
+                const rolePermissions = permissionIds.map(permissionId => ({
+                    roleId,
+                    permissionId
+                }));
+                await transactionalEntityManager.save(RolePermissionEntity, rolePermissions);
+            }
+        });
+    }
+
+    async getPermissions(roleId) {
+        const rolePermissions = await this.roleRepository.manager.getRepository(RolePermissionEntity)
+            .find({
+                where: { roleId },
+                relations: ['permission']
+            });
+        return rolePermissions.map(rp => rp.permission);
     }
 }
