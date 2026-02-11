@@ -28,7 +28,7 @@ router.get('/validation-data', authMiddleware, permissionsMiddleware('EMPLOYEE_R
 router.get('/:id', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.findOne);
 
 // Export permission
-router.get('/export', authMiddleware, permissionsMiddleware('Employee.Export'), employeesController.export);
+router.get('/export', authMiddleware, permissionsMiddleware('EMPLOYEE_EXPORT'), employeesController.export);
 
 // Create permission
 router.post('/', authMiddleware, permissionsMiddleware('EMPLOYEE_CREATE'), upload.fields([
@@ -37,12 +37,12 @@ router.post('/', authMiddleware, permissionsMiddleware('EMPLOYEE_CREATE'), uploa
 ]), employeesController.create);
 
 // Update permission
-router.put('/:id', authMiddleware, permissionsMiddleware('Employee.Update'), upload.fields([
+router.put('/:id', authMiddleware, permissionsMiddleware('EMPLOYEE_UPDATE'), upload.fields([
     { name: 'frontIdCard', maxCount: 1 },
     { name: 'backIdCard', maxCount: 1 }
 ]), employeesController.update);
 
 // Delete permission
-router.delete('/:id', authMiddleware, permissionsMiddleware('Employee.Delete'), employeesController.delete);
+router.delete('/:id', authMiddleware, permissionsMiddleware('EMPLOYEE_DELETE'), employeesController.delete);
 
 export const employeesRoutes = router;

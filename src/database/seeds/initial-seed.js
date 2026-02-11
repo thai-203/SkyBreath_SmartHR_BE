@@ -30,11 +30,11 @@ const seed = async () => {
             { permissionCode: 'DEPT_UPDATE', description: 'Update departments' },
             { permissionCode: 'DEPT_DELETE', description: 'Delete departments' },
             { permissionCode: 'DEPT_EXPORT', description: 'Export departments' },
-            { permissionCode: 'Employee.View', description: 'View employees' },
-            { permissionCode: 'Employee.Create', description: 'Create employees' },
-            { permissionCode: 'Employee.Update', description: 'Update employees' },
-            { permissionCode: 'Employee.Delete', description: 'Delete employees' },
-            { permissionCode: 'Employee.Export', description: 'Export employees' },
+            { permissionCode: 'EMPLOYEE_READ', description: 'View employees' },
+            { permissionCode: 'EMPLOYEE_CREATE', description: 'Create employees' },
+            { permissionCode: 'EMPLOYEE_UPDATE', description: 'Update employees' },
+            { permissionCode: 'EMPLOYEE_DELETE', description: 'Delete employees' },
+            { permissionCode: 'EMPLOYEE_EXPORT', description: 'Export employees' },
         ];
 
         const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -88,7 +88,7 @@ const seed = async () => {
         console.log('Assigned permissions to ADMIN');
 
         // Manager gets DEPT_READ, DEPT_UPDATE, Employee.View
-        const managerPerms = ['DEPT_READ', 'DEPT_UPDATE', 'Employee.View'];
+        const managerPerms = ['DEPT_READ', 'DEPT_UPDATE', 'EMPLOYEE_READ'];
         for (const code of managerPerms) {
             const p = permissions.find(perm => perm.permissionCode === code);
             if (p) {
@@ -103,7 +103,7 @@ const seed = async () => {
         // HR gets DEPT_READ, DEPT_CREATE, DEPT_UPDATE, DEPT_EXPORT, Employee.*
         const hrPerms = [
             'DEPT_READ', 'DEPT_CREATE', 'DEPT_UPDATE', 'DEPT_EXPORT',
-            'Employee.View', 'Employee.Create', 'Employee.Update', 'Employee.Delete', 'Employee.Export'
+            'EMPLOYEE_READ', 'EMPLOYEE_CREATE', 'EMPLOYEE_UPDATE', 'EMPLOYEE_DELETE', 'EMPLOYEE_EXPORT'
         ];
         for (const code of hrPerms) {
             const p = permissions.find(perm => perm.permissionCode === code);
