@@ -69,6 +69,18 @@ export const AppMessages = {
       TERMINATED: 'Hợp đồng đã được chấm dứt thành công',
       DELETED: 'Xóa hợp đồng thành công',
     },
+
+    Onboarding: {
+      PLAN_CREATED: 'Kế hoạch onboarding đã được tạo thành công',
+      PLAN_UPDATED: 'Kế hoạch onboarding đã được cập nhật thành công',
+      PLAN_DELETED: 'Kế hoạch onboarding đã được xóa thành công',
+      PLAN_RETRIEVED_ALL: 'Danh sách kế hoạch onboarding đã được tải',
+      PLAN_RETRIEVED: 'Thông tin kế hoạch onboarding đã được tải',
+      PROGRESS_CREATED: 'Tiến trình onboarding đã được bắt đầu thành công',
+      PROGRESS_UPDATED: 'Tiến trình onboarding đã được cập nhật thành công',
+      PROGRESS_RETRIEVED_ALL: 'Danh sách tiến trình onboarding đã được tải',
+      PROGRESS_RETRIEVED: 'Thông tin tiến trình onboarding đã được tải',
+    },
   },
 
   Errors: {
@@ -149,6 +161,13 @@ export const AppMessages = {
     },
     Validation: {
       FAILED: { code: 'VAL_001', message: 'Validation failed' },
+    },
+    Onboarding: {
+      PLAN_NOT_FOUND: { code: 'ONB_001', message: 'Kế hoạch onboarding không được tìm thấy' },
+      PLAN_NAME_REQUIRED: { code: 'ONB_002', message: 'Tên kế hoạch onboarding là bắt buộc' },
+      PROGRESS_NOT_FOUND: { code: 'ONB_003', message: 'Tiến trình onboarding không được tìm thấy' },
+      PROGRESS_ALREADY_EXISTS: { code: 'ONB_004', message: 'Nhân viên đã có tiến trình onboarding cho kế hoạch này' },
+      CANNOT_RESUME: { code: 'ONB_005', message: 'Chỉ có thể tiếp tục onboarding đã bị tạm dừng' },
     },
     General: {
       INTERNAL_SERVER_ERROR: { code: 'ERR_001', message: 'Lỗi máy chủ nội bộ' },

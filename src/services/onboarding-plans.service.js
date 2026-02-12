@@ -1,6 +1,8 @@
 import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repository.js';
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { BadRequestException, NotFoundException } from '../common/exceptions/index.js';
+import { AppMessages } from '../common/constants/index.js';
+import { PaginatedResponseDto } from '../common/dto/index.js';
 
 export class OnboardingPlansService {
     constructor() {
@@ -8,23 +10,23 @@ export class OnboardingPlansService {
         this.progressRepository = new OnboardingProgressRepository();
     }
 
-    async getAllPlans(skip = 0, take = 10) {
+    async findAll(queryDto) {
         const [plans, total] = await Promise.all([
-            this.plansRepository.findAll(skip, take),
+            this.plansRepository.findAll(queryDto.skip, queryDto.limit),
             this.plansRepository.count()
         ]);
-        return { plans, total };
+        return new PaginatedResponseDto(plans, total, queryDto);
     }
 
-    async getPlanById(planId) {
+    async findById(planId) {
         const plan = await this.plansRepository.findById(planId);
         if (!plan) {
-            throw new NotFoundException(`Onboarding plan with ID ${planId} not found`);
+            throw new NotFoundException(AppMessages.Errors.Onboarding?.PLAN_NOT_FOUND?.message || `Onboarding plan with ID ${planId} not found`);
         }
         return plan;
     }
 
-    async getPlansByDepartment(departmentId) {
+    async findByDepartment(departmentId) {
         return this.plansRepository.findByDepartmentId(departmentId);
     }
 
@@ -38,9 +40,9 @@ export class OnboardingPlansService {
         });
     }
 
-    async createPlan(data) {
+    async create(data) {
         if (!data.planName || data.planName.trim().length === 0) {
-            throw new BadRequestException('Plan name is required');
+            throw new BadRequestException(AppMessages.Errors.Onboarding?.PLAN_NAME_REQUIRED?.message || 'Plan name is required');
         }
         return this.plansRepository.create({
             ...data,
@@ -48,8 +50,8 @@ export class OnboardingPlansService {
         });
     }
 
-    async updatePlan(planId, data) {
-        const plan = await this.getPlanById(planId);
+    async update(planId, data) {
+        await this.findById(planId);
         const updated = await this.plansRepository.update(planId, {
             ...data,
             updatedAt: new Date(),
@@ -57,13 +59,13 @@ export class OnboardingPlansService {
         return updated;
     }
 
-    async deletePlan(planId) {
-        const plan = await this.getPlanById(planId);
+    async remove(planId) {
+        await this.findById(planId);
         return this.plansRepository.delete(planId);
     }
 
-    async duplicatePlan(planId, newPlanName) {
-        const plan = await this.getPlanById(planId);
+    async duplicate(planId, newPlanName) {
+        const plan = await this.findById(planId);
         const newPlan = {
             planName: newPlanName || `${plan.planName} (Copy)`,
             description: plan.description,
@@ -81,8 +83,8 @@ export class OnboardingPlansService {
         return this.plansRepository.create(newPlan);
     }
 
-    async getPlanStats(planId) {
-        const plan = await this.getPlanById(planId);
+    async getStatistics(planId) {
+        const plan = await this.findById(planId);
         const progressRecords = await this.progressRepository.findAll(0, 1000);
         const planProgressRecords = progressRecords.plans.filter(p => p.planId === planId);
         

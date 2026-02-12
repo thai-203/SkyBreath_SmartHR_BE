@@ -8,7 +8,7 @@ import {
 } from '../models/dto/onboarding/index.js';
 
 import { OnboardingPlansService } from '../services/onboarding-plans.service.js';
-import { ResponseUtil } from '../common/utils/response.util.js';
+import { AppMessages } from '../common/constants/index.js';
 
 export class OnboardingPlansController {
   constructor() {
@@ -18,37 +18,14 @@ export class OnboardingPlansController {
   // =========================
   // GET /onboarding-plans
   // =========================
-  list = async (req, res, next) => {
+  findAll = async (req, res, next) => {
     try {
-      // 1. Transform query -> DTO
-      const queryDto = plainToInstance(
-        QueryOnboardingPlanDto,
-        req.query,
-        { enableImplicitConversion: true }
-      );
-
-      // 2. Validate query DTO
-      const errors = await validate(queryDto, {
-        whitelist: true,
-        forbidNonWhitelisted: true
+      const queryDto = plainToInstance(QueryOnboardingPlanDto, req.query);
+      const result = await this.plansService.findAll(queryDto);
+      res.status(200).json({
+        success: true,
+        ...result,
       });
-
-      if (errors.length > 0) {
-        const err = new Error('Invalid query parameters');
-        err.status = 400;
-        err.details = errors;
-        throw err;
-      }
-
-      // 3. Call service
-      const result = await this.plansService.getAllPlans(queryDto);
-
-      return ResponseUtil.successResponse(
-        res,
-        200,
-        result,
-        'Onboarding plans retrieved successfully'
-      );
     } catch (error) {
       next(error);
     }
@@ -57,18 +34,14 @@ export class OnboardingPlansController {
   // =========================
   // GET /onboarding-plans/:id
   // =========================
-  getById = async (req, res, next) => {
+  findOne = async (req, res, next) => {
     try {
-      const { id } = req.params;
-
-      const plan = await this.plansService.getPlanById(id);
-
-      return ResponseUtil.successResponse(
-        res,
-        200,
-        plan,
-        'Onboarding plan retrieved successfully'
-      );
+      const id = parseInt(req.params.id);
+      const plan = await this.plansService.findById(id);
+      res.status(200).json({
+        success: true,
+        data: plan,
+      });
     } catch (error) {
       next(error);
     }
@@ -77,18 +50,14 @@ export class OnboardingPlansController {
   // =========================
   // GET /onboarding-plans/department/:departmentId
   // =========================
-  getByDepartment = async (req, res, next) => {
+  findByDepartment = async (req, res, next) => {
     try {
-      const departmentId = Number(req.params.departmentId);
-
-      const plans = await this.plansService.getPlansByDepartment(departmentId);
-
-      return ResponseUtil.successResponse(
-        res,
-        200,
-        plans,
-        'Department onboarding plans retrieved successfully'
-      );
+      const departmentId = parseInt(req.params.departmentId);
+      const plans = await this.plansService.findByDepartment(departmentId);
+      res.status(200).json({
+        success: true,
+        data: plans,
+      });
     } catch (error) {
       next(error);
     }
@@ -97,16 +66,13 @@ export class OnboardingPlansController {
   // =========================
   // GET /onboarding-plans/templates
   // =========================
-  getTemplates = async (req, res, next) => {
+  findTemplates = async (req, res, next) => {
     try {
       const templates = await this.plansService.findTemplates();
-
-      return ResponseUtil.successResponse(
-        res,
-        200,
-        templates,
-        'Onboarding templates retrieved successfully'
-      );
+      res.status(200).json({
+        success: true,
+        data: templates,
+      });
     } catch (error) {
       next(error);
     }
@@ -117,38 +83,17 @@ export class OnboardingPlansController {
   // =========================
   create = async (req, res, next) => {
     try {
-      // Map body -> Create DTO
-      const createDto = plainToInstance(
-        CreateOnboardingPlanDto,
-        req.body,
-        { enableImplicitConversion: true }
-      );
-
-      const errors = await validate(createDto, {
-        whitelist: true,
-        forbidNonWhitelisted: true
-      });
-
-      if (errors.length > 0) {
-        const err = new Error('Invalid request body');
-        err.status = 400;
-        err.details = errors;
-        throw err;
-      }
-
+      const createDto = plainToInstance(CreateOnboardingPlanDto, req.body);
       const data = {
         ...createDto,
         createdBy: req.user?.id
       };
-
-      const plan = await this.plansService.createPlan(data);
-
-      return ResponseUtil.successResponse(
-        res,
-        201,
-        plan,
-        'Onboarding plan created successfully'
-      );
+      const plan = await this.plansService.create(data);
+      res.status(201).json({
+        success: true,
+        data: plan,
+        message: AppMessages.Success.Onboarding?.PLAN_CREATED || AppMessages.Success.CREATED,
+      });
     } catch (error) {
       next(error);
     }
@@ -159,34 +104,14 @@ export class OnboardingPlansController {
   // =========================
   update = async (req, res, next) => {
     try {
-      const { id } = req.params;
-
-      const updateDto = plainToInstance(
-        UpdateOnboardingPlanDto,
-        req.body,
-        { enableImplicitConversion: true }
-      );
-
-      const errors = await validate(updateDto, {
-        whitelist: true,
-        forbidNonWhitelisted: true
+      const id = parseInt(req.params.id);
+      const updateDto = plainToInstance(UpdateOnboardingPlanDto, req.body);
+      const plan = await this.plansService.update(id, updateDto);
+      res.status(200).json({
+        success: true,
+        data: plan,
+        message: AppMessages.Success.Onboarding?.PLAN_UPDATED || AppMessages.Success.UPDATED,
       });
-
-      if (errors.length > 0) {
-        const err = new Error('Invalid request body');
-        err.status = 400;
-        err.details = errors;
-        throw err;
-      }
-
-      const plan = await this.plansService.updatePlan(id, updateDto);
-
-      return ResponseUtil.successResponse(
-        res,
-        200,
-        plan,
-        'Onboarding plan updated successfully'
-      );
     } catch (error) {
       next(error);
     }
@@ -195,18 +120,14 @@ export class OnboardingPlansController {
   // =========================
   // DELETE /onboarding-plans/:id
   // =========================
-  delete = async (req, res, next) => {
+  remove = async (req, res, next) => {
     try {
-      const { id } = req.params;
-
-      await this.plansService.deletePlan(id);
-
-      return ResponseUtil.successResponse(
-        res,
-        200,
-        null,
-        'Onboarding plan deleted successfully'
-      );
+      const id = parseInt(req.params.id);
+      await this.plansService.remove(id);
+      res.status(200).json({
+        success: true,
+        message: AppMessages.Success.Onboarding?.PLAN_DELETED || AppMessages.Success.DELETED,
+      });
     } catch (error) {
       next(error);
     }
@@ -217,23 +138,14 @@ export class OnboardingPlansController {
   // =========================
   duplicate = async (req, res, next) => {
     try {
-      const { id } = req.params;
+      const id = parseInt(req.params.id);
       const { newPlanName } = req.body;
-
-      if (!newPlanName) {
-        const err = new Error('newPlanName is required');
-        err.status = 400;
-        throw err;
-      }
-
-      const plan = await this.plansService.duplicatePlan(id, newPlanName);
-
-      return ResponseUtil.successResponse(
-        res,
-        201,
-        plan,
-        'Onboarding plan duplicated successfully'
-      );
+      const plan = await this.plansService.duplicate(id, newPlanName);
+      res.status(201).json({
+        success: true,
+        data: plan,
+        message: 'Onboarding plan duplicated successfully',
+      });
     } catch (error) {
       next(error);
     }
@@ -242,18 +154,14 @@ export class OnboardingPlansController {
   // =========================
   // GET /onboarding-plans/:id/stats
   // =========================
-  getStats = async (req, res, next) => {
+  getStatistics = async (req, res, next) => {
     try {
-      const { id } = req.params;
-
-      const stats = await this.plansService.getPlanStats(id);
-
-      return ResponseUtil.successResponse(
-        res,
-        200,
-        stats,
-        'Plan statistics retrieved successfully'
-      );
+      const id = parseInt(req.params.id);
+      const stats = await this.plansService.getStatistics(id);
+      res.status(200).json({
+        success: true,
+        data: stats,
+      });
     } catch (error) {
       next(error);
     }

@@ -13,27 +13,27 @@ const progressController = new OnboardingProgressController();
 const assignmentsController = new TaskAssignmentsController();
 
 // Onboarding Plans Routes
-router.get('/plans', authMiddleware, plansController.list);
-router.get('/plans/:id', authMiddleware, plansController.getById);
+router.get('/plans', authMiddleware, plansController.findAll);
+router.get('/plans/:id', authMiddleware, plansController.findOne);
 router.post('/plans', authMiddleware, rolesMiddleware(['HR_MANAGER']), plansController.create);
 router.put('/plans/:id', authMiddleware, rolesMiddleware(['HR_MANAGER']), plansController.update);
-router.delete('/plans/:id', authMiddleware, rolesMiddleware(['HR_MANAGER']), plansController.delete);
-router.get('/plans/:id/stats', authMiddleware, plansController.getStats);
-router.get('/plans/department/:departmentId', authMiddleware, plansController.getByDepartment);
-router.get('/plans-templates/list', authMiddleware, plansController.getTemplates);
+router.delete('/plans/:id', authMiddleware, rolesMiddleware(['HR_MANAGER']), plansController.remove);
+router.get('/plans/:id/stats', authMiddleware, plansController.getStatistics);
+router.get('/plans/department/:departmentId', authMiddleware, plansController.findByDepartment);
+router.get('/plans-templates/list', authMiddleware, plansController.findTemplates);
 router.post('/plans/:id/duplicate', authMiddleware, rolesMiddleware(['HR_MANAGER']), plansController.duplicate);
 
 // Onboarding Progress Routes
-router.get('/progress', authMiddleware, progressController.list);
-router.get('/progress/:id', authMiddleware, progressController.getById);
-router.get('/progress/stats/all', authMiddleware, progressController.getStats);
-router.post('/progress/start', authMiddleware, rolesMiddleware(['HR_MANAGER']), progressController.startOnboarding);
+router.get('/progress', authMiddleware, progressController.findAll);
+router.get('/progress/:id', authMiddleware, progressController.findOne);
+router.get('/progress/stats/all', authMiddleware, progressController.getStatistics);
+router.post('/progress', authMiddleware, rolesMiddleware(['HR_MANAGER']), progressController.create);
 router.put('/progress/:id', authMiddleware, progressController.update);
 router.put('/progress/:id/complete', authMiddleware, rolesMiddleware(['HR_MANAGER']), progressController.complete);
 router.put('/progress/:id/pause', authMiddleware, rolesMiddleware(['HR_MANAGER']), progressController.pause);
 router.put('/progress/:id/resume', authMiddleware, rolesMiddleware(['HR_MANAGER']), progressController.resume);
-router.get('/progress/employee/:employeeId', authMiddleware, progressController.getByEmployee);
-router.get('/progress/department/:departmentId', authMiddleware, progressController.getByDepartment);
+router.get('/progress/employee/:employeeId', authMiddleware, progressController.findByEmployee);
+router.get('/progress/department/:departmentId', authMiddleware, progressController.findByDepartment);
 
 // Task Assignments Routes
 router.get('/assignments', authMiddleware, assignmentsController.list);
