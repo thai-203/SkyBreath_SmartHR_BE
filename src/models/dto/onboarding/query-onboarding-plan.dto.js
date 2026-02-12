@@ -1,35 +1,28 @@
 import {
   IsOptional,
-  IsString,
   IsInt,
   IsBoolean,
-  Min
+  IsString
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class UpdateOnboardingPlanDto {
-
-  @IsOptional()
-  @IsString()
-  planName;
-
-  @IsOptional()
-  @IsString()
-  description;
+export class QueryOnboardingPlanDto {
 
   @Type(() => Number)
   @IsOptional()
   @IsInt()
-  @Min(1)
   departmentId;
 
   @Type(() => Number)
   @IsOptional()
   @IsInt()
-  @Min(1)
   positionId;
 
   @IsOptional()
   @IsBoolean()
   isTemplate;
+
+  @IsOptional()
+  @IsString()
+  keyword;
 }

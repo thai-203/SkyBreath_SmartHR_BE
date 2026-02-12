@@ -1,17 +1,23 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import {
+  IsInt,
+  IsDateString,
+  IsNotEmpty
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateOnboardingProgressDto {
-    @IsInt({ message: 'Employee ID must be an integer' })
-    employeeId;
 
-    @IsInt({ message: 'Plan ID must be an integer' })
-    planId;
+  @Type(() => Number)
+  @IsInt()
+  @IsNotEmpty()
+  employeeId;
 
-    @IsOptional()
-    @IsString({ message: 'Start date must be a valid date string' })
-    startDate;
+  @Type(() => Number)
+  @IsInt()
+  @IsNotEmpty()
+  planId;
 
-    @IsOptional()
-    @IsInt({ message: 'Assigned mentor ID must be an integer' })
-    assignedMentorId;
+  @IsDateString()
+  @IsNotEmpty()
+  startDate;
 }

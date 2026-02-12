@@ -1,33 +1,27 @@
 import {
   IsOptional,
+  IsDateString,
   IsString,
-  IsBoolean,
-  IsInt,
-  Min
+  IsInt
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class UpdateOnboardingTaskDto {
+export class UpdateOnboardingProgressDto {
 
   @IsOptional()
   @IsString()
-  taskTitle;
+  overallStatus;
 
   @IsOptional()
-  @IsString()
-  description;
+  @IsDateString()
+  expectedEndDate;
 
   @IsOptional()
-  @IsBoolean()
-  isMandatory;
+  @IsDateString()
+  actualEndDate;
 
   @Type(() => Number)
   @IsOptional()
   @IsInt()
-  @Min(1)
-  estimatedDays;
-
-  @IsOptional()
-  @IsString()
-  category;
+  assignedMentorId;
 }
