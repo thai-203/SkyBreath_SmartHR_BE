@@ -18,12 +18,15 @@ export class OnboardingTaskEntity extends BaseEntity {
     @Column({ type: 'text', nullable: true })
     description;
 
-    @Column({ name: 'department_id', nullable: true, type: 'int' })
-    departmentId;
+    @Column({ name: 'task_order', type: 'int' })
+    taskOrder; 
 
-    @ManyToOne(() => DepartmentEntity)
-    @JoinColumn({ name: 'department_id' })
-    department;
+    @Column({name: 'responsible_department_id', type: 'int', nullable: true})
+    responsibleDepartmentId;
+
+    @ManyToOne(() => DepartmentEntity, { nullable: true })
+    @JoinColumn({ name: 'responsible_department_id' })
+    responsibleDepartment;
 
     @Column({ name: 'is_mandatory', type: 'boolean', default: false })
     isMandatory;

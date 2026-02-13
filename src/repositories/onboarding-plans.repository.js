@@ -14,13 +14,22 @@ export class OnboardingPlansRepository {
             where: { isDeleted: false },
             skip,
             take,
-            order: { createdAt: 'DESC' }
+            order: { updatedAt: 'DESC' }
         });
     }
 
     async findById(id) {
+        const planId = Number(id);
+
+        if (Number.isNaN(planId)) {
+            throw new Error(`Invalid onboarding plan id: ${JSON.stringify(id)}`);
+        }
+
         return this.repository.findOne({
-            where: { id, isDeleted: false },
+            where: {
+                id: planId,
+                isDeleted: false
+            },
             relations: ['department', 'tasks']
         });
     }
@@ -42,7 +51,8 @@ export class OnboardingPlansRepository {
                 'tasks',
                 'department',
                 'position'
-            ]
+            ],
+            order: { updatedAt: 'DESC' }
         });
     }
 
@@ -51,16 +61,20 @@ export class OnboardingPlansRepository {
         return this.repository.save(plan);
     }
 
-    async update(id, data) {
-        await this.repository.update(id, data);
-        return this.findById(id);
+    async updatePlanOnly(id, data) {
+        const { tasks, ...planData } = data;
+        return this.repository.update(id, planData);
     }
 
     async delete(id) {
-        return this.repository.update(id, { isDeleted: true });
+        return this.repository.update(id, { isDeleted: true, deletedAt: new Date(), });
     }
 
     async count() {
         return this.repository.count({ where: { isDeleted: false } });
+    }
+
+    async save(plan) {
+        return this.repository.save(plan);
     }
 }

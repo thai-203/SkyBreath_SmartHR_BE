@@ -4,9 +4,25 @@ import {
   IsString
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PaginationDto } from '../../../common/dto/pagination.dto.js';
 
-export class QueryOnboardingProgressDto {
-
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     QueryOnboardingProgressDto:
+ *       allOf:
+ *         - $ref: '#/components/schemas/PaginationDto'
+ *         - type: object
+ *           properties:
+ *             employeeId:
+ *               type: number
+ *               description: Filter by employee ID
+ *             overallStatus:
+ *               type: string
+ *               description: Filter by overall status
+ */
+export class QueryOnboardingProgressDto extends PaginationDto {
   @Type(() => Number)
   @IsOptional()
   @IsInt()
