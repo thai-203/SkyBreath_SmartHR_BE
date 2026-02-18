@@ -1,7 +1,7 @@
 import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repository.js';
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { OnboardingTasksRepository } from '../repositories/onboarding-tasks.repository.js';
-import { BadRequestException, NotFoundException } from '../common/exceptions/index.js';
+import { BadRequestException, NotFoundException, ConflictException } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
 
@@ -43,14 +43,38 @@ export class OnboardingPlansService {
     }
 
     async create(data) {
+        console.log('Creating onboarding plan with data:', data);
         if (!data.planName || data.planName.trim().length === 0) {
-            throw new BadRequestException(AppMessages.Errors.Onboarding?.PLAN_NAME_REQUIRED?.message || 'Plan name is required');
+            throw new BadRequestException(
+            AppMessages.Errors.Onboarding?.PLAN_NAME_REQUIRED?.message ||
+            'Plan name is required'
+            );
         }
-        return this.plansRepository.create({
-            ...data,
-            createdAt: new Date(),
-        });
+
+        if (data.isTemplate === 1 || data.isTemplate === true) {
+            if (!data.departmentId || !data.positionId) {
+                throw new BadRequestException(
+                    'Department and Position are required for template plan'
+                );
+            }
+
+            const existingTemplate =
+            await this.plansRepository.findTemplateByDepartmentAndPosition(
+                data.departmentId,
+                data.positionId
+            );
+
+            if (existingTemplate) {
+                throw new ConflictException(AppMessages.Errors.Onboarding.TEMPLATE_ALREADY_EXISTS);
+        }
     }
+
+    return this.plansRepository.create({
+        ...data,
+        createdAt: new Date(),
+    });
+    }
+
 
     async update(id, dto) {
         const plan = await this.plansRepository.findById(id);

@@ -131,4 +131,13 @@ export class EmployeesController {
             next(error);
         }
     };
+
+    getEmployeeNoPlanId = async (req, res, next) => {
+        try {
+            const result = await this.employeesService.getEmployeeNoPlanId();
+            ResponseUtil.sendResponse(res, AppMessages.Success.Employee.RETRIEVED_ALL, result);
+        } catch (error) {
+            next(error);
+        }
+    };
 }

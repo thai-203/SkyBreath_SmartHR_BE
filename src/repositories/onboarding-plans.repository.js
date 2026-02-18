@@ -11,7 +11,7 @@ export class OnboardingPlansRepository {
     async findAll(skip = 0, take = 10) {
         return this.repository.find({
             relations: ['department', 'tasks'],
-            where: { isDeleted: false },
+            where: { isDeleted: false, isTemplate: false },
             skip,
             take,
             order: { updatedAt: 'DESC' }
@@ -28,7 +28,8 @@ export class OnboardingPlansRepository {
         return this.repository.findOne({
             where: {
                 id: planId,
-                isDeleted: false
+                isDeleted: false,
+                isTemplate: false
             },
             relations: ['department', 'tasks']
         });
@@ -36,7 +37,7 @@ export class OnboardingPlansRepository {
 
     async findByDepartmentId(departmentId) {
         return this.repository.find({
-            where: { departmentId, isDeleted: false },
+            where: { departmentId, isDeleted: false, isTemplate: false },
             relations: ['tasks']
         });
     }
@@ -77,4 +78,15 @@ export class OnboardingPlansRepository {
     async save(plan) {
         return this.repository.save(plan);
     }
+
+    async findTemplateByDepartmentAndPosition(departmentId, positionId) {
+        return this.repository.findOne({
+            where: {
+            departmentId,
+            positionId,
+            isTemplate: true,
+            isDeleted: false,
+            },
+        });
+        }
 }

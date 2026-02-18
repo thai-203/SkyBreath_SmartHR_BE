@@ -330,4 +330,8 @@ export class EmployeesService {
 
     return ExcelUtil.export(data, columns, 'Danh sách nhân viên');
   }
+
+  async getEmployeeNoPlanId() {
+    return this.employeesRepository.getEmployeeNoPlanId();
+  }
 }
