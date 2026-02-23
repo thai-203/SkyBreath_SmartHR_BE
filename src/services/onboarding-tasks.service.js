@@ -12,13 +12,11 @@ export class OnboardingTasksService {
   async create(planId, body) {
     const task = this.onboardingTasksRepository.create({
       planId,
-      taskTitle: body.taskTitle,
       description: body.description,
       category: body.category,
       estimatedDays: body.estimatedDays,
       isMandatory: body.isMandatory,
       responsibleDepartmentId: body.responsibleDepartmentId,
-      status: body.status ?? 'NOT_STARTED',
     });
 
     return this.onboardingTasksRepository.save(task);
@@ -26,7 +24,6 @@ export class OnboardingTasksService {
 
   async update(id, body) {
     await this.onboardingTasksRepository.update(id, {
-      taskTitle: body.taskTitle,
       description: body.description,
       category: body.category,
       estimatedDays: body.estimatedDays,

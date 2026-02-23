@@ -28,8 +28,7 @@ export class OnboardingPlansRepository {
         return this.repository.findOne({
             where: {
                 id: planId,
-                isDeleted: false,
-                isTemplate: false
+                isDeleted: false
             },
             relations: ['department', 'tasks']
         });

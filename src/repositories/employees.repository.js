@@ -116,4 +116,21 @@ export class EmployeesRepository {
             ],
         });
     }
+
+    async getByUserId(userId) {
+        return this.repository.findOne({
+            where: {
+                isDeleted: false,
+                userId: userId,
+            },
+            relations: [
+                'user',
+                'department',
+                'position',
+                'jobGrade',
+                'directManager',
+                'hrMentor',
+            ],
+        });
+    }
 }

@@ -35,10 +35,6 @@ export class CreateOnboardingPlanDto {
   @IsBoolean()
   isTemplate = false;
 
-  /**
-   * Chỉ dùng khi tạo TEMPLATE
-   * Validate nghiệp vụ ở service
-   */
   @IsOptional()
   @Allow()
   tasks;

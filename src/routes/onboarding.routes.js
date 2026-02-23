@@ -5,6 +5,7 @@ import { OnboardingTasksController } from '../controllers/onboarding-tasks.contr
 import { TaskAssignmentsController } from '../controllers/task-assignments.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
+import { upload } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
 
@@ -48,7 +49,11 @@ router.get('/assignments', authMiddleware, assignmentsController.list);
 router.get('/assignments/:id', authMiddleware, assignmentsController.getById);
 router.get('/assignments/stats/all', authMiddleware, assignmentsController.getStats);
 router.post('/assignments', authMiddleware, rolesMiddleware(['ADMIN', 'DEPARTMENT_MANAGER']), assignmentsController.create);
-router.put('/assignments/:id', authMiddleware, rolesMiddleware(['ADMIN', 'DEPARTMENT_MANAGER']), assignmentsController.update);
+router.put(
+    '/assignments/:id', 
+    upload.single('evidence'),
+    assignmentsController.update
+);
 router.put('/assignments/:id/complete', authMiddleware, assignmentsController.complete);
 router.put('/assignments/:id/start', authMiddleware, assignmentsController.start);
 router.put('/assignments/:id/reassign', authMiddleware, rolesMiddleware(['ADMIN', 'DEPARTMENT_MANAGER']), assignmentsController.reassign);

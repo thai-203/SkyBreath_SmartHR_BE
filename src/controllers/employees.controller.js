@@ -140,4 +140,17 @@ export class EmployeesController {
             next(error);
         }
     };
+
+    getByUserId = async (req, res, next) => {
+        try {
+            const userId = parseInt(req.params.userId);
+            const employee = await this.employeesService.getByUserId(userId);
+            if (!employee) {
+                return ResponseUtil.sendResponse(res, AppMessages.Errors.Employee?.NOT_FOUND?.message || 'Employee not found', null, 404);
+            }
+            ResponseUtil.sendResponse(res, AppMessages.Success.Employee.RETRIEVED, employee);
+        } catch (error) {
+            next(error);
+        }
+    };
 }

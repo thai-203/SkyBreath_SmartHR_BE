@@ -52,4 +52,10 @@ export class TaskAssignmentEntity extends BaseEntity {
 
     @Column({ name: 'priority', type: 'varchar', default: 'NORMAL' })
     priority;
+
+    @Column({ name: 'asset_code', type: 'varchar', length: 100, nullable: true })
+    assetCode;
+
+    @Column({ name: 'evidence_path', type: 'varchar', length: 500, nullable: true })
+    evidencePath;
 }

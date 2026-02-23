@@ -10,10 +10,6 @@ import { Type } from 'class-transformer';
 
 export class CreateOnboardingTaskDto {
 
-  @IsString()
-  @IsNotEmpty()
-  taskTitle;
-
   @IsOptional()
   @IsString()
   description;

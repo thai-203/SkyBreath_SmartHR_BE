@@ -73,7 +73,7 @@ export class OnboardingPlansController {
         ...createDto,
         createdBy: req.user?.id
       };
-      const plan = await this.plansService.create(data);
+      const plan = await this.plansService.create(data, req.user.id);
       res.status(201).json({
         success: true,
         data: plan,

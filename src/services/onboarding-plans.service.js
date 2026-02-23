@@ -1,15 +1,20 @@
 import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repository.js';
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { OnboardingTasksRepository } from '../repositories/onboarding-tasks.repository.js';
+import { TaskAssignmentsRepository } from '../repositories/task-assignments.repository.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { BadRequestException, NotFoundException, ConflictException } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
+import { act } from 'react';
 
 export class OnboardingPlansService {
     constructor() {
         this.plansRepository = new OnboardingPlansRepository();
         this.progressRepository = new OnboardingProgressRepository();
         this.tasksRepository = new OnboardingTasksRepository();
+        this.taskAssignmentsRepository = new TaskAssignmentsRepository();
+        this.EmployeesRepository = new EmployeesRepository();
     }
 
     async findAll(queryDto) {
@@ -42,16 +47,19 @@ export class OnboardingPlansService {
         });
     }
 
-    async create(data) {
-        console.log('Creating onboarding plan with data:', data);
+    async create(data, userId) {
+        // ===== 1. Validate plan name =====
         if (!data.planName || data.planName.trim().length === 0) {
             throw new BadRequestException(
-            AppMessages.Errors.Onboarding?.PLAN_NAME_REQUIRED?.message ||
-            'Plan name is required'
+                AppMessages.Errors.Onboarding?.PLAN_NAME_REQUIRED?.message ||
+                'Plan name is required'
             );
         }
 
-        if (data.isTemplate === 1 || data.isTemplate === true) {
+        const isTemplate = data.isTemplate === true || data.isTemplate === 1;
+
+        // ===== 2. Validate template =====
+        if (isTemplate) {
             if (!data.departmentId || !data.positionId) {
                 throw new BadRequestException(
                     'Department and Position are required for template plan'
@@ -59,22 +67,122 @@ export class OnboardingPlansService {
             }
 
             const existingTemplate =
-            await this.plansRepository.findTemplateByDepartmentAndPosition(
-                data.departmentId,
-                data.positionId
-            );
+                await this.plansRepository.findTemplateByDepartmentAndPosition(
+                    data.departmentId,
+                    data.positionId
+                );
 
             if (existingTemplate) {
-                throw new ConflictException(AppMessages.Errors.Onboarding.TEMPLATE_ALREADY_EXISTS);
+                throw new ConflictException(
+                    AppMessages.Errors.Onboarding.TEMPLATE_ALREADY_EXISTS
+                );
+            }
         }
-    }
 
-    return this.plansRepository.create({
-        ...data,
-        createdAt: new Date(),
-    });
-    }
+        // ===== 3. Create plan =====
+        const plan = await this.plansRepository.create({
+            ...data,
+            createdAt: new Date()
+        });
 
+        // ===== 4. Non-template: create progress & task assignments =====
+        if (!isTemplate) {
+            if (!data.employeeId) {
+                throw new BadRequestException(
+                    'Employee is required for onboarding plan'
+                );
+            }
+
+            // ---- 4.1 Progress ----
+            const startDate = new Date(data.startDate);
+            if (isNaN(startDate.getTime())) {
+                throw new BadRequestException('Invalid startDate');
+            }
+
+            const expectedEndDate = new Date(startDate);
+            expectedEndDate.setDate(
+                startDate.getDate() + Number(data.durationDays || 0)
+            );
+
+            const progress = await this.progressRepository.create({
+                planId: plan.id,
+                employeeId: data.employeeId,
+                overallStatus: 'NOT_STARTED',
+                startDate,
+                expectedEndDate,
+                actualEndDate: null,
+                progressPercentage: 0,
+                completedTasksCount: 0,
+                totalTasksCount: data.tasks?.length || 0,
+                assignedMentorId: null,
+                createdAt: new Date()
+            });
+
+            // ---- 4.2 Map task DTO by taskOrder ----
+            const taskDtoMap = new Map(
+                (data.tasks || []).map(t => [t.taskOrder, t])
+            );
+
+            // ---- 4.3 Get tasks from DB ----
+            const tasks = await this.tasksRepository.findByPlanId(plan.id);
+
+            // ---- 4.4 Create task assignments ----
+            for (const task of tasks) {
+                const taskDTO = taskDtoMap.get(task.taskOrder);
+
+                if (!taskDTO) {
+                    throw new BadRequestException(
+                        `Missing task DTO for taskOrder ${task.taskOrder}`
+                    );
+                }
+
+                let dueDate;
+
+                // ✅ ưu tiên dueDate từ frontend
+                if (taskDTO.dueDate) {
+                    dueDate = new Date(taskDTO.dueDate);
+                }
+                // 🔁 fallback bằng estimatedDays
+                else if (taskDTO.estimatedDays) {
+                    dueDate = new Date(startDate);
+                    dueDate.setDate(
+                        dueDate.getDate() + Number(taskDTO.estimatedDays)
+                    );
+                }
+
+                // 🚨 validate dueDate
+                if (!dueDate || isNaN(dueDate.getTime())) {
+                    throw new BadRequestException(
+                        `Invalid dueDate for task "${task.description}"`
+                    );
+                }
+
+                await this.taskAssignmentsRepository.create({
+                    progressId: progress.id,
+                    taskId: task.id,
+                    assignedToEmployeeId: data.employeeId,
+                    assignedByUserId: userId,
+                    status: 'PENDING',
+                    assignedDate: new Date(),
+                    dueDate,
+                    createdAt: new Date()
+                });
+            }
+
+            const employee = await new EmployeesRepository().findById(data.employeeId);
+            if (employee) {
+                await this.EmployeesRepository.update(data.employeeId, {
+                    planId: plan.id,
+                });
+            } else {
+                throw new BadRequestException(
+                    `Employee with ID ${data.employeeId} not found`
+                );
+            }
+        }
+
+        return plan;
+    }
 
     async update(id, dto) {
         const plan = await this.plansRepository.findById(id);
@@ -115,7 +223,6 @@ export class OnboardingPlansService {
         for (const taskDto of dto.tasks || []) {
             if (taskDto.id) {
                 await this.tasksRepository.update(taskDto.id, {
-                    taskTitle: taskDto.taskTitle,
                     description: taskDto.description,
                     category: taskDto.category,
                     estimatedDays: taskDto.estimatedDays,
@@ -125,7 +232,6 @@ export class OnboardingPlansService {
                 });
             } else {
                 const newTask = this.tasksRepository.create({
-                    taskTitle: taskDto.taskTitle,
                     description: taskDto.description,
                     category: taskDto.category,
                     estimatedDays: taskDto.estimatedDays,

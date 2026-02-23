@@ -334,4 +334,8 @@ export class EmployeesService {
   async getEmployeeNoPlanId() {
     return this.employeesRepository.getEmployeeNoPlanId();
   }
+
+  async getByUserId(userId) {
+    return this.employeesRepository.getByUserId(userId);
+  }
 }

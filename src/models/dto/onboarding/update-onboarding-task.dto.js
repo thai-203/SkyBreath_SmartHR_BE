@@ -11,10 +11,6 @@ export class UpdateOnboardingTaskDto {
 
   @IsOptional()
   @IsString()
-  taskTitle;
-
-  @IsOptional()
-  @IsString()
   description;
 
   @IsOptional()

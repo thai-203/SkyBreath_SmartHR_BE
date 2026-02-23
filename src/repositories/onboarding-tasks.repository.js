@@ -20,7 +20,7 @@ export class OnboardingTasksRepository {
 
   findByPlanId(planId) {
     return this.repo.find({
-      where: { planId },
+      where: { planId, isDeleted: false },
       order: { taskOrder: 'ASC' },
     });
   }

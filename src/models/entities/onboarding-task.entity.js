@@ -12,9 +12,6 @@ export class OnboardingTaskEntity extends BaseEntity {
     @JoinColumn({ name: 'plan_id' })
     plan;
 
-    @Column({ name: 'task_title', type: 'varchar' })
-    taskTitle;
-
     @Column({ type: 'text', nullable: true })
     description;
 
@@ -33,9 +30,6 @@ export class OnboardingTaskEntity extends BaseEntity {
 
     @Column({ name: 'estimated_days', type: 'int', nullable: true })
     estimatedDays;
-
-    @Column({ type: 'varchar', default: 'NOT_STARTED' })
-    status;
 
     @Column({ type: 'varchar', nullable: true })
     category;
