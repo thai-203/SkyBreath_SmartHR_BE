@@ -69,6 +69,16 @@ export const AppMessages = {
       TERMINATED: 'Hợp đồng đã được chấm dứt thành công',
       DELETED: 'Xóa hợp đồng thành công',
     },
+
+    Timesheet: {
+      GENERATED: 'Bảng chấm công đã được tạo thành công',
+      RETRIEVED_ALL: 'Danh sách bảng chấm công đã được tải',
+      RETRIEVED: 'Thông tin bảng chấm công đã được tải',
+      UPDATED: 'Cập nhật bảng chấm công thành công',
+      RECALCULATED: 'Đã tính lại bảng chấm công',
+      LOCKED: 'Bảng chấm công đã được khóa',
+      UNLOCKED: 'Bảng chấm công đã được mở khóa',
+    },
   },
 
   Errors: {
@@ -146,6 +156,13 @@ export const AppMessages = {
     },
     ActionLog: {
       NOT_FOUND: { code: 'ACTLOG_001', message: 'Action log not found' },
+    },
+    Timesheet: {
+      NOT_FOUND: { code: 'TS_001', message: 'Không tìm thấy bảng chấm công' },
+      ALREADY_EXISTS: { code: 'TS_002', message: 'Bảng chấm công đã tồn tại cho kỳ này' },
+      IS_LOCKED: { code: 'TS_003', message: 'Bảng chấm công đã bị khóa, không thể chỉnh sửa' },
+      ALREADY_LOCKED: { code: 'TS_004', message: 'Bảng chấm công đã được khóa rồi' },
+      NOT_LOCKED: { code: 'TS_005', message: 'Bảng chấm công chưa bị khóa' },
     },
     Validation: {
       FAILED: { code: 'VAL_001', message: 'Validation failed' },
