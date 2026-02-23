@@ -1,6 +1,7 @@
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repository.js';
 import { TaskAssignmentsRepository } from '../repositories/task-assignments.repository.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { NotFoundException, BadRequestException } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
@@ -10,6 +11,7 @@ export class OnboardingProgressService {
         this.progressRepository = new OnboardingProgressRepository();
         this.plansRepository = new OnboardingPlansRepository();
         this.taskAssignmentsRepository = new TaskAssignmentsRepository();
+        this.employeesRepository = new EmployeesRepository();
     }
 
     async findAll(queryDto) {
@@ -128,19 +130,72 @@ export class OnboardingProgressService {
     }
 
     async getStatistics() {
-        const [totalProgress, inProgressCount, completedCount, onHoldCount] = await Promise.all([
+        const now = new Date();
+
+        const todayEnd = new Date(now);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const currentStart = new Date(now);
+        currentStart.setDate(now.getDate() - 30);
+        currentStart.setHours(0, 0, 0, 0);
+
+        const previousStart = new Date(now);
+        previousStart.setDate(now.getDate() - 60);
+        previousStart.setHours(0, 0, 0, 0);
+
+        const previousEnd = new Date(now);
+        previousEnd.setDate(now.getDate() - 31);
+        previousEnd.setHours(23, 59, 59, 999);
+
+        const [
+            totalProgress,
+            inProgressCount,
+            completedCount,
+            onHoldCount,
+            currentNewEmployees,
+            previousNewEmployees
+        ] = await Promise.all([
             this.progressRepository.count(),
             this.progressRepository.countByStatus('IN_PROGRESS'),
             this.progressRepository.countByStatus('COMPLETED'),
             this.progressRepository.countByStatus('ON_HOLD'),
+
+            this.employeesRepository.countByCreatedAtRange(
+                currentStart,
+                todayEnd
+            ),
+
+            this.employeesRepository.countByCreatedAtRange(
+                previousStart,
+                previousEnd
+            ),
         ]);
+
+        let growthRate = 0;
+
+        if (previousNewEmployees > 0) {
+            growthRate = Math.round(
+                ((currentNewEmployees - previousNewEmployees) /
+                    previousNewEmployees) * 100
+            );
+        } else if (currentNewEmployees > 0) {
+            growthRate = 100;
+        }
 
         return {
             totalOnboardings: totalProgress,
             inProgress: inProgressCount,
             completed: completedCount,
             onHold: onHoldCount,
-            averageCompletionRate: totalProgress > 0 ? Math.round((completedCount / totalProgress) * 100) : 0,
+
+            averageCompletionRate:
+                totalProgress > 0
+                    ? Math.round((completedCount / totalProgress) * 100)
+                    : 0,
+
+            newEmployeesLast30Days: currentNewEmployees,
+            newEmployeesPrevious30Days: previousNewEmployees,
+            growthRate,
         };
     }
 }

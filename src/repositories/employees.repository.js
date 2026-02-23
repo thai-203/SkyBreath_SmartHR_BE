@@ -1,6 +1,6 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
-import { IsNull } from 'typeorm';
+import { IsNull, Between } from 'typeorm';
 
 export class EmployeesRepository {
     constructor() {
@@ -131,6 +131,19 @@ export class EmployeesRepository {
                 'directManager',
                 'hrMentor',
             ],
+        });
+    }
+
+    async count() {
+        return this.repository.count({ where: { isDeleted: false } });
+    }
+
+    async countByCreatedAtRange(start, end) {
+        return this.repository.count({
+        where: {
+                isDeleted: false,
+                createdAt: Between(start, end),
+            },
         });
     }
 }
