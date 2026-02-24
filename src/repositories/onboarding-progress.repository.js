@@ -8,32 +8,64 @@ export class OnboardingProgressRepository {
 
     async findAll(skip = 0, take = 10) {
         return this.repository.find({
-            relations: ['employee', 'plan', 'assignedMentor', 'taskAssignments'],
             where: { isDeleted: false },
+            relations: [
+                'employee',
+                'employee.department',
+                'employee.position',
+                'plan',
+                'assignedMentor',
+                'taskAssignments',
+                'taskAssignments.task',
+            ],
             skip,
             take,
-            order: { createdAt: 'DESC' }
+            order: { createdAt: 'DESC' },
         });
     }
 
     async findById(id) {
         return this.repository.findOne({
             where: { id, isDeleted: false },
-            relations: ['employee', 'plan', 'assignedMentor', 'taskAssignments']
+                relations: [
+                'employee',
+                'employee.department',
+                'employee.position',
+                'plan',
+                'assignedMentor',
+                'taskAssignments',
+                'taskAssignments.task',
+            ]
         });
     }
 
     async findByEmployeeId(employeeId) {
         return this.repository.findOne({
             where: { employeeId, isDeleted: false },
-            relations: ['employee', 'plan', 'assignedMentor', 'taskAssignments']
+                relations: [
+                'employee',
+                'employee.department',
+                'employee.position',
+                'plan',
+                'assignedMentor',
+                'taskAssignments',
+                'taskAssignments.task',
+            ]
         });
     }
 
     async findByEmployeeAndPlan(employeeId, planId) {
         return this.repository.findOne({
             where: { employeeId, planId, isDeleted: false },
-            relations: ['employee', 'plan', 'assignedMentor', 'taskAssignments']
+                relations: [
+                'employee',
+                'employee.department',
+                'employee.position',
+                'plan',
+                'assignedMentor',
+                'taskAssignments',
+                'taskAssignments.task',
+            ]
         });
     }
 

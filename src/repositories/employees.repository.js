@@ -1,5 +1,6 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { IsNull, Between } from 'typeorm';
 
 export class EmployeesRepository {
     constructor() {
@@ -96,6 +97,53 @@ export class EmployeesRepository {
         return this.repository.find({
             where: { isDeleted: false },
             select: ['id', 'employeeCode', 'fullName', 'personalEmail', 'companyEmail', 'phoneNumber', 'nationalId']
+        });
+    }
+
+    async getEmployeeNoPlanId() {
+        return this.repository.find({
+            where: {
+                isDeleted: false,
+                planId: IsNull(),
+            },
+            relations: [
+                'user',
+                'department',
+                'position',
+                'jobGrade',
+                'directManager',
+                'hrMentor',
+            ],
+        });
+    }
+
+    async getByUserId(userId) {
+        return this.repository.findOne({
+            where: {
+                isDeleted: false,
+                userId: userId,
+            },
+            relations: [
+                'user',
+                'department',
+                'position',
+                'jobGrade',
+                'directManager',
+                'hrMentor',
+            ],
+        });
+    }
+
+    async count() {
+        return this.repository.count({ where: { isDeleted: false } });
+    }
+
+    async countByCreatedAtRange(start, end) {
+        return this.repository.count({
+        where: {
+                isDeleted: false,
+                createdAt: Between(start, end),
+            },
         });
     }
 }

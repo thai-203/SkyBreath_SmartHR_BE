@@ -1,46 +1,61 @@
+import { plainToInstance } from 'class-transformer';
+import { QueryOnboardingProgressDto } from '../models/dto/onboarding/index.js';
 import { OnboardingProgressService } from '../services/onboarding-progress.service.js';
-import { ResponseUtil } from '../common/utils/response.util.js';
+import { AppMessages } from '../common/constants/index.js';
 
 export class OnboardingProgressController {
     constructor() {
         this.progressService = new OnboardingProgressService();
     }
 
-    list = async (req, res, next) => {
+    findAll = async (req, res, next) => {
         try {
-            const { skip = 0, take = 10 } = req.query;
-            const result = await this.progressService.getAllProgress(parseInt(skip), parseInt(take));
-            return ResponseUtil.successResponse(res, 200, result, 'Onboarding progress retrieved successfully');
+            const queryDto = plainToInstance(QueryOnboardingProgressDto, req.query);
+            const result = await this.progressService.findAll(queryDto);
+            res.status(200).json({
+                success: true,
+                ...result,
+            });
         } catch (error) {
             next(error);
         }
     };
 
-    getById = async (req, res, next) => {
+    findOne = async (req, res, next) => {
         try {
-            const { id } = req.params;
-            const progress = await this.progressService.getProgressById(id);
-            return ResponseUtil.successResponse(res, 200, progress, 'Onboarding progress retrieved successfully');
+            const id = parseInt(req.params.id);
+            const progress = await this.progressService.findById(id);
+            res.status(200).json({
+                success: true,
+                data: progress,
+            });
         } catch (error) {
             next(error);
         }
     };
 
-    getByEmployee = async (req, res, next) => {
+    findByEmployee = async (req, res, next) => {
         try {
-            const { employeeId } = req.params;
-            const progress = await this.progressService.getEmployeeProgress(employeeId);
-            return ResponseUtil.successResponse(res, 200, progress, 'Employee onboarding progress retrieved successfully');
+            const employeeId = parseInt(req.params.employeeId);
+            const progress = await this.progressService.findByEmployee(employeeId);
+            res.status(200).json({
+                success: true,
+                data: progress,
+            });
         } catch (error) {
             next(error);
         }
     };
 
-    startOnboarding = async (req, res, next) => {
+    create = async (req, res, next) => {
         try {
             const { employeeId, planId, assignedMentorId } = req.body;
-            const progress = await this.progressService.startOnboarding(employeeId, planId, assignedMentorId);
-            return ResponseUtil.successResponse(res, 201, progress, 'Onboarding started successfully');
+            const progress = await this.progressService.create(employeeId, planId, assignedMentorId);
+            res.status(201).json({
+                success: true,
+                data: progress,
+                message: AppMessages.Success.Onboarding?.PROGRESS_CREATED || AppMessages.Success.CREATED,
+            });
         } catch (error) {
             next(error);
         }
@@ -48,9 +63,13 @@ export class OnboardingProgressController {
 
     update = async (req, res, next) => {
         try {
-            const { id } = req.params;
-            const progress = await this.progressService.updateProgress(id, req.body);
-            return ResponseUtil.successResponse(res, 200, progress, 'Onboarding progress updated successfully');
+            const id = parseInt(req.params.id);
+            const progress = await this.progressService.update(id, req.body);
+            res.status(200).json({
+                success: true,
+                data: progress,
+                message: AppMessages.Success.Onboarding?.PROGRESS_UPDATED || AppMessages.Success.UPDATED,
+            });
         } catch (error) {
             next(error);
         }
@@ -58,9 +77,13 @@ export class OnboardingProgressController {
 
     complete = async (req, res, next) => {
         try {
-            const { id } = req.params;
-            const progress = await this.progressService.completeOnboarding(id);
-            return ResponseUtil.successResponse(res, 200, progress, 'Onboarding completed successfully');
+            const id = parseInt(req.params.id);
+            const progress = await this.progressService.complete(id);
+            res.status(200).json({
+                success: true,
+                data: progress,
+                message: 'Onboarding completed successfully',
+            });
         } catch (error) {
             next(error);
         }
@@ -68,9 +91,13 @@ export class OnboardingProgressController {
 
     pause = async (req, res, next) => {
         try {
-            const { id } = req.params;
-            const progress = await this.progressService.pauseOnboarding(id);
-            return ResponseUtil.successResponse(res, 200, progress, 'Onboarding paused successfully');
+            const id = parseInt(req.params.id);
+            const progress = await this.progressService.pause(id);
+            res.status(200).json({
+                success: true,
+                data: progress,
+                message: 'Onboarding paused successfully',
+            });
         } catch (error) {
             next(error);
         }
@@ -78,28 +105,38 @@ export class OnboardingProgressController {
 
     resume = async (req, res, next) => {
         try {
-            const { id } = req.params;
-            const progress = await this.progressService.resumeOnboarding(id);
-            return ResponseUtil.successResponse(res, 200, progress, 'Onboarding resumed successfully');
+            const id = parseInt(req.params.id);
+            const progress = await this.progressService.resume(id);
+            res.status(200).json({
+                success: true,
+                data: progress,
+                message: 'Onboarding resumed successfully',
+            });
         } catch (error) {
             next(error);
         }
     };
 
-    getByDepartment = async (req, res, next) => {
+    findByDepartment = async (req, res, next) => {
         try {
-            const { departmentId } = req.params;
-            const progress = await this.progressService.getProgressByDepartment(departmentId);
-            return ResponseUtil.successResponse(res, 200, progress, 'Department onboarding progress retrieved successfully');
+            const departmentId = parseInt(req.params.departmentId);
+            const progress = await this.progressService.findByDepartment(departmentId);
+            res.status(200).json({
+                success: true,
+                data: progress,
+            });
         } catch (error) {
             next(error);
         }
     };
 
-    getStats = async (req, res, next) => {
+    getStatistics = async (req, res, next) => {
         try {
-            const stats = await this.progressService.getProgressStats();
-            return ResponseUtil.successResponse(res, 200, stats, 'Progress statistics retrieved successfully');
+            const stats = await this.progressService.getStatistics();
+            res.status(200).json({
+                success: true,
+                data: stats,
+            });
         } catch (error) {
             next(error);
         }

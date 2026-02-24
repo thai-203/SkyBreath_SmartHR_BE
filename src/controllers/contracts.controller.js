@@ -16,17 +16,22 @@ export class ContractsController {
     /* ================= CREATE ================= */
     create = async (req, res, next) => {
         try {
-            const dto = plainToInstance(CreateContractDto, req.body);
-            await validateOrReject(dto);
+            const dto = req.body;
+            const files = req.files;
 
+            if (files && files.length > 0) {
+                dto.attachments = files.map(file =>
+                    file.path.replace(/\\/g, '/')
+                );
+            } else {
+                dto.attachments = null;
+            }
             const contract = await this.contractsService.create(dto);
 
             return res.status(201).json({
                 success: true,
                 data: contract,
-                message:
-                    AppMessages?.Success?.Contract?.CREATED ??
-                    'Contract created successfully',
+                message: 'Contract created successfully',
             });
         } catch (error) {
             next(error);
@@ -81,6 +86,35 @@ export class ContractsController {
     /* ================= UPDATE ================= */
     update = async (req, res, next) => {
         try {
+            const dtoData = { ...req.body };
+            const files = req.files || [];
+            if (dtoData.endDate === '') {
+                dtoData.endDate = null;
+            }
+
+            let oldAttachments = [];
+
+            if (dtoData.oldAttachments) {
+                try {
+                    oldAttachments = JSON.parse(dtoData.oldAttachments);
+                    if (!Array.isArray(oldAttachments)) {
+                        oldAttachments = [];
+                    }
+                } catch (err) {
+                    oldAttachments = [];
+                }
+            }
+
+            oldAttachments = oldAttachments.filter(
+                (path) => typeof path === 'string' && path.trim().length > 0
+            );
+
+            const newAttachments = files.map((file) =>
+                file.path.replace(/\\/g, '/')
+            );
+
+            dtoData.attachments = [...oldAttachments, ...newAttachments];
+
             const numberFields = [
                 'employeeId',
                 'departmentId',
@@ -93,16 +127,25 @@ export class ContractsController {
                 'lunchAllowance',
                 'fuelAllowance',
                 'otherAllowance',
+                'terminationCompensation',
             ];
 
             numberFields.forEach((field) => {
-                if (req.body[field] !== undefined) {
-                    req.body[field] = Number(req.body[field]);
+                if (
+                    dtoData[field] !== undefined &&
+                    dtoData[field] !== null &&
+                    dtoData[field] !== ''
+                ) {
+                    dtoData[field] = Number(dtoData[field]);
                 }
             });
 
-            const dto = plainToInstance(UpdateContractDto, req.body);
-            await validateOrReject(dto);
+            const dto = plainToInstance(UpdateContractDto, dtoData);
+
+            await validateOrReject(dto, {
+                whitelist: true,
+                forbidNonWhitelisted: false,
+            });
 
             const result = await this.contractsService.update(
                 Number(req.params.id),
@@ -114,7 +157,7 @@ export class ContractsController {
                 data: result,
                 message:
                     AppMessages?.Success?.Contract?.UPDATED ??
-                    'Contract updated successfully',
+                    'Updated successfully',
             });
         } catch (error) {
             next(error);

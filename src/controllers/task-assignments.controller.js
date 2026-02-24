@@ -78,8 +78,15 @@ export class TaskAssignmentsController {
     update = async (req, res, next) => {
         try {
             const { id } = req.params;
-            const assignment = await this.assignmentsService.updateAssignment(id, req.body);
-            return ResponseUtil.successResponse(res, 200, assignment, 'Task assignment updated successfully');
+            const updateData = { ...req.body };
+
+            if (req.file) {
+                updateData.evidencePath = req.file.path.replace(/\\/g, '/');
+            }
+
+            const result = await this.assignmentsService.updateAssignment(id, updateData);
+            
+            ResponseUtil.sendResponse(res, "Cập nhật nhiệm vụ thành công", result);
         } catch (error) {
             next(error);
         }

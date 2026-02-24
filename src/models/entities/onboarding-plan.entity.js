@@ -23,6 +23,9 @@ export class OnboardingPlanEntity extends BaseEntity {
     @JoinColumn({ name: 'department_id' })
     department;
 
+    @Column({ name: 'position_id', nullable: true, type: 'int' })
+    positionId;
+
     @ManyToOne(() => PositionEntity)
     @JoinColumn({ name: 'position_id' })
     position;

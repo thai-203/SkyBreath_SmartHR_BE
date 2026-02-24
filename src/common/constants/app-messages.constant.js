@@ -167,6 +167,14 @@ export const AppMessages = {
     Validation: {
       FAILED: { code: 'VAL_001', message: 'Validation failed' },
     },
+    Onboarding: {
+      PLAN_NOT_FOUND: { code: 'ONB_001', message: 'Kế hoạch onboarding không được tìm thấy' },
+      PLAN_NAME_REQUIRED: { code: 'ONB_002', message: 'Tên kế hoạch onboarding là bắt buộc' },
+      PROGRESS_NOT_FOUND: { code: 'ONB_003', message: 'Tiến trình onboarding không được tìm thấy' },
+      PROGRESS_ALREADY_EXISTS: { code: 'ONB_004', message: 'Nhân viên đã có tiến trình onboarding cho kế hoạch này' },
+      CANNOT_RESUME: { code: 'ONB_005', message: 'Chỉ có thể tiếp tục onboarding đã bị tạm dừng' },
+      TEMPLATE_ALREADY_EXISTS: {code: 'ONB_006', message:'Phòng ban và vị trí này đã có template onboarding. Vui lòng chỉnh sửa template hiện có.',},
+    },
     General: {
       INTERNAL_SERVER_ERROR: { code: 'ERR_001', message: 'Lỗi máy chủ nội bộ' },
       BAD_REQUEST: { code: 'ERR_002', message: 'Yêu cầu không hợp lệ' },

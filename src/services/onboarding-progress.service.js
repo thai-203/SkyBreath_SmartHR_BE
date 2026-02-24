@@ -1,48 +1,52 @@
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repository.js';
 import { TaskAssignmentsRepository } from '../repositories/task-assignments.repository.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { NotFoundException, BadRequestException } from '../common/exceptions/index.js';
+import { AppMessages } from '../common/constants/index.js';
+import { PaginatedResponseDto } from '../common/dto/index.js';
 
 export class OnboardingProgressService {
     constructor() {
         this.progressRepository = new OnboardingProgressRepository();
         this.plansRepository = new OnboardingPlansRepository();
         this.taskAssignmentsRepository = new TaskAssignmentsRepository();
+        this.employeesRepository = new EmployeesRepository();
     }
 
-    async getAllProgress(skip = 0, take = 10) {
+    async findAll(queryDto) {
         const [progress, total] = await Promise.all([
-            this.progressRepository.findAll(skip, take),
+            this.progressRepository.findAll(queryDto.skip, queryDto.limit),
             this.progressRepository.count()
         ]);
-        return { progress, total };
+        return new PaginatedResponseDto(progress, total, queryDto);
     }
 
-    async getProgressById(progressId) {
+    async findById(progressId) {
         const progress = await this.progressRepository.findById(progressId);
         if (!progress) {
-            throw new NotFoundException(`Onboarding progress with ID ${progressId} not found`);
+            throw new NotFoundException(AppMessages.Errors.Onboarding?.PROGRESS_NOT_FOUND?.message || `Onboarding progress with ID ${progressId} not found`);
         }
         return progress;
     }
 
-    async getEmployeeProgress(employeeId) {
+    async findByEmployee(employeeId) {
         const progress = await this.progressRepository.findByEmployeeId(employeeId);
         if (!progress) {
-            throw new NotFoundException(`No onboarding progress found for employee ${employeeId}`);
+            throw new NotFoundException(AppMessages.Errors.Onboarding?.PROGRESS_NOT_FOUND?.message || `No onboarding progress found for employee ${employeeId}`);
         }
         return progress;
     }
 
-    async startOnboarding(employeeId, planId, assignedMentorId = null) {
+    async create(employeeId, planId, assignedMentorId = null) {
         const plan = await this.plansRepository.findById(planId);
         if (!plan) {
-            throw new NotFoundException(`Plan with ID ${planId} not found`);
+            throw new NotFoundException(AppMessages.Errors.Onboarding?.PLAN_NOT_FOUND?.message || `Plan with ID ${planId} not found`);
         }
 
         const existingProgress = await this.progressRepository.findByEmployeeAndPlan(employeeId, planId);
         if (existingProgress) {
-            throw new BadRequestException('Employee already has onboarding progress for this plan');
+            throw new BadRequestException(AppMessages.Errors.Onboarding?.PROGRESS_ALREADY_EXISTS?.message || 'Employee already has onboarding progress for this plan');
         }
 
         const startDate = new Date();
@@ -62,8 +66,8 @@ export class OnboardingProgressService {
         });
     }
 
-    async updateProgress(progressId, data) {
-        const progress = await this.getProgressById(progressId);
+    async update(progressId, data) {
+        await this.findById(progressId);
         return this.progressRepository.update(progressId, {
             ...data,
             updatedAt: new Date(),
@@ -71,7 +75,7 @@ export class OnboardingProgressService {
     }
 
     async updateProgressPercentage(progressId) {
-        const progress = await this.getProgressById(progressId);
+        const progress = await this.findById(progressId);
         const assignments = await this.taskAssignmentsRepository.findByProgressId(progressId);
         
         if (assignments.length === 0) {
@@ -89,8 +93,8 @@ export class OnboardingProgressService {
         });
     }
 
-    async completeOnboarding(progressId) {
-        const progress = await this.getProgressById(progressId);
+    async complete(progressId) {
+        await this.findById(progressId);
         
         return this.progressRepository.update(progressId, {
             overallStatus: 'COMPLETED',
@@ -99,8 +103,8 @@ export class OnboardingProgressService {
         });
     }
 
-    async pauseOnboarding(progressId) {
-        const progress = await this.getProgressById(progressId);
+    async pause(progressId) {
+        await this.findById(progressId);
         
         return this.progressRepository.update(progressId, {
             overallStatus: 'ON_HOLD',
@@ -108,11 +112,11 @@ export class OnboardingProgressService {
         });
     }
 
-    async resumeOnboarding(progressId) {
-        const progress = await this.getProgressById(progressId);
+    async resume(progressId) {
+        const progress = await this.findById(progressId);
         
         if (progress.overallStatus !== 'ON_HOLD') {
-            throw new BadRequestException('Only paused onboarding can be resumed');
+            throw new BadRequestException(AppMessages.Errors.Onboarding?.CANNOT_RESUME?.message || 'Only paused onboarding can be resumed');
         }
 
         return this.progressRepository.update(progressId, {
@@ -121,24 +125,77 @@ export class OnboardingProgressService {
         });
     }
 
-    async getProgressByDepartment(departmentId) {
+    async findByDepartment(departmentId) {
         return this.progressRepository.findInProgressByDepartment(departmentId);
     }
 
-    async getProgressStats() {
-        const [totalProgress, inProgressCount, completedCount, onHoldCount] = await Promise.all([
+    async getStatistics() {
+        const now = new Date();
+
+        const todayEnd = new Date(now);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const currentStart = new Date(now);
+        currentStart.setDate(now.getDate() - 30);
+        currentStart.setHours(0, 0, 0, 0);
+
+        const previousStart = new Date(now);
+        previousStart.setDate(now.getDate() - 60);
+        previousStart.setHours(0, 0, 0, 0);
+
+        const previousEnd = new Date(now);
+        previousEnd.setDate(now.getDate() - 31);
+        previousEnd.setHours(23, 59, 59, 999);
+
+        const [
+            totalProgress,
+            inProgressCount,
+            completedCount,
+            onHoldCount,
+            currentNewEmployees,
+            previousNewEmployees
+        ] = await Promise.all([
             this.progressRepository.count(),
             this.progressRepository.countByStatus('IN_PROGRESS'),
             this.progressRepository.countByStatus('COMPLETED'),
             this.progressRepository.countByStatus('ON_HOLD'),
+
+            this.employeesRepository.countByCreatedAtRange(
+                currentStart,
+                todayEnd
+            ),
+
+            this.employeesRepository.countByCreatedAtRange(
+                previousStart,
+                previousEnd
+            ),
         ]);
+
+        let growthRate = 0;
+
+        if (previousNewEmployees > 0) {
+            growthRate = Math.round(
+                ((currentNewEmployees - previousNewEmployees) /
+                    previousNewEmployees) * 100
+            );
+        } else if (currentNewEmployees > 0) {
+            growthRate = 100;
+        }
 
         return {
             totalOnboardings: totalProgress,
             inProgress: inProgressCount,
             completed: completedCount,
             onHold: onHoldCount,
-            averageCompletionRate: totalProgress > 0 ? Math.round((completedCount / totalProgress) * 100) : 0,
+
+            averageCompletionRate:
+                totalProgress > 0
+                    ? Math.round((completedCount / totalProgress) * 100)
+                    : 0,
+
+            newEmployeesLast30Days: currentNewEmployees,
+            newEmployeesPrevious30Days: previousNewEmployees,
+            growthRate,
         };
     }
 }
