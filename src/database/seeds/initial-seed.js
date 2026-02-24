@@ -1,19 +1,19 @@
 import { DataSource } from 'typeorm';
 import { hashPassword } from '../../common/utils/index.js';
 import { databaseConfig } from '../../config/database.config.js';
+import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
 import { DepartmentEntity } from '../../models/entities/department.entity.js';
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
+import { HolidayListEntity } from '../../models/entities/holiday-list.entity.js';
 import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
 import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
+import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
 import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
-import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
-import { HolidayListEntity } from '../../models/entities/holiday-list.entity.js';
-import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
 
 const seed = async () => {
     const dataSource = new DataSource(databaseConfig);
@@ -44,6 +44,39 @@ const seed = async () => {
             { permissionCode: 'TIMESHEET_UPDATE', description: 'Edit timesheets' },
             { permissionCode: 'TIMESHEET_LOCK', description: 'Lock/Unlock timesheets' },
             { permissionCode: 'TIMESHEET_EXPORT', description: 'Export timesheets' },
+            { permissionCode: 'HOLIDAY_READ', description: 'View holiday list', module: 'Holiday' },
+            { permissionCode: 'HOLIDAY_CREATE', description: 'Create holiday', module: 'Holiday' },
+            { permissionCode: 'HOLIDAY_UPDATE', description: 'Update holiday', module: 'Holiday' },
+            { permissionCode: 'HOLIDAY_DELETE', description: 'Delete holiday', module: 'Holiday' },
+            { permissionCode: 'HOLIDAY_EXPORT', description: 'Export holidays', module: 'Holiday' },
+
+            // Contracts
+            { permissionCode: 'CONTRACT_READ', description: 'View contracts', module: 'Contract' },
+            { permissionCode: 'CONTRACT_CREATE', description: 'Create contract', module: 'Contract' },
+            { permissionCode: 'CONTRACT_UPDATE', description: 'Update contract', module: 'Contract' },
+            { permissionCode: 'CONTRACT_DELETE', description: 'Delete contract', module: 'Contract' },
+            { permissionCode: 'CONTRACT_EXPORT', description: 'Export contracts', module: 'Contract' },
+
+            // Positions
+            { permissionCode: 'POSITION_READ', description: 'View positions', module: 'Position' },
+            { permissionCode: 'POSITION_CREATE', description: 'Create position', module: 'Position' },
+            { permissionCode: 'POSITION_UPDATE', description: 'Update position', module: 'Position' },
+            { permissionCode: 'POSITION_DELETE', description: 'Delete position', module: 'Position' },
+            { permissionCode: 'POSITION_EXPORT', description: 'Export positions', module: 'Position' },
+
+            // Job Grades
+            { permissionCode: 'JOB_GRADE_READ', description: 'View job grades', module: 'JobGrade' },
+            { permissionCode: 'JOB_GRADE_CREATE', description: 'Create job grade', module: 'JobGrade' },
+            { permissionCode: 'JOB_GRADE_UPDATE', description: 'Update job grade', module: 'JobGrade' },
+            { permissionCode: 'JOB_GRADE_DELETE', description: 'Delete job grade', module: 'JobGrade' },
+            { permissionCode: 'JOB_GRADE_EXPORT', description: 'Export job grades', module: 'JobGrade' },
+
+            // Employee Salaries
+            { permissionCode: 'EMPLOYEE_SALARY_READ', description: 'View employee salaries', module: 'Salary' },
+            { permissionCode: 'EMPLOYEE_SALARY_CREATE', description: 'Create employee salary', module: 'Salary' },
+            { permissionCode: 'EMPLOYEE_SALARY_UPDATE', description: 'Update employee salary', module: 'Salary' },
+            { permissionCode: 'EMPLOYEE_SALARY_DELETE', description: 'Delete employee salary', module: 'Salary' },
+            { permissionCode: 'EMPLOYEE_SALARY_EXPORT', description: 'Export employee salaries', module: 'Salary' },
         ];
 
         const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -96,8 +129,8 @@ const seed = async () => {
         }
         console.log('Assigned permissions to ADMIN');
 
-        // Manager gets DEPT_READ, DEPT_UPDATE, Employee.View
-        const managerPerms = ['DEPT_READ', 'DEPT_UPDATE', 'EMPLOYEE_READ', 'TIMESHEET_READ'];
+        // MANAGER gets DEPT_READ, EMPLOYEE_READ, HOLIDAY_READ, POSITION_READ, JOB_GRADE_READ
+        const managerPerms = ['DEPT_READ', 'EMPLOYEE_READ', 'HOLIDAY_READ', 'POSITION_READ', 'JOB_GRADE_READ', 'TIMESHEET_READ'];
         for (const code of managerPerms) {
             const p = permissions.find(perm => perm.permissionCode === code);
             if (p) {
@@ -109,11 +142,16 @@ const seed = async () => {
         }
         console.log('Assigned permissions to MANAGER');
 
-        // HR gets DEPT_READ, DEPT_CREATE, DEPT_UPDATE, DEPT_EXPORT, Employee.*
+        // HR gets DEPT_READ, DEPT_CREATE, DEPT_UPDATE, DEPT_EXPORT, Employee.*, Holiday.*, Contract.*, Position.*, JobGrade.*, Salary.*
         const hrPerms = [
             'DEPT_READ', 'DEPT_CREATE', 'DEPT_UPDATE', 'DEPT_EXPORT',
             'EMPLOYEE_READ', 'EMPLOYEE_CREATE', 'EMPLOYEE_UPDATE', 'EMPLOYEE_DELETE', 'EMPLOYEE_EXPORT',
-            'TIMESHEET_READ', 'TIMESHEET_CREATE', 'TIMESHEET_UPDATE', 'TIMESHEET_LOCK', 'TIMESHEET_EXPORT'
+            'TIMESHEET_READ', 'TIMESHEET_CREATE', 'TIMESHEET_UPDATE', 'TIMESHEET_LOCK', 'TIMESHEET_EXPORT',
+            'HOLIDAY_READ', 'HOLIDAY_CREATE', 'HOLIDAY_UPDATE', 'HOLIDAY_DELETE', 'HOLIDAY_EXPORT',
+            'CONTRACT_READ', 'CONTRACT_CREATE', 'CONTRACT_UPDATE', 'CONTRACT_DELETE', 'CONTRACT_EXPORT',
+            'POSITION_READ', 'POSITION_CREATE', 'POSITION_UPDATE', 'POSITION_DELETE', 'POSITION_EXPORT',
+            'JOB_GRADE_READ', 'JOB_GRADE_CREATE', 'JOB_GRADE_UPDATE', 'JOB_GRADE_DELETE', 'JOB_GRADE_EXPORT',
+            'EMPLOYEE_SALARY_READ', 'EMPLOYEE_SALARY_CREATE', 'EMPLOYEE_SALARY_UPDATE', 'EMPLOYEE_SALARY_DELETE', 'EMPLOYEE_SALARY_EXPORT'
         ];
         for (const code of hrPerms) {
             const p = permissions.find(perm => perm.permissionCode === code);

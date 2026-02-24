@@ -1,12 +1,11 @@
+import { AppMessages } from '../common/constants/index.js';
+import { PaginatedResponseDto } from '../common/dto/index.js';
+import { BadRequestException, ConflictException, NotFoundException } from '../common/exceptions/index.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repository.js';
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { OnboardingTasksRepository } from '../repositories/onboarding-tasks.repository.js';
 import { TaskAssignmentsRepository } from '../repositories/task-assignments.repository.js';
-import { EmployeesRepository } from '../repositories/employees.repository.js';
-import { BadRequestException, NotFoundException, ConflictException } from '../common/exceptions/index.js';
-import { AppMessages } from '../common/constants/index.js';
-import { PaginatedResponseDto } from '../common/dto/index.js';
-import { act } from 'react';
 
 export class OnboardingPlansService {
     constructor() {
@@ -278,7 +277,7 @@ export class OnboardingPlansService {
         const plan = await this.findById(planId);
         const progressRecords = await this.progressRepository.findAll(0, 1000);
         const planProgressRecords = progressRecords.plans.filter(p => p.planId === planId);
-        
+
         return {
             planId,
             planName: plan.planName,

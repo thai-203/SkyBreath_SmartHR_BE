@@ -1,0 +1,72 @@
+import { Between, Like } from 'typeorm';
+import { AppDataSource } from '../database/data-source.js';
+import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
+
+export class HolidayListRepository {
+    constructor() {
+        this.repository = AppDataSource.getRepository(HolidayListEntity);
+    }
+
+    async create(data) {
+        const holiday = this.repository.create(data);
+        return this.repository.save(holiday);
+    }
+
+    async findAll(queryDto = {}) {
+        const { skip = 0, limit = 10, sortBy = 'holidayDate', sortOrder = 'ASC', search, startDate, endDate } = queryDto;
+
+        const order = {};
+        if (sortBy) {
+            order[sortBy] = sortOrder;
+        } else {
+            order.holidayDate = 'ASC';
+        }
+
+        const where = {
+            isDeleted: false,
+        };
+
+        if (search) {
+            where.holidayName = Like(`%${search}%`);
+        }
+
+        if (startDate && endDate) {
+            where.holidayDate = Between(startDate, endDate);
+        } else if (startDate) {
+            where.holidayDate = Like(`${startDate}%`);
+        }
+
+        const [items, total] = await this.repository.findAndCount({
+            where,
+            order,
+            skip,
+            take: limit,
+        });
+
+        return [items, total];
+    }
+
+    async findById(id) {
+        return this.repository.findOne({
+            where: { id, isDeleted: false },
+        });
+    }
+
+    async update(id, data) {
+        await this.repository.update(id, data);
+        return this.findById(id);
+    }
+
+    async delete(id) {
+        await this.repository.update(id, {
+            isDeleted: true,
+            deletedAt: new Date(),
+        });
+    }
+
+    async findByNameAndDate(name, date) {
+        return this.repository.findOne({
+            where: { holidayName: name, holidayDate: date, isDeleted: false },
+        });
+    }
+}

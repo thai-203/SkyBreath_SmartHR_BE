@@ -1,8 +1,8 @@
 import * as jwt from 'jsonwebtoken';
 import { AppDataSource } from '../../database/data-source.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
-import { UnauthorizedException } from '../exceptions/index.js';
 import { AppMessages } from '../constants/index.js';
+import { UnauthorizedException } from '../exceptions/index.js';
 
 export const authMiddleware = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -59,6 +59,8 @@ export const authMiddleware = async (req, res, next) => {
             roles: user.userRoles?.map(ur => ur.role.roleName) || [],
             permissions: Array.from(permissions),
         };
+
+        console.log(`[Auth] User ${user.username} (ID: ${user.id}) permissions:`, req.user.permissions);
 
         next();
     } catch (error) {
