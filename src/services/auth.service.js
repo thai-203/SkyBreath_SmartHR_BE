@@ -4,6 +4,7 @@ import {
   hashPassword,
   comparePassword,
   hashResetPasswordToken,
+  compareRefreshToken,
 } from '../common/utils/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import {
@@ -96,15 +97,15 @@ export class AuthService {
 
   async refreshTokens(userId, refreshToken) {
     const user = await this.usersService.findById(userId);
-
+    
     if (!user || !user.refreshToken) {
       throw new UnauthorizedException('Access denied');
     }
 
-    if (user.refreshToken !== refreshToken) {
+    if (!compareRefreshToken(user.refreshToken, refreshToken)) {
       throw new UnauthorizedException('Access denied');
     }
-
+    
     const tokens = await this.generateTokens(user);
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
 
@@ -133,7 +134,7 @@ export class AuthService {
     }
 
     const hashedPassword = await hashPassword(changePasswordDto.newPassword);
-    await this.usersRepository.update(userId, { password: hashedPassword });
+    await this.usersService.update(userId, { password: hashedPassword });
 
     return { message: 'Password changed successfully' };
   }
@@ -167,7 +168,7 @@ export class AuthService {
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      jwt.sign(payload, secret, { expiresIn: expiresIn }),
+      jwt.sign(payload, secret, { expiresIn: expiresIn   }),
       jwt.sign(payload, refreshSecret, { expiresIn: refreshExpiresIn }),
     ]);
 

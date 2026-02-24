@@ -1,5 +1,6 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { IsNull, Between } from 'typeorm';
 
 export class EmployeesRepository {
     constructor() {
@@ -12,7 +13,7 @@ export class EmployeesRepository {
     }
 
     async findAll(options = {}) {
-        const { skip = 0, take = 10, search = '', departmentId } = options;
+        const { skip = 0, take = 10, search = '', departmentId, positionId, employmentStatus } = options;
         const query = this.repository.createQueryBuilder('employee')
             .leftJoinAndSelect('employee.user', 'user')
             .leftJoinAndSelect('employee.department', 'department')
@@ -23,11 +24,22 @@ export class EmployeesRepository {
             .where('employee.isDeleted = :isDeleted', { isDeleted: false });
 
         if (search) {
-            query.andWhere('employee.fullName LIKE :search', { search: `%${search}%` });
+            query.andWhere(
+                '(employee.fullName LIKE :search OR employee.employeeCode LIKE :search OR employee.companyEmail LIKE :search)',
+                { search: `%${search}%` }
+            );
         }
 
         if (departmentId) {
             query.andWhere('employee.departmentId = :departmentId', { departmentId });
+        }
+
+        if (positionId) {
+            query.andWhere('employee.positionId = :positionId', { positionId });
+        }
+
+        if (employmentStatus) {
+            query.andWhere('employee.employmentStatus = :employmentStatus', { employmentStatus });
         }
 
         const [items, total] = await query
@@ -84,7 +96,54 @@ export class EmployeesRepository {
     async findValidationData() {
         return this.repository.find({
             where: { isDeleted: false },
-            select: ['id', 'fullName', 'personalEmail', 'companyEmail', 'phoneNumber', 'nationalId']
+            select: ['id', 'employeeCode', 'fullName', 'personalEmail', 'companyEmail', 'phoneNumber', 'nationalId']
+        });
+    }
+
+    async getEmployeeNoPlanId() {
+        return this.repository.find({
+            where: {
+                isDeleted: false,
+                planId: IsNull(),
+            },
+            relations: [
+                'user',
+                'department',
+                'position',
+                'jobGrade',
+                'directManager',
+                'hrMentor',
+            ],
+        });
+    }
+
+    async getByUserId(userId) {
+        return this.repository.findOne({
+            where: {
+                isDeleted: false,
+                userId: userId,
+            },
+            relations: [
+                'user',
+                'department',
+                'position',
+                'jobGrade',
+                'directManager',
+                'hrMentor',
+            ],
+        });
+    }
+
+    async count() {
+        return this.repository.count({ where: { isDeleted: false } });
+    }
+
+    async countByCreatedAtRange(start, end) {
+        return this.repository.count({
+        where: {
+                isDeleted: false,
+                createdAt: Between(start, end),
+            },
         });
     }
 }

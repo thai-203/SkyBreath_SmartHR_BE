@@ -5,18 +5,25 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
-import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { config } from './config/env.config.js';
 import redis from './config/redis.config.js';
-import { swaggerSpec } from './config/swagger.config.js';
 import { AppDataSource } from './database/data-source.js';
 import { authRoutes } from './routes/auth.routes.js';
-import { contractsRoutes } from './routes/contracts.routes.js';
+import { usersRoutes } from './routes/users.routes.js';
 import { departmentsRoutes } from './routes/departments.routes.js';
 import { employeesRoutes } from './routes/employees.routes.js';
-import { permissionsRoutes } from './routes/permissions.routes.js';
+import { contractsRoutes } from './routes/contracts.routes.js';
+import { actionLogsRoutes } from './routes/action-logs.routes.js';
+import { jobGradesRoutes } from './routes/job-grades.routes.js';
+import { positionsRoutes } from './routes/positions.routes.js';
+import { employeeSalariesRoutes } from './routes/employee-salaries.routes.js';
+import { onboardingRoutes } from './routes/onboarding.routes.js';
+import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { rolesRoutes } from './routes/roles.routes.js';
-import { usersRoutes } from './routes/users.routes.js';
+import { permissionsRoutes } from './routes/permissions.routes.js';
+import { timesheetsRoutes } from './routes/timesheets.routes.js';
+import { swaggerSpec } from './config/swagger.config.js';
+import { actionLogMiddleware } from './common/middleware/action-log.middleware.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
@@ -35,11 +42,14 @@ app.use(
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   }),
 );
+
+app.set('trust proxy', true);
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(actionLogMiddleware);
 app.use('/uploads', express.static(path.resolve('uploads')));
 
 // Routes
@@ -50,6 +60,12 @@ app.use(`/${API_PREFIX}/${API_VERSION}/departments`, departmentsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/employees`, employeesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/permissions`, permissionsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/contracts`, contractsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/action-logs`, actionLogsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/job-grades`, jobGradesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/positions`, positionsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/employee-salaries`, employeeSalariesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/onboarding`, onboardingRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/timesheets`, timesheetsRoutes);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');

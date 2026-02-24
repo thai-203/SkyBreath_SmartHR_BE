@@ -14,8 +14,9 @@ export class MailService {
 
     await sendMail(to, subject, text, html);
   }
-  
+
   async sendAccountInfo(to, fullName, username, password) {
+    console.log(`[MailService] Preparing account info email for ${fullName} (${to})`);
     const subject = 'Thông tin tài khoản đăng nhập hệ thống SmartHR';
     const html = `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
@@ -34,10 +35,10 @@ export class MailService {
 
     try {
       await sendMail(to, subject, '', html);
-      console.log(`Account info email sent to ${to}`);
+      console.log(`[MailService] Account info email sent successfully to ${to}`);
       return true;
     } catch (error) {
-      console.error('Error sending email:', error);
+      console.error('[MailService] Failed to send account info email:', error.message);
       return false;
     }
   }

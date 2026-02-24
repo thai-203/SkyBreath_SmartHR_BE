@@ -4,9 +4,13 @@ import { UserEntity } from './user.entity.js';
 import { DepartmentEntity } from './department.entity.js';
 import { PositionEntity } from './position.entity.js';
 import { JobGradeEntity } from './job-grade.entity.js';
+import { OnboardingPlanEntity } from './onboarding-plan.entity.js';
 
 @Entity('employees')
 export class EmployeeEntity extends BaseEntity {
+    @Column({ name: 'employee_code', unique: true, type: 'varchar', length: 20, nullable: true })
+    employeeCode;
+
     @Column({ name: 'user_id', nullable: true, type: 'int' })
     userId;
 
@@ -72,6 +76,13 @@ export class EmployeeEntity extends BaseEntity {
     @ManyToOne(() => PositionEntity)
     @JoinColumn({ name: 'position_id' })
     position;
+
+    @Column({ name: 'plan_id', nullable: true, type: 'int' })
+    planId;
+
+    @ManyToOne(() => OnboardingPlanEntity)
+    @JoinColumn({ name: 'plan_id' })
+    plan;
 
     @Column({ name: 'direct_manager_id', nullable: true, type: 'int' })
     directManagerId;

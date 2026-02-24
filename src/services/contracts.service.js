@@ -11,30 +11,8 @@ export class ContractsService {
         this.employeesRepository = new EmployeesRepository();
     }
 
-    async create(createDto) {
-        // Verify employee exists
-        const employee = await this.employeesRepository.findById(createDto.employeeId);
-        if (!employee) {
-            throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
-        }
-
-        // Generate contract number if not provided
-        if (!createDto.contractNumber) {
-            createDto.contractNumber = `CT-${Date.now()}-${uuidv4().substring(0, 8)}`;
-        }
-
-        // Check if contract number already exists
-        const existing = await this.contractsRepository.findByContractNumber(createDto.contractNumber);
-        if (existing) {
-            throw new ConflictException(AppMessages.Errors.Contract.ALREADY_EXISTS);
-        }
-
-        // Validate dates
-        if (createDto.endDate && new Date(createDto.startDate) >= new Date(createDto.endDate)) {
-            throw new BadRequestException('End date must be after start date');
-        }
-
-        return this.contractsRepository.create(createDto);
+    async create(dto) {
+        return this.contractsRepository.create(dto);
     }
 
     async findAll(queryDto) {
@@ -51,7 +29,6 @@ export class ContractsService {
     }
 
     async findByEmployeeId(employeeId) {
-        // Verify employee exists
         const employee = await this.employeesRepository.findById(employeeId);
         if (!employee) {
             throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
@@ -62,8 +39,6 @@ export class ContractsService {
 
     async update(id, updateDto) {
         await this.findById(id);
-
-        // If updating contract number, check for duplicates
         if (updateDto.contractNumber) {
             const existing = await this.contractsRepository.findByContractNumber(updateDto.contractNumber);
             if (existing && existing.id !== id) {
@@ -81,24 +56,23 @@ export class ContractsService {
                 throw new BadRequestException('End date must be after start date');
             }
         }
-
         return this.contractsRepository.update(id, updateDto);
     }
 
-    async terminate(id, terminationData) {
+    async terminate(id, terminationData, userId) {
         const contract = await this.findById(id);
 
-        if (contract.contractStatus === 'Terminated') {
+        if (contract.contractStatus === 'terminated') {
             throw new BadRequestException('Contract is already terminated');
         }
 
-        const updateData = {
-            contractStatus: 'Terminated',
-            endDate: terminationData.terminationDate || new Date(),
-        };
-
-        return this.contractsRepository.update(id, updateData);
+        return this.contractsRepository.terminate(
+            id,
+            terminationData,
+            userId
+        );
     }
+
 
     async remove(id) {
         await this.findById(id);

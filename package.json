@@ -43,6 +43,7 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.28",
+    "ua-parser-js": "^2.0.9",
     "uuid": "^13.0.0",
     "winston": "^3.19.0"
   },

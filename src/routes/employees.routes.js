@@ -3,6 +3,7 @@ import { EmployeesController } from '../controllers/employees.controller.js';
 import { EmployeesService } from '../services/employees.service.js';
 import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { upload } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
@@ -19,119 +20,31 @@ const employeesController = new EmployeesController(employeesService);
  *   description: Employee management endpoints
  */
 
-/**
- * @swagger
- * /employees/list:
- *   get:
- *     summary: Get paginated list of employees
- *     tags: [Employees]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *         description: Page number
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *         description: Number of items per page
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *         description: Search by full name
- *     responses:
- *       200:
- *         description: Employees retrieved successfully
- *       401:
- *         description: Unauthorized
- */
-router.post('/', authMiddleware, upload.fields([
+// View permissions
+router.get('/meta-data', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.getMetadata);
+router.get('/list', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.list);
+router.get('/no-plan', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.getEmployeeNoPlanId);
+router.get('/user/:userId', authMiddleware, employeesController.getByUserId);
+router.get('/', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.all);
+router.get('/validation-data', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.getValidationData);
+router.get('/:id', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.findOne);
+
+// Export permission
+router.get('/export', authMiddleware, permissionsMiddleware('EMPLOYEE_EXPORT'), employeesController.export);
+
+// Create permission
+router.post('/', authMiddleware, permissionsMiddleware('EMPLOYEE_CREATE'), upload.fields([
     { name: 'frontIdCard', maxCount: 1 },
     { name: 'backIdCard', maxCount: 1 }
 ]), employeesController.create);
-router.get('/meta-data', authMiddleware, employeesController.getMetadata);
-router.get('/list', authMiddleware, employeesController.list);
-router.get('/', authMiddleware, employeesController.all);
-router.get('/validation-data', authMiddleware, employeesController.getValidationData);
-router.get('/export', authMiddleware, employeesController.export);
-router.get('/:id', authMiddleware, employeesController.findOne);
 
-/**
- * @swagger
- * /employees/{id}:
- *   patch:
- *     summary: Update employee information
- *     tags: [Employees]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Employee ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fullName:
- *                 type: string
- *               personalEmail:
- *                 type: string
- *               phoneNumber:
- *                 type: string
- *               address:
- *                 type: string
- *               departmentId:
- *                 type: integer
- *               positionId:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Employee updated successfully
- *       404:
- *         description: Employee not found
- *       401:
- *         description: Unauthorized
- */
-router.put('/:id', authMiddleware, upload.fields([
+// Update permission
+router.put('/:id', authMiddleware, permissionsMiddleware('EMPLOYEE_UPDATE'), upload.fields([
     { name: 'frontIdCard', maxCount: 1 },
     { name: 'backIdCard', maxCount: 1 }
 ]), employeesController.update);
 
-/**
- * @swagger
- * /employees/{id}:
- *   delete:
- *     summary: Soft delete an employee record
- *     tags: [Employees]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Employee ID
- *     responses:
- *       200:
- *         description: Employee deleted successfully
- *       404:
- *         description: Employee not found
- *       401:
- *         description: Unauthorized
- */
-router.delete('/:id', authMiddleware, employeesController.delete);
+// Delete permission
+router.delete('/:id', authMiddleware, permissionsMiddleware('EMPLOYEE_DELETE'), employeesController.delete);
 
 export const employeesRoutes = router;

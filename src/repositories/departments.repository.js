@@ -1,5 +1,6 @@
 import { AppDataSource } from '../database/data-source.js';
 import { DepartmentEntity } from '../models/entities/department.entity.js';
+import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { Like } from 'typeorm';
 
 export class DepartmentsRepository {
@@ -30,20 +31,46 @@ export class DepartmentsRepository {
             where.departmentName = Like(`%${search}%`);
         }
 
-        return this.repository.findAndCount({
+        const [items, total] = await this.repository.findAndCount({
             where,
             relations: ['parentDepartment', 'manager'],
             order,
             skip,
             take: limit,
         });
+
+        // Add employee count to each item
+        const employeeRepository = AppDataSource.getRepository(EmployeeEntity);
+        const itemsWithCount = await Promise.all(items.map(async (item) => {
+            const employeeCount = await employeeRepository.count({
+                where: { departmentId: item.id, isDeleted: false }
+            });
+            return { ...item, employeeCount };
+        }));
+
+        return [itemsWithCount, total];
     }
 
     async findById(id) {
-        return this.repository.findOne({
+        const department = await this.repository.findOne({
             where: { id, isDeleted: false },
             relations: ['parentDepartment', 'manager'],
         });
+
+        if (department) {
+            const employeeRepository = AppDataSource.getRepository(EmployeeEntity);
+            department.employeeCount = await employeeRepository.count({
+                where: { departmentId: department.id, isDeleted: false }
+            });
+
+            // Get children
+            department.children = await this.repository.find({
+                where: { parentDepartmentId: department.id, isDeleted: false },
+                relations: ['manager']
+            });
+        }
+
+        return department;
     }
 
     async update(id, data) {
@@ -81,5 +108,20 @@ export class DepartmentsRepository {
         return this.repository.findOne({
             where: { departmentName: name, isDeleted: false },
         });
+    }
+
+    async hasChildren(id) {
+        const count = await this.repository.count({
+            where: { parentDepartmentId: id, isDeleted: false }
+        });
+        return count > 0;
+    }
+
+    async hasEmployees(id) {
+        const employeeRepository = AppDataSource.getRepository(EmployeeEntity);
+        const count = await employeeRepository.count({
+            where: { departmentId: id, isDeleted: false }
+        });
+        return count > 0;
     }
 }

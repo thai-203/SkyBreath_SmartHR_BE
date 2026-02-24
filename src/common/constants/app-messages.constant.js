@@ -50,6 +50,17 @@ export const AppMessages = {
       DELETED: 'Xóa nhân viên thành công',
     },
 
+    ActionLog: {
+      RETRIEVED_ALL: 'Action logs retrieved successfully',
+      RETRIEVED: 'Action log retrieved successfully',
+      CREATED: 'Action log recorded successfully',
+    },
+
+    ActionLog: {
+      RETRIEVED_ALL: 'Action logs retrieved successfully',
+      RETRIEVED: 'Action log retrieved successfully',
+    },
+
     Contract: {
       CREATED: 'Hợp đồng đã được tạo thành công',
       RETRIEVED_ALL: 'Danh sách hợp đồng đã được tải',
@@ -57,6 +68,16 @@ export const AppMessages = {
       UPDATED: 'Cập nhật hợp đồng thành công',
       TERMINATED: 'Hợp đồng đã được chấm dứt thành công',
       DELETED: 'Xóa hợp đồng thành công',
+    },
+
+    Timesheet: {
+      GENERATED: 'Bảng chấm công đã được tạo thành công',
+      RETRIEVED_ALL: 'Danh sách bảng chấm công đã được tải',
+      RETRIEVED: 'Thông tin bảng chấm công đã được tải',
+      UPDATED: 'Cập nhật bảng chấm công thành công',
+      RECALCULATED: 'Đã tính lại bảng chấm công',
+      LOCKED: 'Bảng chấm công đã được khóa',
+      UNLOCKED: 'Bảng chấm công đã được mở khóa',
     },
   },
 
@@ -91,25 +112,33 @@ export const AppMessages = {
         code: 'EMP_006',
         message: 'Số CMND/CCCD đã được sử dụng',
       },
+      CODE_DUPLICATE: {
+        code: 'EMP_007',
+        message: 'Mã nhân viên đã tồn tại',
+      },
     },
     Department: {
       NOT_FOUND: { code: 'DEPT_001', message: 'Không tìm thấy phòng ban' },
       ALREADY_EXISTS: { code: 'DEPT_002', message: 'Phòng ban đã tồn tại' },
       HAS_EMPLOYEES: {
         code: 'DEPT_003',
-        message: 'Phòng ban đang có nhân viên',
+        message: 'Không thể xóa phòng ban đang có nhân viên',
+      },
+      HAS_CHILDREN: {
+        code: 'DEPT_004',
+        message: 'Không thể xóa phòng ban đang có phòng ban con',
       },
     },
     Contract: {
-      NOT_FOUND: { code: 'CONTRACT_001', message: 'Hợp đồng không tìm thấy' },
-      ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'Hợp đồng đã tồn tại' },
+      NOT_FOUND: { code: 'CONTRACT_001', message: 'Contract not found' },
+      ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'The contract already exists' },
       INVALID_DATE: {
         code: 'CONTRACT_003',
-        message: 'Ngày kết thúc phải sau ngày bắt đầu',
+        message: 'The end date must be after the start date',
       },
       ALREADY_TERMINATED: {
         code: 'CONTRACT_004',
-        message: 'Hợp đồng đã được kết thúc',
+        message: 'The contract has been terminated',
       },
     },
     Attendance: {
@@ -125,8 +154,26 @@ export const AppMessages = {
       },
       INVALID_PERIOD: { code: 'PAY_003', message: 'Invalid payroll period' },
     },
+    ActionLog: {
+      NOT_FOUND: { code: 'ACTLOG_001', message: 'Action log not found' },
+    },
+    Timesheet: {
+      NOT_FOUND: { code: 'TS_001', message: 'Không tìm thấy bảng chấm công' },
+      ALREADY_EXISTS: { code: 'TS_002', message: 'Bảng chấm công đã tồn tại cho kỳ này' },
+      IS_LOCKED: { code: 'TS_003', message: 'Bảng chấm công đã bị khóa, không thể chỉnh sửa' },
+      ALREADY_LOCKED: { code: 'TS_004', message: 'Bảng chấm công đã được khóa rồi' },
+      NOT_LOCKED: { code: 'TS_005', message: 'Bảng chấm công chưa bị khóa' },
+    },
     Validation: {
       FAILED: { code: 'VAL_001', message: 'Validation failed' },
+    },
+    Onboarding: {
+      PLAN_NOT_FOUND: { code: 'ONB_001', message: 'Kế hoạch onboarding không được tìm thấy' },
+      PLAN_NAME_REQUIRED: { code: 'ONB_002', message: 'Tên kế hoạch onboarding là bắt buộc' },
+      PROGRESS_NOT_FOUND: { code: 'ONB_003', message: 'Tiến trình onboarding không được tìm thấy' },
+      PROGRESS_ALREADY_EXISTS: { code: 'ONB_004', message: 'Nhân viên đã có tiến trình onboarding cho kế hoạch này' },
+      CANNOT_RESUME: { code: 'ONB_005', message: 'Chỉ có thể tiếp tục onboarding đã bị tạm dừng' },
+      TEMPLATE_ALREADY_EXISTS: {code: 'ONB_006', message:'Phòng ban và vị trí này đã có template onboarding. Vui lòng chỉnh sửa template hiện có.',},
     },
     General: {
       INTERNAL_SERVER_ERROR: { code: 'ERR_001', message: 'Lỗi máy chủ nội bộ' },

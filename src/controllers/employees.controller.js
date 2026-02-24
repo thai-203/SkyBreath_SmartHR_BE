@@ -17,7 +17,7 @@ export class EmployeesController {
             const errors = await validate(createDto);
             if (errors.length > 0) {
                 const message = Object.values(errors[0].constraints)[0];
-                return ResponseUtil.sendResponse(res, message, null, false, 400);
+                return ResponseUtil.sendResponse(res, message, null, 400);
             }
 
             // Handle uploaded files
@@ -92,7 +92,7 @@ export class EmployeesController {
             const errors = await validate(updateDto);
             if (errors.length > 0) {
                 const message = Object.values(errors[0].constraints)[0];
-                return ResponseUtil.sendResponse(res, message, null, false, 400);
+                return ResponseUtil.sendResponse(res, message, null, 400);
             }
 
             const result = await this.employeesService.update(parseInt(req.params.id), updateDto);
@@ -127,6 +127,28 @@ export class EmployeesController {
             res.setHeader('Content-Disposition', 'attachment; filename=employees.xlsx');
             res.setHeader('Content-Length', buffer.length);
             res.end(buffer);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    getEmployeeNoPlanId = async (req, res, next) => {
+        try {
+            const result = await this.employeesService.getEmployeeNoPlanId();
+            ResponseUtil.sendResponse(res, AppMessages.Success.Employee.RETRIEVED_ALL, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    getByUserId = async (req, res, next) => {
+        try {
+            const userId = parseInt(req.params.userId);
+            const employee = await this.employeesService.getByUserId(userId);
+            if (!employee) {
+                return ResponseUtil.sendResponse(res, AppMessages.Errors.Employee?.NOT_FOUND?.message || 'Employee not found', null, 404);
+            }
+            ResponseUtil.sendResponse(res, AppMessages.Success.Employee.RETRIEVED, employee);
         } catch (error) {
             next(error);
         }

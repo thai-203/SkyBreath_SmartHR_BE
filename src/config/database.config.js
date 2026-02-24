@@ -33,6 +33,10 @@ import { AIEvaluationResultEntity } from '../models/entities/ai-evaluation-resul
 import { NotificationEntity } from '../models/entities/notification.entity.js';
 import { NotificationRecipientEntity } from '../models/entities/notification-recipient.entity.js';
 import { ActionLogEntity } from '../models/entities/action-log.entity.js';
+import { OnboardingPlanEntity } from '../models/entities/onboarding-plan.entity.js';
+import { OnboardingTaskEntity } from '../models/entities/onboarding-task.entity.js';
+import { OnboardingProgressEntity } from '../models/entities/onboarding-progress.entity.js';
+import { TaskAssignmentEntity } from '../models/entities/task-assignment.entity.js';
 
 import { config } from './env.config.js';
 
@@ -81,6 +85,10 @@ export const databaseConfig = {
         NotificationEntity,
         NotificationRecipientEntity,
         ActionLogEntity,
+        OnboardingPlanEntity,
+        OnboardingTaskEntity,
+        OnboardingProgressEntity,
+        TaskAssignmentEntity,
     ],
     subscribers: [],
     migrations: [],
