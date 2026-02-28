@@ -13,8 +13,6 @@ export class AuthController {
     try {
       const { email, password } = req.body;
       const user = await this.authService.validateUser(email, password);
-      const ip = req.headers['x-forwarded-for']?.split(',')[0];
-      console.log(req.ip);
 
       if (!user) {
         const error = new Error('Invalid credentials');
@@ -35,20 +33,6 @@ export class AuthController {
         res,
         AppMessages.Success.Auth.LOGIN,
         resultToken,
-      );
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  register = async (req, res, next) => {
-    try {
-      const result = await this.authService.register(req.body);
-      ResponseUtil.sendResponse(
-        res,
-        AppMessages.Success.Auth.REGISTER,
-        result,
-        201,
       );
     } catch (error) {
       next(error);
@@ -120,6 +104,21 @@ export class AuthController {
       next(error);
     }
   };
+
+  editProfile = async (req, res, next) => {
+    try {
+      const userId = req.user.id;
+      const result = await this.authService.editProfile(userId, req.body);
+      ResponseUtil.sendResponse(
+        res,
+        AppMessages.Success.Auth.PROFILE_UPDATED || 'Profile updated',
+        result,
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
   forgotPassword = async (req, res, next) => {
     try {
       const { email } = req.body;

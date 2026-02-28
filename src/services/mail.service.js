@@ -1,5 +1,5 @@
 import sendMail from '../common/utils/mail.util.js';
-import { forgotPasswordEmailTemplate } from '../common/constants';
+import { forgotPasswordEmailTemplate, ResetPasswordEmailTemplate } from '../common/constants';
 
 export class MailService {
   async sendResetPasswordEmail(to, username, resetUrl) {
@@ -11,6 +11,18 @@ export class MailService {
 
     const subject = 'Reset your password';
     const text = `Reset password link (expires in 5 minutes): ${resetUrl}`;
+
+    await sendMail(to, subject, text, html);
+  }
+
+  async AdminResetPasswordEmail(to, username, resetUrl) {
+    const html = ResetPasswordEmailTemplate({
+      resetUrl,
+      username,
+    });
+
+    const subject = 'Reset your password';
+    const text = `Reset password link: ${resetUrl}`;
 
     await sendMail(to, subject, text, html);
   }
