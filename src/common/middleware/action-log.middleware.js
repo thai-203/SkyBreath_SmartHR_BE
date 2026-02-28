@@ -1,7 +1,8 @@
 import { AppDataSource } from '../../database/data-source.js';
 
 export const actionLogMiddleware = (req, res, next) => {
-  if (req.method !== 'POST' || req.path !== '/auth/login') {
+
+  if (req.method !== 'POST' || !req.path.includes('/auth/login')) {
     return next();
   }
   let responseBody;
@@ -18,11 +19,11 @@ export const actionLogMiddleware = (req, res, next) => {
       const requestIp = req.ip || null;
       const userAgent = req.headers['user-agent'] || null;
 
-      const pathParts = req.path.split('/').filter(Boolean);
-      const targetTable = pathParts[0] || null;
-      const possibleId = pathParts[1];
-      const targetRecordId =
-        possibleId && !isNaN(possibleId) ? parseInt(possibleId) : null;
+      // const pathParts = req.path.split('/').filter(Boolean);
+      // const targetTable = pathParts[0] || null;
+      // const possibleId = pathParts[1];
+      // const targetRecordId =
+      //   possibleId && !isNaN(possibleId) ? parseInt(possibleId) : null;
 
       const method = req.method;
       const actionType =
@@ -35,37 +36,37 @@ export const actionLogMiddleware = (req, res, next) => {
               : 'READ';
 
       // Attempt to fetch before data if applicable
-      if (
-        targetTable &&
-        targetRecordId &&
-        (actionType === 'UPDATE' ||
-          actionType === 'DELETE' ||
-          actionType === 'READ')
-      ) {
-        try {
-          const rows = await AppDataSource.query(
-            `SELECT * FROM \`${targetTable}\` WHERE id = ? LIMIT 1`,
-            [targetRecordId],
-          );
-          beforeData = rows && rows[0] ? rows[0] : null;
-        } catch (err) {
-          // ignore failures to fetch
-        }
-      }
+      // if (
+      //   targetTable &&
+      //   targetRecordId &&
+      //   (actionType === 'UPDATE' ||
+      //     actionType === 'DELETE' ||
+      //     actionType === 'READ')
+      // ) {
+      //   try {
+      //     const rows = await AppDataSource.query(
+      //       `SELECT * FROM \`${targetTable}\` WHERE id = ? LIMIT 1`,
+      //       [targetRecordId],
+      //     );
+      //     beforeData = rows && rows[0] ? rows[0] : null;
+      //   } catch (err) {
+      //     // ignore failures to fetch
+      //   }
+      // }
 
-      const afterData = responseBody || (req.body ? req.body : null);
+      // const afterData = responseBody || (req.body ? req.body : null);
 
-      const description = `${method} ${req.originalUrl} ${res.statusCode}`;
+      // const description = `${method} ${req.originalUrl} ${res.statusCode}`;
 
       const payload = {
         userId,
         actionType,
-        targetTable,
-        targetRecordId,
-        beforeData,
-        afterData,
+        targetTable: null,
+        targetRecordId: null,
+        beforeData: null,
+        afterData: null,
         changedFields: null,
-        description,
+        description: null,
         requestIp,
         userAgent,
       };

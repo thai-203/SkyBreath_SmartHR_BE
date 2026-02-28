@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 /**
  * @swagger
@@ -22,10 +22,16 @@ import { IsEmail, IsString, MinLength } from 'class-validator';
  *           example: password123
  */
 export class LoginDto {
-    @IsEmail()
-    email;
+  @IsEmail()
+  email;
 
-    @IsString()
-    @MinLength(6)
-    password;
+  @IsString()
+  @MinLength(8)
+  @IsNotEmpty()
+  @MaxLength(50)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).+$/, {
+    message:
+      'Password must contain at least 1 uppercase, 1 lowercase, 1 number and 1 special character',
+  })
+  password;
 }

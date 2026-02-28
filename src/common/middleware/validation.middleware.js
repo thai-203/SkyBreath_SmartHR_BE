@@ -8,8 +8,10 @@ export const validationMiddleware = (dtoClass) => {
       whitelist: true,
       forbidNonWhitelisted: true,
     });
-
+    
     if (errors.length > 0) {
+      console.log(errors);
+      
       const formattedErrors = errors.map((error) => ({
         property: error.property,
         constraints: error.constraints,
@@ -20,7 +22,7 @@ export const validationMiddleware = (dtoClass) => {
       });
       return; // Ensure we return to stop execution
     }
-
+    
     req.body = dtoObj;
     next();
   };

@@ -5,6 +5,7 @@ import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
 import { CreateUserDto, UpdateUserDto } from '../models/dto/users/index.js';
 import { Role } from '../common/enums/index.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = Router();
 const usersController = new UsersController();
@@ -40,7 +41,7 @@ const usersController = new UsersController();
  *       403:
  *         description: Forbidden
  *   get:
- *     summary: Get all users
+ *     summary: Get all users with pagination
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -49,12 +50,28 @@ const usersController = new UsersController();
  *         name: page
  *         schema:
  *           type: integer
- *         description: Page number
+ *         description: Page number (default 1)
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
- *         description: Items per page
+ *         description: Items per page (default 10)
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *         description: Sort field (id, username, email, fullName, status, createdAt, lastLoginTime)
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *         description: Sort order
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by username, email, or fullName
  *     responses:
  *       200:
  *         description: List of users
@@ -63,8 +80,79 @@ const usersController = new UsersController();
  *       403:
  *         description: Forbidden
  */
-router.post('/', authMiddleware, rolesMiddleware([Role.ADMIN]), validationMiddleware(CreateUserDto), usersController.create);
-router.get('/', authMiddleware, rolesMiddleware([Role.ADMIN]), usersController.findAll);
+router.post(
+  '/',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  validationMiddleware(CreateUserDto),
+  usersController.create,
+);
+router.get(
+  '/',
+  authMiddleware,
+  // rolesMiddleware([Role.ADMIN]),
+  usersController.findAll,
+);
+
+/**
+ * @swagger
+ * /users/search:
+ *   get:
+ *     summary: Search users with advanced filters
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by username, email, or fullName
+ *       - in: query
+ *         name: roles
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *         description: Filter by role names (ADMIN, MANAGER, EMPLOYEE, USER)
+ *       - in: query
+ *         name: statuses
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *         description: Filter by status (ACTIVE, LOCKED, DELETED)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number (default 1)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Items per page (default 10)
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *         description: Sort field
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *         description: Sort order
+ *     responses:
+ *       200:
+ *         description: Filtered list of users
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+
+router.get('/meta-data', usersController.getMetadata);
 
 /**
  * @swagger
@@ -118,7 +206,7 @@ router.get('/', authMiddleware, rolesMiddleware([Role.ADMIN]), usersController.f
  *       403:
  *         description: Forbidden
  *   delete:
- *     summary: Delete user
+ *     summary: Delete user (soft delete)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -132,15 +220,106 @@ router.get('/', authMiddleware, rolesMiddleware([Role.ADMIN]), usersController.f
  *     responses:
  *       200:
  *         description: User deleted successfully
+ *       403:
+ *         description: Cannot delete (last admin or own account)
  *       404:
  *         description: User not found
  *       401:
  *         description: Unauthorized
- *       403:
- *         description: Forbidden
  */
-router.get('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), usersController.findOne);
-router.put('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), validationMiddleware(UpdateUserDto), usersController.update);
-router.delete('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), usersController.remove);
+router.get(
+  '/:id',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  usersController.findOne,
+);
+router.put(
+  '/:id',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  validationMiddleware(UpdateUserDto),
+  usersController.update,
+);
+router.delete(
+  '/:id',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  usersController.remove,
+);
 
+/**
+ * @swagger
+ * /users/{id}/lock:
+ *   patch:
+ *     summary: Lock user account
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User account locked successfully
+ *       403:
+ *         description: Cannot lock (last admin or own account)
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ */
+router.patch(
+  '/:id/lock',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  usersController.lockUser,
+);
+
+/**
+ * @swagger
+ * /users/{id}/unlock:
+ *   patch:
+ *     summary: Unlock user account
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User account unlocked successfully
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ */
+router.patch(
+  '/:id/unlock',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  usersController.unlockUser,
+);
+
+router.delete(
+  '/:id/user-roles',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  usersController.removeUserRoles,
+);
+
+router.post(
+  '/:id/reset-password',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  usersController.resetPassword,
+);
 export const usersRoutes = router;
