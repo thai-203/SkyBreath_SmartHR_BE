@@ -71,6 +71,9 @@ export class ContractEntity extends BaseEntity {
     @Column({ type: 'json', nullable: true })
     attachments;
 
+    @Column({ name: 'note', type: 'text', nullable: true })
+    note;
+
     /* =======================
        RELATIONS
        ======================= */

@@ -13,25 +13,140 @@ export class ContractsController {
         this.contractsService = new ContractsService();
     }
 
+    _prepareAndValidateData(data) {
+        const numberFields = [
+            'employeeId', 'departmentId', 'positionId', 'jobGradeId',
+            'workingHours', 'baseSalary', 'performanceSalary',
+            'phoneAllowance', 'lunchAllowance', 'fuelAllowance',
+            'otherAllowance', 'terminationCompensation',
+        ];
+
+        const financialFields = [
+            'baseSalary', 'performanceSalary', 'phoneAllowance', 
+            'lunchAllowance', 'fuelAllowance', 'otherAllowance'
+        ];
+
+        numberFields.forEach((field) => {
+            if (data[field] !== undefined && data[field] !== null && data[field] !== '') {
+                const val = Number(data[field]);
+                
+                if (isNaN(val)) {
+                    throw new Error(`Trường ${field} phải là một số hợp lệ.`);
+                }
+
+                // Validate không cho phép số âm đối với các khoản tiền và giờ làm
+                if (val < 0) {
+                    throw new Error(`Giá trị của ${field} không được nhỏ hơn 0.`);
+                }
+
+                data[field] = val;
+            }
+        });
+
+        // Logic nghiệp vụ: Lương cơ bản không được bằng 0 hoặc rỗng
+        if (data.baseSalary !== undefined && data.baseSalary <= 0) {
+            throw new Error('Lương cơ bản phải lớn hơn 0.');
+        }
+
+        return data;
+    }
+
     /* ================= CREATE ================= */
     create = async (req, res, next) => {
         try {
-            const dto = req.body;
-            const files = req.files;
+            let dtoData = { ...req.body };
+            const files = req.files || [];
 
-            if (files && files.length > 0) {
-                dto.attachments = files.map(file =>
-                    file.path.replace(/\\/g, '/')
-                );
-            } else {
-                dto.attachments = null;
+            // 1. Kiểm tra trùng số hợp đồng trước khi xử lý nặng
+            const existingContract = await this.contractsService.findByContractNumber(dtoData.contractNumber);
+            if (existingContract) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Số hợp đồng này đã tồn tại.',
+                });
             }
+
+            // 2. Parse số và validate lương/phụ phí
+            try {
+                dtoData = this._prepareAndValidateData(dtoData);
+            } catch (error) {
+                return res.status(400).json({ success: false, message: error.message });
+            }
+
+            // 3. Xử lý attachments
+            dtoData.attachments = files.length > 0 
+                ? files.map(file => file.path.replace(/\\/g, '/')) 
+                : null;
+
+            // 4. Validate bằng Class-Validator
+            const dto = plainToInstance(CreateContractDto, dtoData);
+            await validateOrReject(dto);
+
             const contract = await this.contractsService.create(dto);
 
             return res.status(201).json({
                 success: true,
                 data: contract,
-                message: 'Contract created successfully',
+                message: 'Tạo hợp đồng thành công',
+            });
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    /* ================= UPDATE ================= */
+    update = async (req, res, next) => {
+        try {
+            const id = Number(req.params.id);
+            let dtoData = { ...req.body };
+            const files = req.files || [];
+
+            // 1. Xử lý EndDate rỗng
+            if (dtoData.endDate === '') {
+                dtoData.endDate = null;
+            }
+
+            // 2. Parse số và validate lương/phụ phí
+            try {
+                dtoData = this._prepareAndValidateData(dtoData);
+            } catch (error) {
+                return res.status(400).json({ success: false, message: error.message });
+            }
+
+            // 3. Xử lý attachments (Kết hợp cũ và mới)
+            let oldAttachments = [];
+            if (dtoData.oldAttachments) {
+                try {
+                    oldAttachments = JSON.parse(dtoData.oldAttachments);
+                    if (!Array.isArray(oldAttachments)) oldAttachments = [];
+                } catch (err) {
+                    oldAttachments = [];
+                }
+            }
+
+            const validOldAttachments = oldAttachments.filter(
+                (path) => typeof path === 'string' && path.trim().length > 0
+            );
+
+            const newAttachments = files.map((file) =>
+                file.path.replace(/\\/g, '/')
+            );
+
+            dtoData.attachments = [...validOldAttachments, ...newAttachments];
+
+            // 4. Validate bằng Class-Validator
+            const dto = plainToInstance(UpdateContractDto, dtoData);
+            await validateOrReject(dto, {
+                whitelist: true,
+                forbidNonWhitelisted: false,
+            });
+
+            const result = await this.contractsService.update(id, dto);
+
+            return res.status(200).json({
+                success: true,
+                data: result,
+                message: AppMessages?.Success?.Contract?.UPDATED ?? 'Cập nhật thành công',
             });
         } catch (error) {
             next(error);
@@ -77,87 +192,6 @@ export class ContractsController {
             return res.status(200).json({
                 success: true,
                 data: contracts,
-            });
-        } catch (error) {
-            next(error);
-        }
-    };
-
-    /* ================= UPDATE ================= */
-    update = async (req, res, next) => {
-        try {
-            const dtoData = { ...req.body };
-            const files = req.files || [];
-            if (dtoData.endDate === '') {
-                dtoData.endDate = null;
-            }
-
-            let oldAttachments = [];
-
-            if (dtoData.oldAttachments) {
-                try {
-                    oldAttachments = JSON.parse(dtoData.oldAttachments);
-                    if (!Array.isArray(oldAttachments)) {
-                        oldAttachments = [];
-                    }
-                } catch (err) {
-                    oldAttachments = [];
-                }
-            }
-
-            oldAttachments = oldAttachments.filter(
-                (path) => typeof path === 'string' && path.trim().length > 0
-            );
-
-            const newAttachments = files.map((file) =>
-                file.path.replace(/\\/g, '/')
-            );
-
-            dtoData.attachments = [...oldAttachments, ...newAttachments];
-
-            const numberFields = [
-                'employeeId',
-                'departmentId',
-                'positionId',
-                'jobGradeId',
-                'workingHours',
-                'baseSalary',
-                'performanceSalary',
-                'phoneAllowance',
-                'lunchAllowance',
-                'fuelAllowance',
-                'otherAllowance',
-                'terminationCompensation',
-            ];
-
-            numberFields.forEach((field) => {
-                if (
-                    dtoData[field] !== undefined &&
-                    dtoData[field] !== null &&
-                    dtoData[field] !== ''
-                ) {
-                    dtoData[field] = Number(dtoData[field]);
-                }
-            });
-
-            const dto = plainToInstance(UpdateContractDto, dtoData);
-
-            await validateOrReject(dto, {
-                whitelist: true,
-                forbidNonWhitelisted: false,
-            });
-
-            const result = await this.contractsService.update(
-                Number(req.params.id),
-                dto
-            );
-
-            return res.status(200).json({
-                success: true,
-                data: result,
-                message:
-                    AppMessages?.Success?.Contract?.UPDATED ??
-                    'Updated successfully',
             });
         } catch (error) {
             next(error);

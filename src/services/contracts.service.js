@@ -139,4 +139,8 @@ export class ContractsService {
         const year = d.getFullYear();
         return `${day}/${month}/${year}`;
     }
+
+    async findByContractNumber(contractNumber) {
+        return await this.contractsRepository.findOneByContractNumber(contractNumber);
+    }
 }
