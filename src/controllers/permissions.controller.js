@@ -8,9 +8,9 @@ export class PermissionsController {
 
     findAll = async (req, res, next) => {
         try {
-            console.log('[API] GET /permissions - Request started');
-            const result = await this.permissionsService.findAll();
-            console.log(`[API] GET /permissions - Success: Found ${result.length} permissions`);
+            console.log('[API] GET /permissions - Request started', req.query);
+            const result = await this.permissionsService.findAll(req.query);
+            console.log(`[API] GET /permissions - Success: Found ${result.data?.length || 0} permissions`);
             ResponseUtil.sendResponse(res, AppMessages.Success.Permission.RETRIEVED_ALL, result);
         } catch (error) {
             console.error('[API] GET /permissions - Error occurred:', error);

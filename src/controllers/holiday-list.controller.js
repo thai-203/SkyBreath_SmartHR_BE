@@ -11,7 +11,7 @@ export class HolidayListController {
             const queryDto = {
                 skip: parseInt(req.query.skip) || 0,
                 limit: parseInt(req.query.limit) || 10,
-                sortBy: req.query.sortBy || 'holidayDate',
+                sortBy: req.query.sortBy || 'startDate',
                 sortOrder: req.query.sortOrder || 'ASC',
                 search: req.query.search,
                 startDate: req.query.startDate,

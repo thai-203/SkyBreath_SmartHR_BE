@@ -19,7 +19,7 @@ export class HolidayListRepository {
         if (sortBy) {
             order[sortBy] = sortOrder;
         } else {
-            order.holidayDate = 'ASC';
+            order.startDate = 'ASC';
         }
 
         const where = {
@@ -31,9 +31,9 @@ export class HolidayListRepository {
         }
 
         if (startDate && endDate) {
-            where.holidayDate = Between(startDate, endDate);
+            where.startDate = Between(startDate, endDate);
         } else if (startDate) {
-            where.holidayDate = Like(`${startDate}%`);
+            where.startDate = Like(`${startDate}%`);
         }
 
         const [items, total] = await this.repository.findAndCount({
@@ -64,9 +64,9 @@ export class HolidayListRepository {
         });
     }
 
-    async findByNameAndDate(name, date) {
+    async findByNameAndRange(name, startDate, endDate) {
         return this.repository.findOne({
-            where: { holidayName: name, holidayDate: date, isDeleted: false },
+            where: { holidayName: name, startDate, endDate, isDeleted: false },
         });
     }
 }

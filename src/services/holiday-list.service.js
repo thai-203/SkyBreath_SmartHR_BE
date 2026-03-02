@@ -23,16 +23,22 @@ export class HolidayListService {
 
     async create(data) {
         // Validate date format or uniqueness if needed
-        const existing = await this.repository.findByNameAndDate(data.holidayName, data.holidayDate);
+        const existing = await this.repository.findByNameAndRange(data.holidayName, data.startDate, data.endDate);
         if (existing) {
-            throw new BadRequestException('Holiday already exists for this date');
+            throw new BadRequestException('Holiday already exists for this date range');
         }
-        return this.repository.create(data);
+        return this.repository.create({
+            ...data,
+            updatedBy: data.updatedBy || 'System'
+        });
     }
 
     async update(id, data) {
         const holiday = await this.findById(id);
-        return this.repository.update(holiday.id, data);
+        return this.repository.update(holiday.id, {
+            ...data,
+            updatedBy: data.updatedBy || 'System'
+        });
     }
 
     async delete(id) {
@@ -47,15 +53,23 @@ export class HolidayListService {
         const data = items.map((item, index) => ({
             index: index + 1,
             holidayName: item.holidayName,
-            holidayDate: item.holidayDate,
-            description: item.description || '',
+            startDate: item.startDate,
+            endDate: item.endDate,
+            holidayType: item.holidayType || '',
+            isPaid: item.isPaid ? 'Yes' : 'No',
+            updatedBy: item.updatedBy || '',
+            updatedAt: item.updatedAt,
         }));
 
         const columns = [
             { header: 'STT', key: 'index', width: 8 },
             { header: 'Tên ngày lễ', key: 'holidayName', width: 30 },
-            { header: 'Ngày', key: 'holidayDate', width: 20 },
-            { header: 'Mô tả', key: 'description', width: 40 },
+            { header: 'Ngày bắt đầu', key: 'startDate', width: 15 },
+            { header: 'Ngày kết thúc', key: 'endDate', width: 15 },
+            { header: 'Loại ngày', key: 'holidayType', width: 20 },
+            { header: 'Tính công', key: 'isPaid', width: 10 },
+            { header: 'Người cập nhật', key: 'updatedBy', width: 20 },
+            { header: 'Ngày cập nhật', key: 'updatedAt', width: 20 },
         ];
 
         return ExcelUtil.export(data, columns, 'Danh sach ngay le');

@@ -31,11 +31,11 @@ export const AppMessages = {
     },
 
     Role: {
-      CREATED: 'Role created successfully',
-      RETRIEVED_ALL: 'Roles retrieved successfully',
-      RETRIEVED: 'Role retrieved successfully',
-      UPDATED: 'Role updated successfully',
-      DELETED: 'Role deleted successfully',
+      CREATED: 'Tạo vai trò thành công',
+      RETRIEVED_ALL: 'Lấy danh sách vai trò thành công',
+      RETRIEVED: 'Lấy thông tin vai trò thành công',
+      UPDATED: 'Cập nhật vai trò thành công',
+      DELETED: 'Xóa vai trò thành công',
     },
 
     Department: {
@@ -45,11 +45,11 @@ export const AppMessages = {
     },
 
     Permission: {
-      CREATED: 'Permission created successfully',
-      RETRIEVED_ALL: 'Permissions retrieved successfully',
-      RETRIEVED: 'Permission retrieved successfully',
-      UPDATED: 'Permission updated successfully',
-      DELETED: 'Permission deleted successfully',
+      CREATED: 'Tạo quyền thành công',
+      RETRIEVED_ALL: 'Lấy danh sách quyền thành công',
+      RETRIEVED: 'Lấy thông tin quyền thành công',
+      UPDATED: 'Cập nhật quyền thành công',
+      DELETED: 'Xóa quyền thành công',
     },
 
     Employee: {
@@ -155,36 +155,42 @@ export const AppMessages = {
       },
     },
     Contract: {
-      NOT_FOUND: { code: 'CONTRACT_001', message: 'Contract not found' },
-      ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'The contract already exists' },
+      NOT_FOUND: { code: 'CONTRACT_001', message: 'Không tìm thấy hợp đồng' },
+      ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'Hợp đồng đã tồn tại' },
       INVALID_DATE: {
         code: 'CONTRACT_003',
-        message: 'The end date must be after the start date',
+        message: 'Ngày kết thúc phải sau ngày bắt đầu',
       },
       ALREADY_TERMINATED: {
         code: 'CONTRACT_004',
-        message: 'The contract has been terminated',
+        message: 'Hợp đồng đã được chấm dứt',
       },
     },
     Attendance: {
-      ALREADY_CHECKED_IN: { code: 'ATT_001', message: 'Already checked in' },
-      NOT_CHECKED_IN: { code: 'ATT_002', message: 'Not checked in' },
-      NOT_FOUND: { code: 'ATT_003', message: 'Attendance record not found' },
+      ALREADY_CHECKED_IN: { code: 'ATT_001', message: 'Đã điểm danh vào' },
+      NOT_CHECKED_IN: { code: 'ATT_002', message: 'Chưa điểm danh vào' },
+      NOT_FOUND: { code: 'ATT_003', message: 'Không tìm thấy bản ghi chuyên cần' },
     },
     Payroll: {
-      NOT_FOUND: { code: 'PAY_001', message: 'Payroll not found' },
+      NOT_FOUND: { code: 'PAY_001', message: 'Không tìm thấy bảng lương' },
       ALREADY_PROCESSED: {
         code: 'PAY_002',
-        message: 'Payroll already processed',
+        message: 'Bảng lương đã được xử lý',
       },
-      INVALID_PERIOD: { code: 'PAY_003', message: 'Invalid payroll period' },
+      INVALID_PERIOD: { code: 'PAY_003', message: 'Kỳ lương không hợp lệ' },
     },
     ActionLog: {
-      NOT_FOUND: { code: 'ACTLOG_001', message: 'Action log not found' },
+      NOT_FOUND: { code: 'ACTLOG_001', message: 'Không tìm thấy nhật ký hoạt động' },
+    },
+    Role: {
+      NOT_FOUND: { code: 'ROLE_001', message: 'Không tìm thấy vai trò' },
+      ALREADY_EXISTS: { code: 'ROLE_002', message: 'Tên vai trò đã tồn tại' },
+      IN_USE: { code: 'ROLE_003', message: 'Vai trò đang được gắn với người dùng, không thể xóa' },
+      SYSTEM_ROLE: { code: 'ROLE_004', message: 'Không thể chỉnh sửa hoặc xóa vai trò hệ thống' },
     },
     Permission: {
-      NOT_FOUND: { code: 'PERM_001', message: 'Permission not found' },
-      ALREADY_EXISTS: { code: 'PERM_002', message: 'Permission code already exists' },
+      NOT_FOUND: { code: 'PERM_001', message: 'Không tìm thấy quyền' },
+      ALREADY_EXISTS: { code: 'PERM_002', message: 'Mã quyền đã tồn tại' },
     },
     Timesheet: {
       NOT_FOUND: { code: 'TS_001', message: 'Không tìm thấy bảng chấm công' },

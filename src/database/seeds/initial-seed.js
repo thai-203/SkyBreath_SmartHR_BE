@@ -341,10 +341,17 @@ const seed = async () => {
         // ──────────────────────────────────────
         const holidayRepo = dataSource.getRepository(HolidayListEntity);
         const holidaysData = [
-            { holidayName: 'Tết Nguyên đán (bù)', holidayDate: '2026-02-02', description: 'Nghỉ bù Tết Nguyên đán' },
+            {
+                holidayName: 'Tết Nguyên đán (bù)',
+                startDate: '2026-02-02',
+                endDate: '2026-02-02',
+                holidayType: 'Nghỉ lễ, tết',
+                isPaid: true,
+                description: 'Nghỉ bù Tết Nguyên đán'
+            },
         ];
         for (const h of holidaysData) {
-            const existing = await holidayRepo.findOne({ where: { holidayDate: h.holidayDate } });
+            const existing = await holidayRepo.findOne({ where: { startDate: h.startDate, holidayName: h.holidayName } });
             if (!existing) {
                 await holidayRepo.save(holidayRepo.create(h));
                 console.log(`Created holiday: ${h.holidayName}`);

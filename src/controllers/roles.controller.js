@@ -8,9 +8,11 @@ export class RolesController {
 
     create = async (req, res, next) => {
         try {
+            console.log('[RolesController] Creating role with data:', req.body);
             const result = await this.rolesService.create(req.body);
             ResponseUtil.sendResponse(res, AppMessages.Success.Role.CREATED, result, 201);
         } catch (error) {
+            console.error('[RolesController] Error in create:', error);
             next(error);
         }
     }
