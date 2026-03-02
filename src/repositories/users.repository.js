@@ -48,17 +48,24 @@ export class UsersRepository {
       query = query.andWhere('role.id = :roleId', { roleId: roles });
     }
 
-    // Add sorting
+    query = query
+      .distinct(true)
+      .addSelect(
+        `CASE WHEN LOWER(role.roleName) = LOWER(:adminRole) THEN 1 ELSE 0 END`,
+        'is_admin',
+      )
+      .setParameter('adminRole', 'admin')
+      .orderBy('is_admin', 'DESC');
+      
     if (
       sortBy === 'id' ||
       sortBy === 'username' ||
       sortBy === 'email' ||
-      sortBy === 'fullName' ||
       sortBy === 'status'
     ) {
-      query = query.orderBy(`user.${sortBy}`, sortOrder);
+      query = query.addOrderBy(`user.${sortBy}`, sortOrder || 'ASC');
     } else {
-      query = query.orderBy(
+      query = query.addOrderBy(
         `user.${sortBy || 'createdAt'}`,
         sortOrder || 'DESC',
       );

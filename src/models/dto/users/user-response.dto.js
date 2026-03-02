@@ -3,28 +3,31 @@ import { UserRoleEntity } from '../../entities/user-role.entity.js';
 
 @Exclude()
 export class UserResponseDto {
-    @Expose()
-    id;
+  @Expose()
+  id;
 
-    @Expose()
-    username;
+  @Expose()
+  username;
 
-    @Expose()
-    email;
+  @Expose()
+  email;
 
-    @Expose()
-    status;
+  @Expose()
+  status;
 
-    @Expose()
-    lastLoginTime;
+  @Expose()
+  lastLoginTime;
 
-    @Expose()
-    createdAt;
+  @Expose()
+  createdAt;
 
-    @Expose()
-    updatedAt;
+  @Expose()
+  updatedAt;
 
-    @Expose()
-    @Type(() => UserRoleEntity)
-    userRoles;
+  @Expose()
+  @Type(() => UserRoleEntity)
+  userRoles;
+
+  @Expose()
+  isCurrentUser;
 }

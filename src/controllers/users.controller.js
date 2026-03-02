@@ -27,9 +27,9 @@ export class UsersController {
   findAll = async (req, res, next) => {
     try {
       // Extract pagination params from query
+      const currentUserId = req.user.id; // From auth middleware
       const paginationDto = plainToInstance(SearchUserDto, req.query);
-
-      const result = await this.usersService.findAll(paginationDto);
+      const result = await this.usersService.findAll(paginationDto, currentUserId);
 
       // Transform to DTO
       const data = plainToInstance(UserResponseDto, result.data);

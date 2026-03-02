@@ -19,7 +19,7 @@ export class AuthController {
         error.statusCode = 401;
         throw error;
       }
-
+      
       const { refreshToken, ...resultToken } =
         await this.authService.login(user);
       res.cookie('refreshToken', refreshToken, {
@@ -108,10 +108,15 @@ export class AuthController {
   editProfile = async (req, res, next) => {
     try {
       const userId = req.user.id;
-      const result = await this.authService.editProfile(userId, req.body);
+      // Build update DTO from body and include uploaded avatar if present
+      const updateDto = { ...req.body };
+      if (req.file) {
+        updateDto.avatar = req.file.path.replace(/\\/g, '/');
+      }
+      const result = await this.authService.editProfile(userId, updateDto);
       ResponseUtil.sendResponse(
         res,
-        AppMessages.Success.Auth.PROFILE_UPDATED || 'Profile updated',
+        'Cập nhật hồ sơ thành công',
         result,
       );
     } catch (error) {

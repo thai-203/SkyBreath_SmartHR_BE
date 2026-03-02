@@ -3,6 +3,7 @@ import { UsersService } from './users.service.js';
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { EmployeesRepository } from '../repositories/employees.repository.js';
+import { ActionLogsRepository } from '../repositories/action-logs.repository.js';
 import {
   hashPassword,
   comparePassword,
@@ -105,10 +106,14 @@ export class AuthService {
       throw new BadRequestException(AppMessages.Errors.User.INVALID_PASSWORD);
     }
 
+    if (changePasswordDto.newPassword === changePasswordDto.currentPassword) {
+      throw new BadRequestException('Mật khẩu mới không được trùng với mật khẩu hiện tại');
+    }
+
     const hashedPassword = await hashPassword(changePasswordDto.newPassword);
     await this.usersService.update(userId, { password: hashedPassword });
 
-    return { message: 'Password changed successfully' };
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   async getProfile(userId) {
@@ -116,41 +121,150 @@ export class AuthService {
 
     const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
       where: { userId: userId, isDeleted: false },
-      relations: ['department', 'position', 'directManager'],
+      relations: [
+        'department',
+        'position',
+        'directManager',
+        'jobGrade',
+        'hrMentor',
+      ],
     });
 
     return {
+      // User account info
       id: user.id,
       username: user.username,
       email: user.email,
+      companyEmail: employee?.companyEmail || null,
       roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
+      role: user.userRoles?.[0]?.role.roleName || null,
       status: user.status,
-      lastLoginTime: user.lastLoginTime,
+
+      // Personal info
       avatar: employee?.avatar || null,
       fullName: employee?.fullName || null,
-      position: employee?.position?.positionName || null,
-      department: employee?.department?.departmentName || null,
-      manager: employee?.directManager?.fullName || null,
-      companyEmail: employee?.companyEmail || null,
       personalEmail: employee?.personalEmail || null,
       phoneNumber: employee?.phoneNumber || null,
+      dateOfBirth: employee?.dateOfBirth || null,
+      gender: employee?.gender || null,
+      maritalStatus: employee?.maritalStatus || null,
+      nationality: employee?.nationality || null,
+
+      // Address info
       currentAddress: employee?.currentAddress || null,
       permanentAddress: employee?.permanentAddress || null,
+
+      // Government IDs
+      nationalId: employee?.nationalId || null,
+      nationalIdIssuedDate: employee?.nationalIdIssuedDate || null,
+      nationalIdIssuedPlace: employee?.nationalIdIssuedPlace || null,
+      taxCode: employee?.taxCode || null,
+
+      // Organization info
+      department: employee?.department
+        ? {
+            id: employee.department.id,
+            name: employee.department.departmentName,
+          }
+        : null,
+      position: employee?.position
+        ? {
+            id: employee.position.id,
+            name: employee.position.positionName,
+          }
+        : null,
+      jobGrade: employee?.jobGrade
+        ? {
+            id: employee.jobGradeId,
+            name: employee.jobGrade.gradeName,
+          }
+        : null,
+      manager: employee?.directManager?.fullName || null,
+      directManager: employee?.directManager
+        ? {
+            id: employee.directManager.id,
+            name: employee.directManager.fullName,
+          }
+        : null,
+      hrMentor: employee?.hrMentor?.fullName || null,
+      employmentStatus: employee?.employmentStatus || null,
+      joinDate: employee?.joinDate || null,
+
+      // System info
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLoginTime: user.lastLoginTime,
     };
   }
 
   async editProfile(userId, updateProfileDto) {
     const employeeRepo = new EmployeesRepository();
+    const actionLogsRepo = new ActionLogsRepository();
 
     const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
       where: { userId: userId, isDeleted: false },
+      relations: [
+        'department',
+        'position',
+        'directManager',
+        'jobGrade',
+        'hrMentor',
+      ],
     });
 
     if (!employee) {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
     }
 
+    // Store previous data for audit logging
+    const beforeData = {
+      // fullName intentionally not part of editable data
+      personalEmail: employee.personalEmail,
+      phoneNumber: employee.phoneNumber,
+      currentAddress: employee.currentAddress,
+      permanentAddress: employee.permanentAddress,
+      avatar: employee.avatar,
+    };
+
+    // Prevent full name changes coming from client
+    if (
+      updateProfileDto.fullName &&
+      updateProfileDto.fullName !== employee.fullName
+    ) {
+      throw new BadRequestException('Không được phép chỉnh sửa họ và tên');
+    }
+    // Remove if present to avoid accidental overwrite
+    delete updateProfileDto.fullName;
+
+    // Update employee
     const updated = await employeeRepo.update(employee.id, updateProfileDto);
+
+    // Track changed fields
+    const changedFields = [];
+    Object.keys(beforeData).forEach((key) => {
+      if (beforeData[key] !== updateProfileDto[key]) {
+        changedFields.push(key);
+      }
+    });
+
+    // Log action if there are changes
+    if (changedFields.length > 0) {
+      try {
+        await actionLogsRepo.create({
+          userId: userId,
+          actionType: 'UPDATE',
+          targetTable: 'employees',
+          targetRecordId: employee.id,
+          beforeData,
+          afterData: updateProfileDto,
+          changedFields,
+          description: `Profile updated: ${changedFields.join(', ')}`,
+        });
+      } catch (error) {
+        console.error('Failed to log action:', error);
+        // Don't throw error, just log it
+      }
+    }
 
     return {
       id: updated.id,
@@ -161,9 +275,26 @@ export class AuthService {
       phoneNumber: updated.phoneNumber,
       currentAddress: updated.currentAddress,
       permanentAddress: updated.permanentAddress,
-      department: updated.department?.departmentName || null,
-      position: updated.position?.positionName || null,
+      department: updated.department
+        ? {
+            id: updated.department.id,
+            name: updated.department.departmentName,
+          }
+        : null,
+      position: updated.position
+        ? {
+            id: updated.position.id,
+            name: updated.position.positionName,
+          }
+        : null,
+      jobGrade: updated.jobGrade
+        ? {
+            id: updated.jobGrade.id,
+            name: updated.jobGrade.name,
+          }
+        : null,
       manager: updated.directManager?.fullName || null,
+      hrMentor: updated.hrMentor?.fullName || null,
     };
   }
 

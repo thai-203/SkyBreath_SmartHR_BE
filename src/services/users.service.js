@@ -80,9 +80,13 @@ export class UsersService {
     return user;
   }
 
-  async findAll(paginationDto) {
+  async findAll(paginationDto, currentUserId) {
     const [users, total] = await this.usersRepository.findAll(paginationDto);
-    return new PaginatedResponseDto(users, total, paginationDto);
+    const result = users.map((u) => ({
+      ...u,
+      isCurrentUser: u.id === currentUserId,
+    }));
+    return new PaginatedResponseDto(result, total, paginationDto);
   }
 
   async getMetadata() {
