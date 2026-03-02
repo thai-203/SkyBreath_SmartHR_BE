@@ -27,6 +27,7 @@ export class ContractsRepository {
                 signedDate: data.signedDate,
                 workingHours: data.workingHours ?? 8,
                 attachments: data.attachments,
+                note: data.note,
             });
 
             const savedContract = await queryRunner.manager.save(contract);
@@ -174,6 +175,8 @@ export class ContractsRepository {
                         data.attachments !== undefined
                             ? data.attachments
                             : contract.attachments,
+                            
+                    note: data.note,
                 }
             );
 
@@ -349,6 +352,15 @@ export class ContractsRepository {
         return this.repository.find({
             where: { contractStatus: status, isDeleted: false },
             relations: ['employee'],
+        });
+    }
+
+    async findOneByContractNumber(contractNumber) {
+        return await this.repository.findOne({
+            where: {
+                contractNumber,
+                isDeleted: false,
+            },
         });
     }
 }

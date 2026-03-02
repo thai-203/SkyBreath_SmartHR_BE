@@ -22,7 +22,7 @@ export class UserEntity extends BaseEntity {
     email;
 
     @Column({ default: 'ACTIVE', type: 'varchar' })
-    status;
+    status; // ACTIVE, LOCKED, DELETED
 
     @Column({ name: 'last_login_time', nullable: true, type: 'datetime' })
     lastLoginTime;

@@ -14,7 +14,8 @@ export class UsersRepository {
   }
 
   async findAll(paginationDto) {
-    const { skip, limit, sortBy, sortOrder } = paginationDto;
+    const { skip, limit, sortBy, sortOrder, search, statuses, roles } =
+      paginationDto;
 
     const order = {};
     if (sortBy) {
@@ -23,13 +24,47 @@ export class UsersRepository {
       order.createdAt = 'DESC';
     }
 
-    return this.userRepository.findAndCount({
-      where: {}, // Add search logic here if needed
-      relations: ['userRoles', 'userRoles.role'],
-      order,
-      skip,
-      take: limit,
-    });
+    let query = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.userRoles', 'userRoles')
+      .leftJoinAndSelect('userRoles.role', 'role')
+      .where('user.is_deleted != 1'); // Exclude deleted users
+
+    // Add search filter if provided
+    if (search) {
+      query = query.andWhere(
+        '(user.username LIKE :search OR user.email LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    // Add status filter if provided
+    if (statuses) {
+      query.andWhere('user.status = :statuses', { statuses });
+    }
+
+    // Add role filter if provided
+    if (roles) {
+      query = query.andWhere('role.id = :roleId', { roleId: roles });
+    }
+
+    // Add sorting
+    if (
+      sortBy === 'id' ||
+      sortBy === 'username' ||
+      sortBy === 'email' ||
+      sortBy === 'fullName' ||
+      sortBy === 'status'
+    ) {
+      query = query.orderBy(`user.${sortBy}`, sortOrder);
+    } else {
+      query = query.orderBy(
+        `user.${sortBy || 'createdAt'}`,
+        sortOrder || 'DESC',
+      );
+    }
+
+    return query.skip(skip).take(limit).getManyAndCount();
   }
 
   async findById(id) {
@@ -89,6 +124,9 @@ export class UsersRepository {
       .set({
         deletedAt: new Date(),
         isDeleted: true,
+        status: 'DELETED',
+        refreshToken: null,
+        refreshTokenExpireAt: null,
       })
       .where('id = :id', { id })
       .execute();
@@ -105,5 +143,35 @@ export class UsersRepository {
 
   async updateLastLogin(id) {
     await this.userRepository.update(id, { lastLoginTime: new Date() });
+  }
+
+  async lockUser(id) {
+    await this.userRepository.update(id, {
+      status: 'LOCKED',
+      refreshToken: null,
+      refreshTokenExpireAt: null,
+    });
+  }
+
+  async unlockUser(id) {
+    await this.userRepository.update(id, { status: 'ACTIVE' });
+  }
+
+  async findByIdAndRoles(id) {
+    return this.userRepository.findOne({
+      where: { id },
+      relations: ['userRoles', 'userRoles.role'],
+    });
+  }
+
+  async countActiveAdmins() {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .innerJoin('user.userRoles', 'userRoles')
+      .innerJoin('userRoles.role', 'role')
+      .where('user.status = :status', { status: 'ACTIVE' })
+      .andWhere('role.name = :roleName', { roleName: 'ADMIN' })
+      .distinct(true)
+      .getCount();
   }
 }

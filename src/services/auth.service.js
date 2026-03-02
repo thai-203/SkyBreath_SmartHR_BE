@@ -1,5 +1,8 @@
 import * as jwt from 'jsonwebtoken';
 import { UsersService } from './users.service.js';
+import { AppDataSource } from '../database/data-source.js';
+import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
 import {
   hashPassword,
   comparePassword,
@@ -40,7 +43,7 @@ export class AuthService {
       return null;
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (user.status !== 'ACTIVE' || user.isDeleted) {
       throw new UnauthorizedException(AppMessages.Errors.User.INACTIVE);
     }
 
@@ -64,40 +67,9 @@ export class AuthService {
     };
   }
 
-  //   async register(registerDto) {
-  //     const existingUser = await this.usersService.findByEmail(registerDto.email);
-
-  //     if (existingUser) {
-  //       throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
-  //     }
-
-  //     const hashedPassword = await hashPassword(registerDto.password);
-
-  //     const user = await this.usersRepository.create({
-  //       email: registerDto.email,
-  //       username: registerDto.email, // Default username to email
-  //       password: hashedPassword,
-  //       status: 'ACTIVE',
-  //     });
-
-  //     // TODO: Assign default role using UserRoleEntity
-
-  //     const tokens = await this.generateTokens(user);
-  //     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
-
-  //     return {
-  //       user: {
-  //         id: user.id,
-  //         email: user.email,
-  //         username: user.username,
-  //       },
-  //       ...tokens,
-  //     };
-  //   }
-
   async refreshTokens(userId, refreshToken) {
     const user = await this.usersService.findById(userId);
-    
+
     if (!user || !user.refreshToken) {
       throw new UnauthorizedException('Access denied');
     }
@@ -105,7 +77,7 @@ export class AuthService {
     if (!compareRefreshToken(user.refreshToken, refreshToken)) {
       throw new UnauthorizedException('Access denied');
     }
-    
+
     const tokens = await this.generateTokens(user);
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
 
@@ -141,13 +113,57 @@ export class AuthService {
 
   async getProfile(userId) {
     const user = await this.usersService.findById(userId);
+
+    const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
+      where: { userId: userId, isDeleted: false },
+      relations: ['department', 'position', 'directManager'],
+    });
+
     return {
       id: user.id,
-      email: user.email,
       username: user.username,
+      email: user.email,
       roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
       status: user.status,
       lastLoginTime: user.lastLoginTime,
+      avatar: employee?.avatar || null,
+      fullName: employee?.fullName || null,
+      position: employee?.position?.positionName || null,
+      department: employee?.department?.departmentName || null,
+      manager: employee?.directManager?.fullName || null,
+      companyEmail: employee?.companyEmail || null,
+      personalEmail: employee?.personalEmail || null,
+      phoneNumber: employee?.phoneNumber || null,
+      currentAddress: employee?.currentAddress || null,
+      permanentAddress: employee?.permanentAddress || null,
+    };
+  }
+
+  async editProfile(userId, updateProfileDto) {
+    const employeeRepo = new EmployeesRepository();
+
+    const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
+      where: { userId: userId, isDeleted: false },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
+
+    const updated = await employeeRepo.update(employee.id, updateProfileDto);
+
+    return {
+      id: updated.id,
+      fullName: updated.fullName,
+      avatar: updated.avatar,
+      companyEmail: updated.companyEmail,
+      personalEmail: updated.personalEmail,
+      phoneNumber: updated.phoneNumber,
+      currentAddress: updated.currentAddress,
+      permanentAddress: updated.permanentAddress,
+      department: updated.department?.departmentName || null,
+      position: updated.position?.positionName || null,
+      manager: updated.directManager?.fullName || null,
     };
   }
 
@@ -168,7 +184,7 @@ export class AuthService {
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      jwt.sign(payload, secret, { expiresIn: expiresIn   }),
+      jwt.sign(payload, secret, { expiresIn: expiresIn }),
       jwt.sign(payload, refreshSecret, { expiresIn: refreshExpiresIn }),
     ]);
 
@@ -222,10 +238,18 @@ export class AuthService {
       );
     }
 
-    const hashedPassword = await hashPassword(newPassword);
+    const user = await this.usersService.findByIdWithPassword(userId);
+
+    const duplicatePassword = await comparePassword(newPassword, user.password);
+
+    if (duplicatePassword) {
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.PASSWORD_NOT_DIFFERENT,
+      );
+    }
 
     await this.usersService.update(userId, {
-      password: hashedPassword,
+      password: newPassword,
     });
 
     // Xóa token sau khi dùng
