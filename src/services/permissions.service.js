@@ -28,4 +28,38 @@ export class PermissionsService {
             throw error;
         }
     }
+
+    async findById(id) {
+        return this.permissionsRepository.findById(id);
+    }
+
+    async create(data) {
+        const existing = await this.permissionsRepository.findByCode(data.permissionCode);
+        if (existing) {
+            const error = new Error('Permission code already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+        return this.permissionsRepository.create(data);
+    }
+
+    async update(id, data) {
+        const permission = await this.findById(id);
+        if (!permission) {
+            const error = new Error('Permission not found');
+            error.statusCode = 404;
+            throw error;
+        }
+        return this.permissionsRepository.update(id, data);
+    }
+
+    async delete(id) {
+        const permission = await this.findById(id);
+        if (!permission) {
+            const error = new Error('Permission not found');
+            error.statusCode = 404;
+            throw error;
+        }
+        return this.permissionsRepository.delete(id);
+    }
 }

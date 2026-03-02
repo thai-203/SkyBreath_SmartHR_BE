@@ -24,5 +24,8 @@ const permissionsController = new PermissionsController(permissionsService);
  *         description: List of permissions
  */
 router.get('/', authMiddleware, rolesMiddleware([Role.ADMIN]), permissionsController.findAll);
+router.post('/', authMiddleware, rolesMiddleware([Role.ADMIN]), permissionsController.create);
+router.put('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), permissionsController.update);
+router.delete('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), permissionsController.delete);
 
 export const permissionsRoutes = router;

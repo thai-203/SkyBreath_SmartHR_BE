@@ -17,4 +17,33 @@ export class PermissionsController {
             next(error);
         }
     }
+
+    create = async (req, res, next) => {
+        try {
+            const result = await this.permissionsService.create(req.body);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Permission.CREATED, result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    update = async (req, res, next) => {
+        try {
+            const { id } = req.params;
+            const result = await this.permissionsService.update(id, req.body);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Permission.UPDATED, result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    delete = async (req, res, next) => {
+        try {
+            const { id } = req.params;
+            await this.permissionsService.delete(id);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Permission.DELETED);
+        } catch (error) {
+            next(error);
+        }
+    }
 }
