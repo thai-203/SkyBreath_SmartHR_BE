@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller.js';
+import { upload } from '../common/middleware/upload.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import {
@@ -120,7 +121,7 @@ router.get('/profile', authMiddleware, authController.getProfile);
  * @swagger
  * /auth/profile:
  *   put:
- *     summary: Update user profile (personalEmail, phoneNumber, currentAddress)
+ *     summary: Update user profile (personalEmail, phoneNumber, currentAddress, permanentAddress) - fullName cannot be changed
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
@@ -141,6 +142,7 @@ router.get('/profile', authMiddleware, authController.getProfile);
 router.put(
   '/profile',
   authMiddleware,
+  upload.single('avatar'),
   validationMiddleware(UpdateProfileDto),
   authController.editProfile,
 );
