@@ -12,6 +12,7 @@ export class AuthController {
   login = async (req, res, next) => {
     try {
       const { email, password } = req.body;
+      
       const user = await this.authService.validateUser(email, password);
 
       if (!user) {
