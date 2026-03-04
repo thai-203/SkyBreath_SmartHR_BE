@@ -107,7 +107,9 @@ export class AuthService {
     }
 
     if (changePasswordDto.newPassword === changePasswordDto.currentPassword) {
-      throw new BadRequestException('Mật khẩu mới không được trùng với mật khẩu hiện tại');
+      throw new BadRequestException(
+        'Mật khẩu mới không được trùng với mật khẩu hiện tại',
+      );
     }
 
     const hashedPassword = await hashPassword(changePasswordDto.newPassword);
