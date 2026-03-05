@@ -67,7 +67,7 @@ export class ContractEntity extends BaseEntity {
 
     @Column({ name: 'terminated_by', type: 'int', nullable: true })
     terminatedBy;
-    
+
     @Column({ type: 'json', nullable: true })
     attachments;
 

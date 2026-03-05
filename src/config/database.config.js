@@ -37,6 +37,9 @@ import { OnboardingPlanEntity } from '../models/entities/onboarding-plan.entity.
 import { OnboardingTaskEntity } from '../models/entities/onboarding-task.entity.js';
 import { OnboardingProgressEntity } from '../models/entities/onboarding-progress.entity.js';
 import { TaskAssignmentEntity } from '../models/entities/task-assignment.entity.js';
+import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
+import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
+import { PenaltyEntity } from '../models/entities/penalty.entity.js';
 
 import { config } from './env.config.js';
 
@@ -89,6 +92,9 @@ export const databaseConfig = {
         OnboardingTaskEntity,
         OnboardingProgressEntity,
         TaskAssignmentEntity,
+        OvertimeRuleEntity,
+        OvertimeRuleDepartmentEntity,
+        PenaltyEntity,
     ],
     subscribers: [],
     migrations: [],
