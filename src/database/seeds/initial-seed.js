@@ -164,8 +164,6 @@ const seed = async () => {
         }
         console.log('Assigned permissions to HR');
 
-        console.log('Assigned permissions to HR');
-
         // 4. Create Departments
         const departmentRepo = dataSource.getRepository(DepartmentEntity);
         const departmentsData = [

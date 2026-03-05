@@ -9,8 +9,8 @@ import { actionLogMiddleware } from './common/middleware/action-log.middleware.j
 import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { config } from './config/env.config.js';
 import redis from './config/redis.config.js';
-import { swaggerSpec } from './config/swagger.config.js';
 import { AppDataSource } from './database/data-source.js';
+import { swaggerSpec } from './config/swagger.config.js';
 import { actionLogsRoutes } from './routes/action-logs.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { contractsRoutes } from './routes/contracts.routes.js';
@@ -20,6 +20,8 @@ import { employeesRoutes } from './routes/employees.routes.js';
 import { holidayListRoutes } from './routes/holiday-list.routes.js';
 import { jobGradesRoutes } from './routes/job-grades.routes.js';
 import { onboardingRoutes } from './routes/onboarding.routes.js';
+import { overtimeRulesRoutes } from './routes/overtime-rules.routes.js';
+import { penaltiesRoutes } from './routes/penalties.routes.js';
 import { permissionsRoutes } from './routes/permissions.routes.js';
 import { positionsRoutes } from './routes/positions.routes.js';
 import { rolesRoutes } from './routes/roles.routes.js';
@@ -67,6 +69,8 @@ app.use(`/${API_PREFIX}/${API_VERSION}/positions`, positionsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/employee-salaries`, employeeSalariesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/onboarding`, onboardingRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/timesheets`, timesheetsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/overtime-rules`, overtimeRulesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/penalties`, penaltiesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/holiday-list`, holidayListRoutes);
 
 app.get('/', (req, res) => {

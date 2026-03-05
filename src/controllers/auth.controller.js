@@ -20,7 +20,7 @@ export class AuthController {
         error.statusCode = 401;
         throw error;
       }
-      
+
       const { refreshToken, ...resultToken } =
         await this.authService.login(user);
       res.cookie('refreshToken', refreshToken, {

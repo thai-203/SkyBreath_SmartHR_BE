@@ -22,14 +22,14 @@ export class ContractsController {
         ];
 
         const financialFields = [
-            'baseSalary', 'performanceSalary', 'phoneAllowance', 
+            'baseSalary', 'performanceSalary', 'phoneAllowance',
             'lunchAllowance', 'fuelAllowance', 'otherAllowance'
         ];
 
         numberFields.forEach((field) => {
             if (data[field] !== undefined && data[field] !== null && data[field] !== '') {
                 const val = Number(data[field]);
-                
+
                 if (isNaN(val)) {
                     throw new Error(`Trường ${field} phải là một số hợp lệ.`);
                 }
@@ -74,8 +74,8 @@ export class ContractsController {
             }
 
             // 3. Xử lý attachments
-            dtoData.attachments = files.length > 0 
-                ? files.map(file => file.path.replace(/\\/g, '/')) 
+            dtoData.attachments = files.length > 0
+                ? files.map(file => file.path.replace(/\\/g, '/'))
                 : null;
 
             // 4. Validate bằng Class-Validator
