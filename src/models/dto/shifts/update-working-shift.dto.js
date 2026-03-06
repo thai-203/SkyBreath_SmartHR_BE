@@ -1,4 +1,11 @@
-import { IsString, MaxLength, IsOptional, IsNumber } from 'class-validator';
+import {
+  IsString,
+  MaxLength,
+  IsOptional,
+  IsNumber,
+  Validate,
+} from 'class-validator';
+import { ShiftTimeOrdering } from './time-validation.js';
 
 export class UpdateWorkingShiftDto {
   @IsOptional()
@@ -25,4 +32,8 @@ export class UpdateWorkingShiftDto {
   @IsOptional()
   @IsNumber({}, { message: 'ID nhóm ca phải là số' })
   groupId;
+
+  // validate logical ordering when both fields are provided
+  @Validate(ShiftTimeOrdering)
+  timeValidator;
 }

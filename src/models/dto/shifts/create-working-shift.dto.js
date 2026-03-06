@@ -2,9 +2,10 @@ import {
   IsString,
   IsNotEmpty,
   MaxLength,
-  IsOptional,
   IsNumber,
+  Validate,
 } from 'class-validator';
+import { ShiftTimeOrdering } from './time-validation.js';
 
 export class CreateWorkingShiftDto {
   @IsString({ message: 'Tên ca phải là chuỗi ký tự' })
@@ -12,23 +13,26 @@ export class CreateWorkingShiftDto {
   @MaxLength(100, { message: 'Tên ca không được vượt quá 100 ký tự' })
   shiftName;
 
-  @IsOptional()
   @IsString({ message: 'Giờ bắt đầu phải là chuỗi' })
+  @IsNotEmpty({ message: 'Giờ bắt đầu không được để trống' })
   startTime;
 
-  @IsOptional()
   @IsString({ message: 'Giờ kết thúc phải là chuỗi' })
+  @IsNotEmpty({ message: 'Giờ kết thúc không được để trống' })
   endTime;
 
-  @IsOptional()
   @IsString({ message: 'Giờ nghỉ bắt đầu phải là chuỗi' })
+  @IsNotEmpty({ message: 'Giờ nghỉ bắt đầu không được để trống' })
   breakStartTime;
 
-  @IsOptional()
   @IsString({ message: 'Giờ nghỉ kết thúc phải là chuỗi' })
+  @IsNotEmpty({ message: 'Giờ nghỉ kết thúc không được để trống' })
   breakEndTime;
 
-  @IsOptional()
   @IsNumber({}, { message: 'ID nhóm ca phải là số' })
+  @IsNotEmpty({ message: 'ID nhóm ca không được để trống' })
   groupId;
+
+  @Validate(ShiftTimeOrdering)
+  timeValidator;
 }
