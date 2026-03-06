@@ -239,7 +239,7 @@ const seed = async () => {
         const userRepo = dataSource.getRepository(UserEntity);
         const userRoleRepo = dataSource.getRepository(UserRoleEntity);
         const employeeRepo = dataSource.getRepository(EmployeeEntity);
-        const password = await hashPassword('password123');
+        const password = await hashPassword('Admin@123');
 
         const usersData = [
             { username: 'admin', email: 'admin@example.com', role: 'ADMIN', fullName: 'System Administrator' },

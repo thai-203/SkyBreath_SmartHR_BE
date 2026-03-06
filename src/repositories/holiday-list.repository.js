@@ -12,8 +12,13 @@ export class HolidayListRepository {
         return this.repository.save(holiday);
     }
 
+    async createMany(data) {
+        const holidays = this.repository.create(data);
+        return this.repository.save(holidays);
+    }
+
     async findAll(queryDto = {}) {
-        const { skip = 0, limit = 10, sortBy = 'holidayDate', sortOrder = 'ASC', search, startDate, endDate } = queryDto;
+        const { skip = 0, limit = 10, sortBy = 'startDate', sortOrder = 'ASC', search, startDate, endDate } = queryDto;
 
         const order = {};
         if (sortBy) {
