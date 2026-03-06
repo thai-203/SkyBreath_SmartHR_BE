@@ -74,61 +74,61 @@ export class ContractsRepository {
     }
 
     async findAll(queryDto) {
-    const {
-        skip,
-        limit,
-        sortBy,
-        sortOrder,
-        search,
-        contractStatus,
-        contractType,
-    } = queryDto;
+        const {
+            skip,
+            limit,
+            sortBy,
+            sortOrder,
+            search,
+            contractStatus,
+            contractType,
+        } = queryDto;
 
-    const order = sortBy
-        ? { [sortBy]: sortOrder || 'DESC' }
-        : { createdAt: 'DESC' };
+        const order = sortBy
+            ? { [sortBy]: sortOrder || 'DESC' }
+            : { createdAt: 'DESC' };
 
-    const baseWhere = {
-        isDeleted: false,
-    };
+        const baseWhere = {
+            isDeleted: false,
+        };
 
-    if (contractStatus) {
-        baseWhere.contractStatus = contractStatus;
-    }
+        if (contractStatus) {
+            baseWhere.contractStatus = contractStatus;
+        }
 
-    if (contractType) {
-        baseWhere.contractType = contractType;
-    }
+        if (contractType) {
+            baseWhere.contractType = contractType;
+        }
 
-    let where = baseWhere;
+        let where = baseWhere;
 
-    if (search) {
-        where = [
-        {
-            ...baseWhere,
-            contractNumber: Like(`%${search}%`),
-        },
-        {
-            ...baseWhere,
-            employee: {
-            fullName: Like(`%${search}%`),
-            },
-        },
-        ];
-    }
+        if (search) {
+            where = [
+                {
+                    ...baseWhere,
+                    contractNumber: Like(`%${search}%`),
+                },
+                {
+                    ...baseWhere,
+                    employee: {
+                        fullName: Like(`%${search}%`),
+                    },
+                },
+            ];
+        }
 
-    return this.repository.findAndCount({
-        where,
-        relations: [
-        'employee',
-        'employee.user',
-        'employee.department',
-        'employee.position',
-        ],
-        order,
-        skip,
-        take: limit,
-    });
+        return this.repository.findAndCount({
+            where,
+            relations: [
+                'employee',
+                'employee.user',
+                'employee.department',
+                'employee.position',
+            ],
+            order,
+            skip,
+            take: limit,
+        });
     }
 
     async findById(id) {
@@ -175,7 +175,7 @@ export class ContractsRepository {
                         data.attachments !== undefined
                             ? data.attachments
                             : contract.attachments,
-                            
+
                     note: data.note,
                 }
             );
@@ -212,19 +212,19 @@ export class ContractsRepository {
                         data.baseSalary !== currentSalary.baseSalary) ||
                     (data.performanceSalary !== undefined &&
                         data.performanceSalary !==
-                            currentSalary.performanceSalary) ||
+                        currentSalary.performanceSalary) ||
                     (data.lunchAllowance !== undefined &&
                         data.lunchAllowance !==
-                            currentSalary.lunchAllowance) ||
+                        currentSalary.lunchAllowance) ||
                     (data.fuelAllowance !== undefined &&
                         data.fuelAllowance !==
-                            currentSalary.fuelAllowance) ||
+                        currentSalary.fuelAllowance) ||
                     (data.phoneAllowance !== undefined &&
                         data.phoneAllowance !==
-                            currentSalary.phoneAllowance) ||
+                        currentSalary.phoneAllowance) ||
                     (data.otherAllowance !== undefined &&
                         data.otherAllowance !==
-                            currentSalary.otherAllowance) ||
+                        currentSalary.otherAllowance) ||
                     (data.salaryType !== undefined &&
                         data.salaryType !== currentSalary.salaryType);
 
@@ -305,7 +305,7 @@ export class ContractsRepository {
             if (contract.contractStatus === 'terminated') {
                 throw new Error('Contract already terminated');
             }
-            
+
             if (!data.terminationDate || !data.terminationReason) {
                 throw new Error('terminationDate and terminationReason are required');
             }

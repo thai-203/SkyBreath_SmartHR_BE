@@ -38,7 +38,8 @@ export class HolidayListController {
 
     async create(req, res, next) {
         try {
-            const result = await this.service.create(req.body);
+            const data = { ...req.body, updatedBy: req.user?.username || 'System' };
+            const result = await this.service.create(data);
             res.status(201).json(new BaseResponseDto(result, 'Holiday created successfully'));
         } catch (error) {
             next(error);
@@ -47,7 +48,8 @@ export class HolidayListController {
 
     async update(req, res, next) {
         try {
-            const result = await this.service.update(req.params.id, req.body);
+            const data = { ...req.body, updatedBy: req.user?.username || 'System' };
+            const result = await this.service.update(req.params.id, data);
             res.json(new BaseResponseDto(result, 'Holiday updated successfully'));
         } catch (error) {
             next(error);
@@ -81,6 +83,28 @@ export class HolidayListController {
                 'attachment; filename=danh-sach-ngay-le.xlsx'
             );
             res.send(buffer);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getInheritPreview(req, res, next) {
+        try {
+            const year = parseInt(req.query.year) || new Date().getFullYear();
+            const result = await this.service.getInheritPreview(year);
+            res.json({
+                success: true,
+                data: result
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async bulkCreate(req, res, next) {
+        try {
+            const result = await this.service.bulkCreate(req.body, req.user?.username || 'System');
+            res.status(201).json(new BaseResponseDto(result, 'Holidays inherited successfully'));
         } catch (error) {
             next(error);
         }

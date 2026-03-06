@@ -62,11 +62,6 @@ export const AppMessages = {
       CREATED: 'Action log recorded successfully',
     },
 
-    ActionLog: {
-      RETRIEVED_ALL: 'Action logs retrieved successfully',
-      RETRIEVED: 'Action log retrieved successfully',
-    },
-
     Contract: {
       CREATED: 'Hợp đồng đã được tạo thành công',
       RETRIEVED_ALL: 'Danh sách hợp đồng đã được tải',
@@ -184,10 +179,6 @@ export const AppMessages = {
         code: 'EMP_006',
         message: 'Số CMND/CCCD đã được sử dụng',
       },
-      CODE_DUPLICATE: {
-        code: 'EMP_007',
-        message: 'Mã nhân viên đã tồn tại',
-      },
     },
     Department: {
       NOT_FOUND: { code: 'DEPT_001', message: 'Không tìm thấy phòng ban' },
@@ -206,7 +197,7 @@ export const AppMessages = {
       ALREADY_EXISTS: { code: 'CONTRACT_002', message: 'Hợp đồng đã tồn tại' },
       INVALID_DATE: {
         code: 'CONTRACT_003',
-        message: 'Ngày kết thúc phải sau ngày bắt đầu',
+        message: 'The end date must be after the start date',
       },
       ALREADY_TERMINATED: {
         code: 'CONTRACT_004',
