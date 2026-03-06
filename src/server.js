@@ -26,6 +26,7 @@ import { permissionsRoutes } from './routes/permissions.routes.js';
 import { positionsRoutes } from './routes/positions.routes.js';
 import { rolesRoutes } from './routes/roles.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
+import { shiftsRoutes } from './routes/shifts.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
 
 process.on('SIGINT', async () => {
@@ -66,11 +67,15 @@ app.use(`/${API_PREFIX}/${API_VERSION}/contracts`, contractsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/action-logs`, actionLogsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/job-grades`, jobGradesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/positions`, positionsRoutes);
-app.use(`/${API_PREFIX}/${API_VERSION}/employee-salaries`, employeeSalariesRoutes);
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/employee-salaries`,
+  employeeSalariesRoutes,
+);
 app.use(`/${API_PREFIX}/${API_VERSION}/onboarding`, onboardingRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/timesheets`, timesheetsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/overtime-rules`, overtimeRulesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/penalties`, penaltiesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/shifts`, shiftsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/holiday-list`, holidayListRoutes);
 
 app.get('/', (req, res) => {
