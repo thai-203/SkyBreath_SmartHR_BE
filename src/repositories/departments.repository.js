@@ -14,30 +14,52 @@ export class DepartmentsRepository {
     }
 
     async findAll(queryDto) {
-        const { skip, limit, sortBy, sortOrder, search } = queryDto;
+        const { skip, limit, sortBy, sortOrder, search, parentDepartmentId, managerEmployeeId, hasEmployees } = queryDto;
 
-        const order = {};
-        if (sortBy) {
-            order[sortBy] = sortOrder;
-        } else {
-            order.createdAt = 'DESC';
-        }
-
-        const where = {
-            isDeleted: false,
-        };
+        const query = this.repository.createQueryBuilder('department')
+            .leftJoinAndSelect('department.parentDepartment', 'parentDepartment')
+            .leftJoinAndSelect('department.manager', 'manager')
+            .where('department.isDeleted = :isDeleted', { isDeleted: false });
 
         if (search) {
-            where.departmentName = Like(`%${search}%`);
+            query.andWhere('department.departmentName LIKE :search', { search: `%${search}%` });
         }
 
-        const [items, total] = await this.repository.findAndCount({
-            where,
-            relations: ['parentDepartment', 'manager'],
-            order,
-            skip,
-            take: limit,
-        });
+        if (parentDepartmentId) {
+            query.andWhere('department.parentDepartmentId = :parentDepartmentId', { parentDepartmentId });
+        }
+
+        if (managerEmployeeId) {
+            query.andWhere('department.managerEmployeeId = :managerEmployeeId', { managerEmployeeId });
+        }
+
+        if (hasEmployees === 'true' || hasEmployees === 'false') {
+            const hasEmp = hasEmployees === 'true';
+            const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+            const subQuery = employeeRepo.createQueryBuilder('employee')
+                .select('employee.departmentId')
+                .where('employee.isDeleted = :isDeleted', { isDeleted: false })
+                .groupBy('employee.departmentId');
+
+            if (hasEmp) {
+                query.andWhere(`department.id IN (${subQuery.getQuery()})`)
+                    .setParameters(subQuery.getParameters());
+            } else {
+                query.andWhere(`department.id NOT IN (${subQuery.getQuery()})`)
+                    .setParameters(subQuery.getParameters());
+            }
+        }
+
+        if (sortBy) {
+            query.orderBy(`department.${sortBy}`, sortOrder || 'DESC');
+        } else {
+            query.orderBy('department.createdAt', 'DESC');
+        }
+
+        const [items, total] = await query
+            .skip(skip)
+            .take(limit)
+            .getManyAndCount();
 
         // Add employee count to each item
         const employeeRepository = AppDataSource.getRepository(EmployeeEntity);

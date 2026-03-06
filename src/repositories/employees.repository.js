@@ -51,13 +51,18 @@ export class EmployeesRepository {
         return { items, total };
     }
 
-    async findDropdownList(roleName = 'manager') {
-        return this.repository.createQueryBuilder('employee')
-            .innerJoin('employee.user', 'user')
-            .innerJoin('user.userRoles', 'userRole')
-            .innerJoin('userRole.role', 'role')
-            .where('employee.isDeleted = :isDeleted', { isDeleted: false })
-            .andWhere('LOWER(role.roleName) = :roleName', { roleName: roleName.toLowerCase() })
+    async findDropdownList(roleName) {
+        const query = this.repository.createQueryBuilder('employee')
+            .leftJoin('employee.user', 'user')
+            .leftJoin('user.userRoles', 'userRole')
+            .leftJoin('userRole.role', 'role')
+            .where('employee.isDeleted = :isDeleted', { isDeleted: false });
+
+        if (roleName) {
+            query.andWhere('LOWER(role.roleName) = :roleName', { roleName: roleName.toLowerCase() });
+        }
+
+        return query
             .select(['employee.id', 'employee.fullName', 'employee.avatar'])
             .orderBy('employee.fullName', 'ASC')
             .getMany();
@@ -140,7 +145,7 @@ export class EmployeesRepository {
 
     async countByCreatedAtRange(start, end) {
         return this.repository.count({
-        where: {
+            where: {
                 isDeleted: false,
                 createdAt: Between(start, end),
             },

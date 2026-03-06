@@ -22,7 +22,7 @@ const employeesController = new EmployeesController(employeesService);
 
 // View permissions
 router.get('/meta-data', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.getMetadata);
-router.get('/list', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.list);
+router.get('/list', authMiddleware, employeesController.list);
 router.get('/no-plan', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.getEmployeeNoPlanId);
 router.get('/user/:userId', authMiddleware, employeesController.getByUserId);
 router.get('/', authMiddleware, permissionsMiddleware('EMPLOYEE_READ'), employeesController.all);

@@ -59,6 +59,22 @@ const departmentsController = new DepartmentsController();
  *         schema:
  *           type: string
  *         description: Search term
+ *       - in: query
+ *         name: parentDepartmentId
+ *         schema:
+ *           type: integer
+ *         description: Filter by parent department ID
+ *       - in: query
+ *         name: managerEmployeeId
+ *         schema:
+ *           type: integer
+ *         description: Filter by manager ID
+ *       - in: query
+ *         name: hasEmployees
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: Filter by whether department has employees
  *     responses:
  *       200:
  *         description: List of departments
