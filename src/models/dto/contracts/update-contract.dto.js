@@ -55,6 +55,7 @@ import { Type } from 'class-transformer';
  *         terminationDate:
  *           type: string
  *           format: date
+ *           description: 'Ngày chấm dứt hợp đồng; có thể đặt trong tương lai để lên lịch.'
  *         terminationReason:
  *           type: string
  *         terminationCompensation:
@@ -71,6 +72,12 @@ import { Type } from 'class-transformer';
  */
 export class UpdateContractDto {
   /* ========= EXISTING FIELDS ========= */
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  employeeId; // when provided, must match the current contract's employee
 
   @IsOptional()
   @IsString()
@@ -164,6 +171,7 @@ export class UpdateContractDto {
 
   @IsOptional()
   @IsDateString()
+  // can be a future date; actual status update happens when the date arrives
   terminationDate;
 
   @IsOptional()

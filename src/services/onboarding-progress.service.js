@@ -25,7 +25,7 @@ export class OnboardingProgressService {
     async findById(progressId) {
         const progress = await this.progressRepository.findById(progressId);
         if (!progress) {
-            throw new NotFoundException(AppMessages.Errors.Onboarding?.PROGRESS_NOT_FOUND?.message || `Onboarding progress with ID ${progressId} not found`);
+            throw new NotFoundException(AppMessages.Errors.Onboarding?.PROGRESS_NOT_FOUND?.message || `Không tìm thấy tiến trình onboarding có ID ${progressId}.`);
         }
         return progress;
     }
@@ -33,7 +33,7 @@ export class OnboardingProgressService {
     async findByEmployee(employeeId) {
         const progress = await this.progressRepository.findByEmployeeId(employeeId);
         if (!progress) {
-            throw new NotFoundException(AppMessages.Errors.Onboarding?.PROGRESS_NOT_FOUND?.message || `No onboarding progress found for employee ${employeeId}`);
+            throw new NotFoundException(AppMessages.Errors.Onboarding?.PROGRESS_NOT_FOUND?.message || `Không tìm thấy tiến trình onboarding cho nhân viên ${employeeId}`);
         }
         return progress;
     }
@@ -41,12 +41,18 @@ export class OnboardingProgressService {
     async create(employeeId, planId, assignedMentorId = null) {
         const plan = await this.plansRepository.findById(planId);
         if (!plan) {
-            throw new NotFoundException(AppMessages.Errors.Onboarding?.PLAN_NOT_FOUND?.message || `Plan with ID ${planId} not found`);
+            throw new NotFoundException(AppMessages.Errors.Onboarding?.PLAN_NOT_FOUND?.message || `Kế hoạch với ID ${planId} không được tìm thấy`);
+        }
+
+        // ensure employee exists
+        const emp = await this.employeesRepository.findById(employeeId);
+        if (!emp) {
+            throw new BadRequestException(`Không tìm thấy nhân viên có ID ${employeeId}`);
         }
 
         const existingProgress = await this.progressRepository.findByEmployeeAndPlan(employeeId, planId);
         if (existingProgress) {
-            throw new BadRequestException(AppMessages.Errors.Onboarding?.PROGRESS_ALREADY_EXISTS?.message || 'Employee already has onboarding progress for this plan');
+            throw new BadRequestException(AppMessages.Errors.Onboarding?.PROGRESS_ALREADY_EXISTS?.message || 'Nhân viên đã có tiến trình onboarding cho kế hoạch này');
         }
 
         const startDate = new Date();
@@ -116,7 +122,7 @@ export class OnboardingProgressService {
         const progress = await this.findById(progressId);
         
         if (progress.overallStatus !== 'ON_HOLD') {
-            throw new BadRequestException(AppMessages.Errors.Onboarding?.CANNOT_RESUME?.message || 'Only paused onboarding can be resumed');
+            throw new BadRequestException(AppMessages.Errors.Onboarding?.CANNOT_RESUME?.message || 'Chỉ có thể tiếp tục các tiến trình onboarding đã tạm dừng');
         }
 
         return this.progressRepository.update(progressId, {

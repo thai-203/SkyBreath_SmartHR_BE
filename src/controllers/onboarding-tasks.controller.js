@@ -1,4 +1,10 @@
 import { OnboardingTasksService } from '../services/onboarding-tasks.service.js';
+import { plainToInstance } from 'class-transformer';
+import { validateOrReject } from 'class-validator';
+import {
+  CreateOnboardingTaskDto,
+  UpdateOnboardingTaskDto,
+} from '../models/dto/onboarding/index.js';
 
 export class OnboardingTasksController {
   constructor() {
@@ -12,17 +18,35 @@ export class OnboardingTasksController {
     return res.success(tasks);
   }
 
-  async create(req, res) {
-    const task = await this.onboardingTasksService.create(
-      req.params.planId,
-      req.body,
-    );
-    return res.success(task);
+  async create(req, res, next) {
+    try {
+      const dto = plainToInstance(CreateOnboardingTaskDto, req.body);
+      await validateOrReject(dto, {
+        whitelist: true,
+        forbidNonWhitelisted: false,
+      });
+      const task = await this.onboardingTasksService.create(
+        req.params.planId,
+        dto,
+      );
+      return res.success(task);
+    } catch (error) {
+      next(error);
+    }
   }
 
-  async update(req, res) {
-    await this.onboardingTasksService.update(req.params.id, req.body);
-    return res.success();
+  async update(req, res, next) {
+    try {
+      const dto = plainToInstance(UpdateOnboardingTaskDto, req.body);
+      await validateOrReject(dto, {
+        whitelist: true,
+        forbidNonWhitelisted: false,
+      });
+      await this.onboardingTasksService.update(req.params.id, dto);
+      return res.success();
+    } catch (error) {
+      next(error);
+    }
   }
 
   async delete(req, res) {

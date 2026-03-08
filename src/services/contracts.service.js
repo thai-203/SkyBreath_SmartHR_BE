@@ -12,6 +12,7 @@ import { AppDataSource } from '../database/data-source.js';
 import { DepartmentEntity } from '../models/entities/department.entity.js';
 import { PositionEntity } from '../models/entities/position.entity.js';
 import { JobGradeEntity } from '../models/entities/job-grade.entity.js';
+import { ContractEntity } from '../models/entities/contract.entity.js';
 
 export class ContractsService {
   constructor() {
@@ -121,12 +122,28 @@ export class ContractsService {
 
   async update(id, updateDto) {
     await this.findById(id);
+
+    // contractNumber is immutable once created
     if (updateDto.contractNumber) {
+      console.log('updateDto', updateDto);
+      const current = await this.findById(id);
+      if (updateDto.contractNumber !== current.contractNumber) {
+        throw new BadRequestException('Không được phép thay đổi mã hợp đồng');
+      }
       const existing = await this.contractsRepository.findByContractNumber(
         updateDto.contractNumber,
       );
       if (existing && existing.id !== id) {
         throw new ConflictException(AppMessages.Errors.Contract.ALREADY_EXISTS);
+      }
+    }
+    // employee cannot be reassigned – only act if the field is present
+    if (updateDto.employeeId !== undefined) {
+      const current = await this.findById(id);
+      if (updateDto.employeeId !== current.employeeId) {
+        throw new BadRequestException(
+          'Không được phép thay đổi nhân viên của hợp đồng',
+        );
       }
     }
 
@@ -186,7 +203,7 @@ export class ContractsService {
       const endDate = new Date(updateDto.endDate);
 
       if (startDate >= endDate) {
-        throw new BadRequestException('End date must be after start date');
+        throw new BadRequestException('Ngày kết thúc phải sau ngày bắt đầu');
       }
     }
     if (updateDto.signedDate && updateDto.startDate) {
@@ -208,6 +225,53 @@ export class ContractsService {
       throw new BadRequestException('Hợp đồng đã được chấm dứt');
     }
 
+    // validate termination payload
+    if (!terminationData || !terminationData.terminationDate) {
+      throw new BadRequestException('Ngày chấm dứt hợp đồng là bắt buộc');
+    }
+    if (
+      !terminationData.terminationReason ||
+      String(terminationData.terminationReason).trim() === ''
+    ) {
+      throw new BadRequestException('Lý do chấm dứt là bắt buộc');
+    }
+    const termDate = new Date(terminationData.terminationDate);
+    if (isNaN(termDate.getTime())) {
+      throw new BadRequestException('Ngày chấm dứt không hợp lệ');
+    }
+    // termination must not be before contract start
+    if (contract.startDate) {
+      const start = new Date(contract.startDate);
+      if (termDate < start) {
+        throw new BadRequestException(
+          'Ngày chấm dứt không được trước ngày bắt đầu hợp đồng',
+        );
+      }
+    }
+    // termination cannot be in the future
+    const now = new Date();
+    // allow future termination dates; the record will be updated later by a scheduler
+    // (validation above already checked date is valid and not before start)
+
+    if (
+      terminationData.terminationCompensation !== undefined &&
+      terminationData.terminationCompensation !== null
+    ) {
+      const comp = Number(terminationData.terminationCompensation);
+      if (isNaN(comp) || comp < 0) {
+        throw new BadRequestException('Bồi thường phải là số không âm');
+      }
+      const MAX_COMP = 50000000; // 50 triệu
+      if (comp > MAX_COMP) {
+        throw new BadRequestException(
+          `Mức bồi thường không được vượt quá ${MAX_COMP}`,
+        );
+      }
+      terminationData.terminationCompensation = comp;
+    }
+
+    // if termination date is in future we still record the info but status will not
+    // yet be switched. The repository will handle conditional status update.
     return this.contractsRepository.terminate(id, terminationData, userId);
   }
 
@@ -284,5 +348,41 @@ export class ContractsService {
     return await this.contractsRepository.findOneByContractNumber(
       contractNumber,
     );
+  }
+
+  /**
+   * Periodically check contracts with a termination date or end date that has arrived.
+   * Terminates/Expires them automatically.
+   * @param {number|null} userId id of the user performing automatic actions (optional)
+   */
+  async processScheduledUpdates(userId = null) {
+    const repo = AppDataSource.getRepository(ContractEntity);
+    const now = new Date();
+
+    // apply terminations whose date has arrived and are not yet marked
+    await repo
+      .createQueryBuilder()
+      .update(ContractEntity)
+      .set({
+        contractStatus: 'terminated',
+        terminatedAt: now,
+        terminatedBy: userId,
+      })
+      .where('terminationDate <= :now', { now })
+      .andWhere('terminationDate IS NOT NULL')
+      .andWhere('contractStatus != :terminated', { terminated: 'terminated' })
+      .execute();
+
+    // expire contracts that have passed their end date and are still active
+    await repo
+      .createQueryBuilder()
+      .update(ContractEntity)
+      .set({ contractStatus: 'EXPIRED' })
+      .where('endDate <= :now', { now })
+      .andWhere('endDate IS NOT NULL')
+      .andWhere('contractStatus NOT IN (:...statuses)', {
+        statuses: ['EXPIRED', 'terminated'],
+      })
+      .execute();
   }
 }

@@ -5,12 +5,11 @@ import {
   IsBoolean,
   IsNotEmpty,
   Min,
-  Allow
+  Allow,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateOnboardingPlanDto {
-
   @IsString()
   @IsNotEmpty()
   planName;
@@ -24,6 +23,22 @@ export class CreateOnboardingPlanDto {
   @IsInt()
   @Min(1)
   departmentId;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  employeeId; // required for non-template plans
+
+  @IsOptional()
+  @IsString()
+  startDate;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  durationDays;
 
   @Type(() => Number)
   @IsOptional()

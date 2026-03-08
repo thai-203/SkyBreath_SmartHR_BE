@@ -1,14 +1,15 @@
 import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
+import { validateOrReject } from 'class-validator';
 
 import {
   CreateOnboardingPlanDto,
   UpdateOnboardingPlanDto,
-  QueryOnboardingPlanDto
+  QueryOnboardingPlanDto,
 } from '../models/dto/onboarding/index.js';
 
 import { OnboardingPlansService } from '../services/onboarding-plans.service.js';
 import { AppMessages } from '../common/constants/index.js';
+import { BadRequestException } from '../common/exceptions/index.js';
 
 export class OnboardingPlansController {
   constructor() {
@@ -69,15 +70,36 @@ export class OnboardingPlansController {
   create = async (req, res, next) => {
     try {
       const createDto = plainToInstance(CreateOnboardingPlanDto, req.body);
+      await validateOrReject(createDto, {
+        whitelist: true,
+        forbidNonWhitelisted: false,
+      });
+
+      // require employee and startDate for non-template plans
+      if (!createDto.isTemplate) {
+        if (!createDto.employeeId) {
+          throw new BadRequestException(
+            'Nhân viên là thông tin bắt buộc cho kế hoạch',
+          );
+        }
+        if (!createDto.startDate) {
+          throw new BadRequestException(
+            'Ngày bắt đầu là thông tin bắt buộc cho kế hoạch',
+          );
+        }
+      }
+
       const data = {
         ...createDto,
-        createdBy: req.user?.id
+        createdBy: req.user?.id,
       };
       const plan = await this.plansService.create(data, req.user.id);
       res.status(201).json({
         success: true,
         data: plan,
-        message: AppMessages.Success.Onboarding?.PLAN_CREATED || AppMessages.Success.CREATED,
+        message:
+          AppMessages.Success.Onboarding?.PLAN_CREATED ||
+          AppMessages.Success.CREATED,
       });
     } catch (error) {
       next(error);
@@ -88,11 +110,17 @@ export class OnboardingPlansController {
     try {
       const id = parseInt(req.params.id);
       const updateDto = plainToInstance(UpdateOnboardingPlanDto, req.body);
+      await validateOrReject(updateDto, {
+        whitelist: true,
+        forbidNonWhitelisted: false,
+      });
       const plan = await this.plansService.update(id, updateDto);
       res.status(200).json({
         success: true,
         data: plan,
-        message: AppMessages.Success.Onboarding?.PLAN_UPDATED || AppMessages.Success.UPDATED,
+        message:
+          AppMessages.Success.Onboarding?.PLAN_UPDATED ||
+          AppMessages.Success.UPDATED,
       });
     } catch (error) {
       next(error);
@@ -105,7 +133,9 @@ export class OnboardingPlansController {
       await this.plansService.remove(id);
       res.status(200).json({
         success: true,
-        message: AppMessages.Success.Onboarding?.PLAN_DELETED || AppMessages.Success.DELETED,
+        message:
+          AppMessages.Success.Onboarding?.PLAN_DELETED ||
+          AppMessages.Success.DELETED,
       });
     } catch (error) {
       next(error);

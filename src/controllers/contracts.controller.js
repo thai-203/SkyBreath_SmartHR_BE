@@ -255,7 +255,7 @@ export class ContractsController {
       return res.status(200).json({
         success: true,
         data: result,
-        message: 'Contract terminated successfully',
+        message: 'Hợp đồng đã chấm dứt thành công',
       });
     } catch (error) {
       next(error);
@@ -272,7 +272,7 @@ export class ContractsController {
         success: true,
         message:
           AppMessages?.Success?.Contract?.DELETED ??
-          'Contract deleted successfully',
+          'Hợp đồng đã được xóa thành công',
       });
     } catch (error) {
       next(error);

@@ -314,7 +314,7 @@ router.put(
  * /contracts/{id}/terminate:
  *   put:
  *     summary: Terminate an employment contract
- *     description: Mark a contract as terminated and store termination information
+ *     description: Mark a contract as terminated and store termination information (a future date will schedule the change; status updates automatically when date arrives)
  *     tags: [Contracts]
  *     security:
  *       - bearerAuth: []

@@ -28,6 +28,7 @@ import { rolesRoutes } from './routes/roles.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { shiftsRoutes } from './routes/shifts.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
+import { ContractsService } from './services/contracts.service.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
@@ -103,6 +104,27 @@ const startServer = async () => {
       console.log(
         `API Endpoint: http://localhost:${PORT}/${API_PREFIX}/${API_VERSION}`,
       );
+
+      // start a background timer to apply scheduled terminations/expirations
+      try {
+        const contractsService = new ContractsService();
+        const intervalMs = 1000 * 60 * 60; // every hour
+
+        const runScheduled = async () => {
+          try {
+            await contractsService.processScheduledUpdates();
+          } catch (err) {
+            console.error('Error running scheduled contract update', err);
+          }
+        };
+
+        // run once at startup
+        runScheduled();
+        setInterval(runScheduled, intervalMs);
+        console.log('Scheduled contract processor started (hourly)');
+      } catch (e) {
+        console.error('Failed to initialize scheduled contract processor', e);
+      }
     });
   } catch (error) {
     console.error('Error during Data Source initialization:', error);
