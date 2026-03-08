@@ -261,6 +261,14 @@ export const AppMessages = {
     ShiftGroup: {
       NOT_FOUND: { code: 'SG_001', message: 'Không tìm thấy nhóm ca' },
       ALREADY_EXISTS: { code: 'SG_002', message: 'Nhóm ca đã tồn tại' },
+      HAS_SHIFTS: {
+        code: 'SG_003',
+        message: 'Nhóm ca đang có ca làm việc, không thể thực hiện thao tác này',
+      },
+      INACTIVE: {
+        code: 'SG_004',
+        message: 'Nhóm ca hiện không hoạt động',
+      },
     },
     WorkingShift: {
       NOT_FOUND: { code: 'SH_001', message: 'Không tìm thấy ca làm việc' },

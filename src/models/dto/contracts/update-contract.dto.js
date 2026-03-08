@@ -1,11 +1,11 @@
 import {
-    IsString,
-    IsOptional,
-    IsInt,
-    IsDateString,
-    IsNumber,
-    Min,
-    Allow,
+  IsString,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  IsNumber,
+  Min,
+  Allow,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -70,121 +70,120 @@ import { Type } from 'class-transformer';
  *             format: binary
  */
 export class UpdateContractDto {
+  /* ========= EXISTING FIELDS ========= */
 
-    /* ========= EXISTING FIELDS ========= */
+  @IsOptional()
+  @IsString()
+  contractNumber;
 
-    @IsOptional()
-    @IsString()
-    contractNumber;
+  @IsOptional()
+  @IsString()
+  contractType;
 
-    @IsOptional()
-    @IsString()
-    contractType;
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  departmentId;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsInt()
-    @Min(1)
-    departmentId;
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  positionId;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsInt()
-    @Min(1)
-    positionId;
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  jobGradeId;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsInt()
-    @Min(1)
-    jobGradeId;
+  @IsOptional()
+  @IsDateString()
+  startDate;
 
-    @IsOptional()
-    @IsDateString()
-    startDate;
+  @IsOptional()
+  @IsDateString()
+  endDate;
 
-    @IsOptional()
-    @IsDateString()
-    endDate;
+  @IsOptional()
+  @IsDateString()
+  signedDate;
 
-    @IsOptional()
-    @IsDateString()
-    signedDate;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  workingHours;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    workingHours;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseSalary;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    baseSalary;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  performanceSalary;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    performanceSalary;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  phoneAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    phoneAllowance;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lunchAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    lunchAllowance;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fuelAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    fuelAllowance;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    otherAllowance;
+  @IsOptional()
+  @IsString()
+  contractStatus;
 
-    @IsOptional()
-    @IsString()
-    contractStatus;
+  @IsOptional()
+  @IsString()
+  note;
 
-    @IsOptional()
-    @IsString()
-    note;
+  /* ========= TERMINATION FIELDS ========= */
 
-    /* ========= TERMINATION FIELDS ========= */
+  @IsOptional()
+  @IsDateString()
+  terminationDate;
 
-    @IsOptional()
-    @IsDateString()
-    terminationDate;
+  @IsOptional()
+  @IsString()
+  terminationReason;
 
-    @IsOptional()
-    @IsString()
-    terminationReason;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  terminationCompensation;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    terminationCompensation;
+  @IsOptional()
+  @IsString()
+  terminationNote;
 
-    @IsOptional()
-    @IsString()
-    terminationNote;
-
-    /**
-     * FILE UPLOAD (multipart/form-data)
-     */
-    @IsOptional()
-    @Allow()
-    attachments;
+  /**
+   * FILE UPLOAD (multipart/form-data)
+   */
+  @IsOptional()
+  @Allow()
+  attachments;
 }

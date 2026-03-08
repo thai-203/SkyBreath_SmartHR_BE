@@ -609,8 +609,8 @@ const seed = async () => {
     // ──────────────────────────────────────
     const groupRepo = dataSource.getRepository(ShiftGroupEntity);
     const groupData = [
-      { groupName: 'Nhóm ca chính' },
-      { groupName: 'Nhóm ca phụ' },
+      { groupName: 'Nhóm ca chính', status: 'active' },
+      { groupName: 'Nhóm ca phụ', status: 'active' },
     ];
     const groups = {};
     for (const g of groupData) {
@@ -621,6 +621,10 @@ const seed = async () => {
         group = groupRepo.create(g);
         await groupRepo.save(group);
         console.log(`Created shift group: ${g.groupName}`);
+      } else if (g.status && group.status !== g.status) {
+        // ensure existing rows have status field populated
+        group.status = g.status;
+        await groupRepo.save(group);
       }
       groups[g.groupName] = group;
     }

@@ -1,4 +1,5 @@
 import { WorkingShiftsRepository } from '../repositories/working-shifts.repository.js';
+import { ShiftGroupsRepository } from '../repositories/shift-groups.repository.js';
 import {
   NotFoundException,
   ConflictException,
@@ -31,8 +32,20 @@ export class WorkingShiftsService {
   }
 
   async create(createDto) {
+    // prevent creation if group is inactive
+    if (createDto.groupId) {
+      const group = await new ShiftGroupsRepository().findById(
+        createDto.groupId,
+      );
+      if (!group) {
+        throw new NotFoundException(AppMessages.Errors.ShiftGroup.NOT_FOUND);
+      }
+      if (group.status !== 'active') {
+        throw new ConflictException(AppMessages.Errors.ShiftGroup.INACTIVE);
+      }
+    }
+
     if (createDto.shiftName) {
-      // ensure unique within group maybe
       const existing = await this.shiftRepo.findAll({
         search: createDto.shiftName,
         skip: 0,
@@ -49,6 +62,19 @@ export class WorkingShiftsService {
 
   async update(id, updateDto) {
     const shift = await this.findById(id);
+    // if changing group or validating existing group status
+    if (updateDto.groupId && updateDto.groupId !== shift.groupId) {
+      const group = await new ShiftGroupsRepository().findById(
+        updateDto.groupId,
+      );
+      if (!group) {
+        throw new NotFoundException(AppMessages.Errors.ShiftGroup.NOT_FOUND);
+      }
+      if (group.status !== 'active') {
+        throw new ConflictException(AppMessages.Errors.ShiftGroup.INACTIVE);
+      }
+    }
+
     if (updateDto.shiftName && updateDto.shiftName !== shift.shiftName) {
       const existing = await this.shiftRepo.findAll({
         search: updateDto.shiftName,

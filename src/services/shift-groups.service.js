@@ -11,12 +11,13 @@ export class ShiftGroupsService {
   }
 
   async findAll(queryDto) {
-    const { page = 1, limit = 10, search } = queryDto;
+    const { page = 1, limit = 10, search, status } = queryDto;
     const skip = (page - 1) * limit;
     const { items, total } = await this.shiftGroupsRepo.findAll({
       skip,
       take: limit,
       search,
+      status,
     });
     return { items, total };
   }
@@ -56,11 +57,25 @@ export class ShiftGroupsService {
         );
       }
     }
+    // if status becoming inactive, ensure no shifts exist
+    if (updateDto.status === 'inactive') {
+      const hasShifts = await this.shiftGroupsRepo.hasShifts(id);
+      if (hasShifts) {
+        throw new ConflictException(AppMessages.Errors.ShiftGroup.HAS_SHIFTS);
+      }
+    }
+
     return this.shiftGroupsRepo.update(id, updateDto);
   }
 
   async remove(id) {
     const group = await this.findById(id);
+
+    const hasShifts = await this.shiftGroupsRepo.hasShifts(id);
+    if (hasShifts) {
+      throw new ConflictException(AppMessages.Errors.ShiftGroup.HAS_SHIFTS);
+    }
+
     return this.shiftGroupsRepo.softDelete(group.id);
   }
 }

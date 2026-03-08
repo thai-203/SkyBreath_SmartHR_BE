@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, MaxLength, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  MaxLength,
+  IsOptional,
+  IsEnum,
+} from 'class-validator';
 
 export class UpdateShiftGroupDto {
   @IsOptional()
@@ -11,4 +17,8 @@ export class UpdateShiftGroupDto {
   @IsString({ message: 'Mô tả phải là chuỗi ký tự' })
   @MaxLength(500, { message: 'Mô tả không được vượt quá 500 ký tự' })
   description;
+
+  @IsOptional()
+  @IsEnum(['active', 'inactive'], { message: 'Trạng thái không hợp lệ' })
+  status;
 }
