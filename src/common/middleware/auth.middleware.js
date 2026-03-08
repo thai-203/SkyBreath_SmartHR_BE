@@ -55,6 +55,7 @@ export const authMiddleware = async (req, res, next) => {
 
     req.user = {
       id: user.id,
+      username: user.username,
       email: user.email,
       roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
       permissions: Array.from(permissions),

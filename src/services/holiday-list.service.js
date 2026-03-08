@@ -22,10 +22,13 @@ export class HolidayListService {
     }
 
     async create(data) {
+        if (new Date(data.startDate) > new Date(data.endDate)) {
+            throw new BadRequestException('Ngày kết thúc không được trước ngày bắt đầu');
+        }
         // Validate date format or uniqueness if needed
         const existing = await this.repository.findByNameAndRange(data.holidayName, data.startDate, data.endDate);
         if (existing) {
-            throw new BadRequestException('Holiday already exists for this date range');
+            throw new BadRequestException('Ngày lễ đã tồn tại trong khoảng thời gian này');
         }
         return this.repository.create({
             ...data,
@@ -34,6 +37,9 @@ export class HolidayListService {
     }
 
     async update(id, data) {
+        if (data.startDate && data.endDate && new Date(data.startDate) > new Date(data.endDate)) {
+            throw new BadRequestException('Ngày kết thúc không được trước ngày bắt đầu');
+        }
         const holiday = await this.findById(id);
         return this.repository.update(holiday.id, {
             ...data,
@@ -73,5 +79,44 @@ export class HolidayListService {
         ];
 
         return ExcelUtil.export(data, columns, 'Danh sach ngay le');
+    }
+
+    async getInheritPreview(year) {
+        // Find all holidays in the target year
+        const startDate = `${year}-01-01`;
+        const endDate = `${year}-12-31`;
+
+        const [items] = await this.repository.findAll({
+            startDate,
+            endDate,
+            limit: 1000,
+            skip: 0
+        });
+
+        // Shift them to the next year
+        return items.map(item => {
+            const start = new Date(item.startDate);
+            const end = new Date(item.endDate);
+
+            start.setFullYear(start.getFullYear() + 1);
+            end.setFullYear(end.getFullYear() + 1);
+
+            return {
+                holidayName: item.holidayName,
+                startDate: start.toISOString().split('T')[0],
+                endDate: end.toISOString().split('T')[0],
+                holidayType: item.holidayType,
+                isPaid: item.isPaid,
+                description: item.description,
+            };
+        });
+    }
+
+    async bulkCreate(data, user = 'System') {
+        const holidays = data.map(item => ({
+            ...item,
+            updatedBy: user
+        }));
+        return this.repository.createMany(holidays);
     }
 }
