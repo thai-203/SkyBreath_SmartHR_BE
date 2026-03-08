@@ -112,10 +112,22 @@ export class DepartmentsRepository {
     }
 
     async findWithChildren() {
-        return this.repository.find({
+        const departments = await this.repository.find({
             where: { isDeleted: false },
             relations: ['parentDepartment', 'manager'],
         });
+
+        // Thêm employeeCount + probationCount cho từng department
+        const employeeRepository = AppDataSource.getRepository(EmployeeEntity);
+        return Promise.all(departments.map(async (dept) => {
+            const employeeCount = await employeeRepository.count({
+                where: { departmentId: dept.id, isDeleted: false }
+            });
+            const probationCount = await employeeRepository.count({
+                where: { departmentId: dept.id, isDeleted: false, employmentStatus: 'PROBATION' }
+            });
+            return { ...dept, employeeCount, probationCount };
+        }));
     }
 
     async findList() {
