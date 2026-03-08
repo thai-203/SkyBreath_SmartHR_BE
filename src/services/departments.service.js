@@ -92,9 +92,17 @@ export class DepartmentsService {
     buildTree(departments, parentId = null) {
         return departments
             .filter(d => d.parentDepartmentId === parentId)
-            .map(d => ({
-                ...d,
-                children: this.buildTree(departments, d.id),
-            }));
+            .map(d => {
+                const children = this.buildTree(departments, d.id);
+                // Tính tổng bao gồm cả department con (đệ quy)
+                const totalEmployeeCount = (d.employeeCount || 0) + children.reduce((sum, c) => sum + (c.totalEmployeeCount || 0), 0);
+                const totalProbationCount = (d.probationCount || 0) + children.reduce((sum, c) => sum + (c.totalProbationCount || 0), 0);
+                return {
+                    ...d,
+                    children,
+                    totalEmployeeCount,
+                    totalProbationCount,
+                };
+            });
     }
 }
