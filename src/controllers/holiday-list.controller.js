@@ -109,4 +109,13 @@ export class HolidayListController {
             next(error);
         }
     }
+
+    async sendNotification(req, res, next) {
+        try {
+            const result = await this.service.sendNotification(req.body);
+            res.status(200).json(new BaseResponseDto(result, 'Notifications processed successfully'));
+        } catch (error) {
+            next(error);
+        }
+    }
 }
