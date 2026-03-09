@@ -5,6 +5,7 @@ import { permissionsMiddleware } from '../common/middleware/permissions.middlewa
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { CreateDepartmentDto, UpdateDepartmentDto, DepartmentQueryDto } from '../models/dto/departments/index.js';
 
+// 1, Khởi tạo router và controller
 const router = Router();
 const departmentsController = new DepartmentsController();
 
@@ -83,9 +84,11 @@ const departmentsController = new DepartmentsController();
  *       403:
  *         description: Forbidden
  */
-router.post('/', authMiddleware, permissionsMiddleware('DEPT_CREATE'), validationMiddleware(CreateDepartmentDto), departmentsController.create);
-router.get('/list', authMiddleware, departmentsController.list);
-router.get('/', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.findAll);
+
+// 2, tạo route và áp dụng middleware
+router.post('/', authMiddleware, permissionsMiddleware('DEPT_CREATE'), validationMiddleware(CreateDepartmentDto), departmentsController.create);// Tạo phòng ban mới
+router.get('/list', authMiddleware, departmentsController.list);// Lấy danh sách phòng ban (không phân trang, không lọc) để dùng trong dropdown chọn phòng ban cha hoặc quản lý
+router.get('/', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.findAll);// Lấy danh sách phòng ban có phân trang, lọc và tìm kiếm
 
 /**
  * @swagger
@@ -99,7 +102,7 @@ router.get('/', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsC
  *       200:
  *         description: Organization chart
  */
-router.get('/chart', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.getOrgChart);
+router.get('/chart', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.getOrgChart);// Lấy sơ đồ tổ chức phòng ban dưới dạng cây phân cấp
 
 /**
  * @swagger
@@ -113,7 +116,7 @@ router.get('/chart', authMiddleware, permissionsMiddleware('DEPT_READ'), departm
  *       200:
  *         description: CSV file
  */
-router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), departmentsController.export);
+router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), departmentsController.export);// Xuất danh sách phòng ban ra file CSV
 
 /**
  * @swagger
@@ -176,8 +179,8 @@ router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), depa
  *       404:
  *         description: Department not found
  */
-router.get('/:id', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.findOne);
-router.put('/:id', authMiddleware, permissionsMiddleware('DEPT_UPDATE'), validationMiddleware(UpdateDepartmentDto), departmentsController.update);
-router.delete('/:id', authMiddleware, permissionsMiddleware('DEPT_DELETE'), departmentsController.remove);
+router.get('/:id', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.findOne);// Lấy chi tiết phòng ban theo ID
+router.put('/:id', authMiddleware, permissionsMiddleware('DEPT_UPDATE'), validationMiddleware(UpdateDepartmentDto), departmentsController.update);// Cập nhật thông tin phòng ban
+router.delete('/:id', authMiddleware, permissionsMiddleware('DEPT_DELETE'), departmentsController.remove);// Xóa phòng ban
 
-export const departmentsRoutes = router;
+export const departmentsRoutes = router;// Xuất router để sử dụng trong app.js

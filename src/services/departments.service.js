@@ -9,6 +9,7 @@ export class DepartmentsService {
         this.departmentsRepository = new DepartmentsRepository();
     }
 
+    // Tạo phòng ban mới. (Nhận dữ liệu từ body, validate, gọi repository để tạo và trả về kết quả)
     async create(createDto) {
         const existing = await this.departmentsRepository.findByName(createDto.departmentName);
         if (existing) {
@@ -17,11 +18,13 @@ export class DepartmentsService {
         return this.departmentsRepository.create(createDto);
     }
 
+    // Lấy danh sách phòng ban có phân trang, lọc và tìm kiếm. (Nhận các tham số query, gọi repository để lấy dữ liệu và trả về kết quả.)
     async findAll(queryDto) {
         const [departments, total] = await this.departmentsRepository.findAll(queryDto);
         return new PaginatedResponseDto(departments, total, queryDto);
     }
 
+    //  Lấy chi tiết phòng ban theo ID. (Nhận ID từ params, gọi repository để lấy dữ liệu và trả về kết quả.)
     async findById(id) {
         const department = await this.departmentsRepository.findById(id);
         if (!department) {
@@ -30,6 +33,7 @@ export class DepartmentsService {
         return department;
     }
 
+    //  Cập nhật thông tin phòng ban. (Nhận ID từ params và dữ liệu cập nhật từ body, validate, gọi repository để cập nhật và trả về kết quả.)
     async update(id, updateDto) {
         await this.findById(id);
 
@@ -43,6 +47,7 @@ export class DepartmentsService {
         return this.departmentsRepository.update(id, updateDto);
     }
 
+    //    Xóa phòng ban. (Nhận ID từ params, kiểm tra nếu có phòng ban con hoặc nhân viên nào đang thuộc phòng ban này thì không cho xóa, nếu không thì gọi repository để xóa và trả về kết quả.)
     async remove(id) {
         await this.findById(id);
 
@@ -59,12 +64,14 @@ export class DepartmentsService {
         await this.departmentsRepository.delete(id);
     }
 
+    // Lấy sơ đồ tổ chức phòng ban dưới dạng cây phân cấp. (Gọi repository để lấy tất cả phòng ban, sau đó xây dựng cấu trúc cây dựa trên parentDepartmentId và trả về kết quả.)
     async getOrgChart() {
         const departments = await this.departmentsRepository.findWithChildren();
         return this.buildTree(departments);
     }
 
 
+    // Xuất danh sách phòng ban ra file CSV. (Gọi repository để lấy tất cả phòng ban, sau đó sử dụng thư viện ExcelUtil để tạo file Excel và trả về kết quả.)
     async exportExcel() {
         const [departments] = await this.departmentsRepository.findAll({ limit: 10000, page: 1 });
 
@@ -85,6 +92,7 @@ export class DepartmentsService {
         return ExcelUtil.export(data, columns, 'Danh sách phòng ban');
     }
 
+    // Lấy danh sách phòng ban (không phân trang, không lọc) để dùng trong dropdown chọn phòng ban cha hoặc quản lý. (Gọi repository để lấy tất cả phòng ban và trả về kết quả.)
     async findList() {
         return this.departmentsRepository.findList();
     }
