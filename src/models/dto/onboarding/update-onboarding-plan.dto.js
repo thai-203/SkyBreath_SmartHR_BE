@@ -5,6 +5,7 @@ import {
   IsBoolean,
   Min,
   IsNotEmpty,
+  Allow,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -34,4 +35,8 @@ export class UpdateOnboardingPlanDto {
   @IsOptional()
   @IsBoolean()
   isTemplate;
+
+  @IsOptional()
+  @Allow()
+  tasks;
 }

@@ -71,6 +71,17 @@ export class OnboardingPlansService {
           'Nhân viên là thông tin bắt buộc cho kế hoạch',
         );
       }
+
+      // ---- Prevent duplicate onboarding for the same employee ----
+      const existingOnboarding = await this.progressRepository.findByEmployeeId(
+        data.employeeId,
+      );
+      if (existingOnboarding) {
+        throw new ConflictException(
+          'Nhân viên này đã có kế hoạch onboarding đang tồn tại',
+        );
+      }
+
       if (!data.startDate) {
         throw new BadRequestException('Ngày bắt đầu là thông tin bắt buộc');
       }
@@ -78,6 +89,40 @@ export class OnboardingPlansService {
       if (isNaN(startDateCheck.getTime())) {
         throw new BadRequestException('Ngày bắt đầu không hợp lệ');
       }
+
+      // attempt to populate department/position from employee if missing
+      if (!data.departmentId || !data.positionId) {
+        const emp = await new EmployeesRepository().findById(data.employeeId);
+        if (emp) {
+          data.departmentId = data.departmentId || emp.departmentId;
+          data.positionId = data.positionId || emp.positionId;
+        }
+      }
+      // after autofill, ensure they exist
+      if (!data.departmentId || !data.positionId) {
+        throw new BadRequestException('Phòng ban và chức vụ không được để trống');
+      }
+    }
+
+    // extra validation for numeric IDs and status (treat empty strings earlier)
+    if (data.departmentId !== undefined && data.departmentId !== null) {
+      const dep = Number(data.departmentId);
+      if (isNaN(dep) || dep < 1) {
+        throw new BadRequestException('ID phòng ban không hợp lệ');
+      }
+    }
+    if (data.positionId !== undefined && data.positionId !== null) {
+      const pos = Number(data.positionId);
+      if (isNaN(pos) || pos < 1) {
+        throw new BadRequestException('ID chức vụ không hợp lệ');
+      }
+    }
+    if (data.status !== undefined && data.status !== null) {
+      const statusVal = String(data.status).toUpperCase();
+      if (!['ACTIVE', 'DRAFT'].includes(statusVal)) {
+        throw new BadRequestException('Trạng thái không hợp lệ');
+      }
+      data.status = statusVal;
     }
 
     // ===== 3. Validate template =====
@@ -104,6 +149,7 @@ export class OnboardingPlansService {
     // ===== 4. Create plan =====
     const plan = await this.plansRepository.create({
       ...data,
+      status: data.status || 'ACTIVE',
       createdAt: new Date(),
     });
 
@@ -211,6 +257,28 @@ export class OnboardingPlansService {
       }
       plan.planName = dto.planName;
     }
+
+    // validate optional numeric IDs and status
+    if (dto.departmentId !== undefined && dto.departmentId !== null) {
+      const dep = Number(dto.departmentId);
+      if (isNaN(dep) || dep < 1) {
+        throw new BadRequestException('ID phòng ban không hợp lệ');
+      }
+    }
+    if (dto.positionId !== undefined && dto.positionId !== null) {
+      const pos = Number(dto.positionId);
+      if (isNaN(pos) || pos < 1) {
+        throw new BadRequestException('ID chức vụ không hợp lệ');
+      }
+    }
+    if (dto.status !== undefined && dto.status !== null) {
+      const statusVal = String(dto.status).toUpperCase();
+      if (!['ACTIVE', 'DRAFT'].includes(statusVal)) {
+        throw new BadRequestException('Trạng thái không hợp lệ');
+      }
+      dto.status = statusVal;
+    }
+
     Object.assign(plan, {
       description: dto.description,
       departmentId: dto.departmentId,

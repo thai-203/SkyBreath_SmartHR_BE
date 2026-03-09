@@ -21,4 +21,16 @@ export class UpdateTaskAssignmentDto {
   @IsOptional()
   @IsString()
   notes;
+
+  @IsOptional()
+  @IsString()
+  status;
+
+  @IsOptional()
+  @IsString()
+  assetCode;
+
+  @IsOptional()
+  @IsString()
+  evidencePath;
 }
