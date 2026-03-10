@@ -2,6 +2,14 @@ import { IsOptional, IsNumber, IsDateString } from 'class-validator';
 
 export class UpdateShiftAssignmentDto {
   @IsOptional()
+  @IsNumber({}, { message: 'ID nhân viên phải là số' })
+  employeeId;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'ID phòng ban phải là số' })
+  departmentId;
+
+  @IsOptional()
   @IsNumber({}, { message: 'ID ca làm việc phải là số' })
   shiftId;
 

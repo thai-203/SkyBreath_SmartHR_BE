@@ -94,4 +94,8 @@ export class WorkingShiftsService {
     const shift = await this.findById(id);
     return this.shiftRepo.softDelete(shift.id);
   }
+
+  async findList() {
+    return this.shiftRepo.findList();
+  }
 }

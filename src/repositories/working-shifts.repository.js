@@ -53,4 +53,12 @@ export class WorkingShiftsRepository {
       deletedAt: new Date(),
     });
   }
+
+  async findList() {
+    return this.repository.find({
+        where: { isDeleted: false },
+        select: ['id', 'shiftName'],
+        order: { shiftName: 'ASC' },
+    });
+  }
 }

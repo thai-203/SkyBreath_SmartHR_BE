@@ -22,14 +22,13 @@ export class ShiftAssignmentsController {
         const message = Object.values(errors[0].constraints)[0];
         return ResponseUtil.sendResponse(res, message, null, 400);
       }
-      const assignment = await this.assignService.assignToEmployee(dto);
-      res
-        .status(201)
-        .json({
-          success: true,
-          data: assignment,
-          message: AppMessages.Success.CREATED,
-        });
+      // unified creation method handles both employee and department cases
+      const result = await this.assignService.createAssignment(dto);
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: AppMessages.Success.CREATED,
+      });
     } catch (error) {
       next(error);
     }
@@ -44,13 +43,11 @@ export class ShiftAssignmentsController {
         return ResponseUtil.sendResponse(res, message, null, 400);
       }
       const assignments = await this.assignService.assignByDepartment(dto);
-      res
-        .status(201)
-        .json({
-          success: true,
-          data: assignments,
-          message: AppMessages.Success.CREATED,
-        });
+      res.status(201).json({
+        success: true,
+        data: assignments,
+        message: AppMessages.Success.CREATED,
+      });
     } catch (error) {
       next(error);
     }
@@ -66,13 +63,11 @@ export class ShiftAssignmentsController {
         return ResponseUtil.sendResponse(res, message, null, 400);
       }
       const updated = await this.assignService.updateAssignment(id, dto);
-      res
-        .status(200)
-        .json({
-          success: true,
-          data: updated,
-          message: AppMessages.Success.UPDATED,
-        });
+      res.status(200).json({
+        success: true,
+        data: updated,
+        message: AppMessages.Success.UPDATED,
+      });
     } catch (error) {
       next(error);
     }
@@ -92,9 +87,14 @@ export class ShiftAssignmentsController {
 
   list = async (req, res, next) => {
     try {
+      console.log('Received query parameters:', req.query);
       const queryDto = plainToInstance(ShiftAssignmentQueryDto, req.query);
-      const result = await this.assignService.assignRepo.findAll(queryDto);
-      res.status(200).json({ success: true, ...result });
+      const result = await this.assignService.findAll(queryDto);
+
+      res.status(200).json({
+        success: true,
+        ...result,
+      });
     } catch (error) {
       next(error);
     }

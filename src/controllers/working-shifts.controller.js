@@ -88,4 +88,16 @@ export class WorkingShiftsController {
       next(error);
     }
   };
+
+  list = async (req, res, next) => {
+    try {
+        const list = await this.shiftsService.findList();
+        res.status(200).json({
+            success: true,
+            data: list,
+        });
+    } catch (error) {
+        next(error);
+    }
+  };
 }

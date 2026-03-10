@@ -679,6 +679,7 @@ const seed = async () => {
         await shiftAssignmentRepo.save(
           shiftAssignmentRepo.create({
             employeeId: emp.id,
+            departmentId: null,
             shiftId: shifts['Ca hành chính'].id,
             effectiveFrom: '2026-01-01',
           }),

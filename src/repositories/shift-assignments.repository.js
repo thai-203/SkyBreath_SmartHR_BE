@@ -22,7 +22,10 @@ export class ShiftAssignmentsRepository {
     }
     // department filtering would require join on employee.department
     if (departmentId) {
-      query.andWhere('employee.departmentId = :departmentId', { departmentId });
+      query.andWhere(
+        '(employee.departmentId = :departmentId OR assign.departmentId = :departmentId)',
+        { departmentId },
+      );
     }
 
     const [items, total] = await query
