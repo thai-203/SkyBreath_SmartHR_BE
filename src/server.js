@@ -28,6 +28,10 @@ import { rolesRoutes } from './routes/roles.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { shiftsRoutes } from './routes/shifts.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
+import { faceRecognitionConfigRoutes } from './routes/face-recognition-config.routes.js';
+import faceRoutes from './routes/face.routes.js';
+import { attendanceSecurityConfigRoutes } from './routes/attendance-security-config.routes.js';
+import { attendanceAllowedIpRoutes } from './routes/attendance-allowed-ip.routes.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
@@ -77,6 +81,10 @@ app.use(`/${API_PREFIX}/${API_VERSION}/overtime-rules`, overtimeRulesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/penalties`, penaltiesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/shifts`, shiftsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/holiday-list`, holidayListRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/face-recognition-config`, faceRecognitionConfigRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/face`, faceRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/attendance-security-config`, attendanceSecurityConfigRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/attendance-allowed-ips`, attendanceAllowedIpRoutes);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');

@@ -3,6 +3,8 @@ node_modules/
 dist/
 
 # Environment
+venv/
+arcface-service/venv/
 .env
 .env.local
 .env.*.local

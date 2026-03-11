@@ -43,6 +43,8 @@ import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-d
 import { PenaltyEntity } from '../models/entities/penalty.entity.js';
 
 import { config } from './env.config.js';
+import { AttendanceSecurityConfigEntity } from '../models/entities/attendance-security-config.entity.js';
+import { AttendanceAllowedIpEntity } from '../models/entities/attendance-allowed-ip.entity.js';
 
 export const databaseConfig = {
   type: 'mysql',
@@ -97,6 +99,8 @@ export const databaseConfig = {
     OvertimeRuleEntity,
     OvertimeRuleDepartmentEntity,
     PenaltyEntity,
+    AttendanceSecurityConfigEntity,
+    AttendanceAllowedIpEntity,
   ],
   subscribers: [],
   migrations: [],
