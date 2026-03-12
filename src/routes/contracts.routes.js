@@ -68,7 +68,8 @@ const contractsController = new ContractsController();
  *         name: contractStatus
  *         schema:
  *           type: string
- *         description: Filter by contract status
+ *           enum: [ACTIVE, TERMINATED, EXPIRED]
+ *         description: Filter by contract status (ACTIVE, TERMINATED, EXPIRED)
  *       - in: query
  *         name: contractType
  *         schema:
@@ -135,10 +136,13 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
- *         description: Contract status
+ *           enum: [ACTIVE, TERMINATED, EXPIRED]
+ *         description: Contract status (ACTIVE, TERMINATED, EXPIRED)
  *     responses:
  *       200:
  *         description: Contracts with specified status
+ *       400:
+ *         description: Invalid status supplied
  */
 router.get(
   '/status/:status',

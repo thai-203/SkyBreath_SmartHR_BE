@@ -129,4 +129,26 @@ export class ShiftAssignmentsController {
       next(error);
     }
   };
+
+  // preview schedule during assignment creation
+  preview = async (req, res, next) => {
+    try {
+      const payload = req.body;
+      // no stringent validation here, service handles logic
+      const result = await this.assignService.previewSchedule(payload);
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // list schedules with optional filters (start/end, department, shift, keyword)
+  listSchedules = async (req, res, next) => {
+    try {
+      const schedules = await this.assignService.getSchedules(req.query);
+      res.status(200).json({ success: true, data: schedules });
+    } catch (error) {
+      next(error);
+    }
+  };
 }

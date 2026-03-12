@@ -11,7 +11,6 @@ import { Type } from 'class-transformer';
 
 export class CreateOnboardingPlanDto {
   @IsString()
-  @IsNotEmpty()
   planName;
 
   @IsOptional()

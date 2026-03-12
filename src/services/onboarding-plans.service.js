@@ -21,6 +21,24 @@ export class OnboardingPlansService {
   }
 
   async findAll(queryDto) {
+    // if employeeId filter is provided, bypass normal pagination and return the
+    // single plan assigned to that employee (if any). this allows the frontend
+    // to call /plans?employeeId=123 and receive either one plan or an empty
+    // result without needing a separate route.
+    if (queryDto.employeeId) {
+      const progress = await this.progressRepository.findByEmployeeId(
+        queryDto.employeeId,
+      );
+      if (!progress) {
+        return new PaginatedResponseDto([], 0, queryDto);
+      }
+      const plan = await this.plansRepository.findById(progress.planId);
+      if (!plan) {
+        return new PaginatedResponseDto([], 0, queryDto);
+      }
+      return new PaginatedResponseDto([plan], 1, queryDto);
+    }
+
     const [plans, total] = await Promise.all([
       this.plansRepository.findAll(queryDto.skip, queryDto.limit),
       this.plansRepository.count(),
@@ -100,7 +118,9 @@ export class OnboardingPlansService {
       }
       // after autofill, ensure they exist
       if (!data.departmentId || !data.positionId) {
-        throw new BadRequestException('Phòng ban và chức vụ không được để trống');
+        throw new BadRequestException(
+          'Phòng ban và chức vụ không được để trống',
+        );
       }
     }
 

@@ -12,6 +12,13 @@ export class ShiftAssignmentEntity extends BaseEntity {
   @Column({ name: 'department_id', type: 'int', nullable: true })
   departmentId;
 
+  // also store original arrays for metadata
+  @Column({ name: 'employee_ids', type: 'simple-array', nullable: true })
+  employeeIds;
+
+  @Column({ name: 'department_ids', type: 'simple-array', nullable: true })
+  departmentIds;
+
   @Column({ name: 'shift_id', type: 'int' })
   shiftId;
 
@@ -20,6 +27,14 @@ export class ShiftAssignmentEntity extends BaseEntity {
 
   @Column({ name: 'effective_to', type: 'date', nullable: true })
   effectiveTo;
+
+  // array of numbers 1-7 representing days of week (Monday=1,...Sunday=7)
+  @Column({ name: 'weekdays', type: 'simple-array', nullable: true })
+  weekdays;
+
+  // repeat pattern: 'weekly', '2weeks', 'monthly', etc.
+  @Column({ name: 'repeat_type', type: 'varchar', length: 20, nullable: true })
+  repeatType;
 
   @ManyToOne(() => EmployeeEntity)
   @JoinColumn({ name: 'employee_id' })

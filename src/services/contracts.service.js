@@ -100,6 +100,22 @@ export class ContractsService {
 
   async findAll(queryDto) {
     const [contracts, total] = await this.contractsRepository.findAll(queryDto);
+
+    // validation: ensure no duplicate contractNumber among result set
+    // this catches data integrity issues and surfaces 409 if found
+    const seen = new Set();
+    for (const c of contracts) {
+      if (c.contractNumber) {
+        if (seen.has(c.contractNumber)) {
+          throw new ConflictException(
+            'Đã phát hiện số hợp đồng trùng lặp trong dữ liệu: ' +
+              c.contractNumber,
+          );
+        }
+        seen.add(c.contractNumber);
+      }
+    }
+
     return new PaginatedResponseDto(contracts, total, queryDto);
   }
 

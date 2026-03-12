@@ -158,6 +158,63 @@ const seed = async () => {
         module: 'JobGrade',
       },
 
+      // Onboarding permissions
+      {
+        permissionCode: 'ONBOARDING_PLAN_READ',
+        description: 'View onboarding plans',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_CREATE',
+        description: 'Create onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_UPDATE',
+        description: 'Update onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_DELETE',
+        description: 'Delete onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_EXPORT',
+        description: 'Export onboarding plans',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PROGRESS_READ',
+        description: 'View onboarding progress',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PROGRESS_UPDATE',
+        description: 'Update onboarding progress',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_READ',
+        description: 'View onboarding tasks',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_CREATE',
+        description: 'Create onboarding task',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_UPDATE',
+        description: 'Update onboarding task',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_DELETE',
+        description: 'Delete onboarding task',
+        module: 'Onboarding',
+      },
+
       // Employee Salaries
       {
         permissionCode: 'EMPLOYEE_SALARY_READ',
@@ -319,6 +376,10 @@ const seed = async () => {
       'SHIFT_READ',
       'SHIFT_ASSIGN_READ',
       'SHIFT_SCHEDULE_READ',
+      // allow managers to view onboarding data
+      'ONBOARDING_PLAN_READ',
+      'ONBOARDING_PROGRESS_READ',
+      'ONBOARDING_TASK_READ',
     ];
     for (const code of managerPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -393,6 +454,18 @@ const seed = async () => {
       'SHIFT_ASSIGN_UPDATE',
       'SHIFT_ASSIGN_DELETE',
       'SHIFT_SCHEDULE_READ',
+      // onboarding-related for HR
+      'ONBOARDING_PLAN_READ',
+      'ONBOARDING_PLAN_CREATE',
+      'ONBOARDING_PLAN_UPDATE',
+      'ONBOARDING_PLAN_DELETE',
+      'ONBOARDING_PLAN_EXPORT',
+      'ONBOARDING_PROGRESS_READ',
+      'ONBOARDING_PROGRESS_UPDATE',
+      'ONBOARDING_TASK_READ',
+      'ONBOARDING_TASK_CREATE',
+      'ONBOARDING_TASK_UPDATE',
+      'ONBOARDING_TASK_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);

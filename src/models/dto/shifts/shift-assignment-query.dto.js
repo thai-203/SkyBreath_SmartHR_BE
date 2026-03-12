@@ -1,4 +1,4 @@
-import { IsOptional, IsNumberString, IsNumber } from 'class-validator';
+import { IsOptional, IsNumberString, IsNumber, IsDateString  } from 'class-validator';
 
 export class ShiftAssignmentQueryDto {
   @IsOptional()
@@ -20,4 +20,12 @@ export class ShiftAssignmentQueryDto {
   @IsOptional()
   @IsNumber({}, { message: 'ID ca làm việc phải là số' })
   shiftId;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'startDate phải là định dạng YYYY-MM-DD' })
+  startDate;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'endDate phải là định dạng YYYY-MM-DD' })
+  endDate;
 }

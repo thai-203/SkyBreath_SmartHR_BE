@@ -165,4 +165,22 @@ export class OnboardingProgressController {
       next(error);
     }
   };
+
+  export = async (req, res, next) => {
+    try {
+      const buffer = await this.progressService.exportExcel();
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename=onboarding_progress.xlsx',
+      );
+      res.setHeader('Content-Length', buffer.length);
+      return res.end(buffer);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

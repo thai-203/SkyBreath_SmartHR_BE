@@ -100,6 +100,20 @@ router.delete(
 // SHIFT SCHEDULE
 //////////////////////////////////////////////////////
 
+router.post(
+  '/assignments/preview',
+  authMiddleware,
+  permissionsMiddleware('SHIFT_ASSIGN_CREATE'),
+  shiftAssignmentsController.preview,
+);
+
+router.get(
+  '/schedules',
+  authMiddleware,
+  permissionsMiddleware('SHIFT_SCHEDULE_READ'),
+  shiftAssignmentsController.listSchedules,
+);
+
 router.get(
   '/schedule/employee/:employeeId',
   authMiddleware,

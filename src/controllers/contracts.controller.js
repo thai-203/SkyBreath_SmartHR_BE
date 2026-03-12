@@ -202,7 +202,28 @@ export class ContractsController {
   findAll = async (req, res, next) => {
     try {
       const queryDto = plainToInstance(ContractQueryDto, req.query);
+
+      // validate contractStatus if provided
+      if (queryDto.contractStatus !== undefined) {
+        const statusVal = String(queryDto.contractStatus || '').trim();
+        const valid = ['ACTIVE', 'TERMINATED', 'EXPIRED'];
+        if (!statusVal || !valid.includes(statusVal.toUpperCase())) {
+          return res.status(400).json({
+            success: false,
+            message: 'Trạng thái không hợp lệ',
+          });
+        }
+        queryDto.contractStatus = statusVal.toUpperCase();
+      }
+
       const { data, meta } = await this.contractsService.findAll(queryDto);
+
+      if (!Array.isArray(data) || data.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy hợp đồng nào phù hợp',
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -296,7 +317,24 @@ export class ContractsController {
 
   getByStatus = async (req, res, next) => {
     try {
-      const { status } = req.params;
+      let { status } = req.params;
+      if (!status || typeof status !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Trạng thái không được để trống',
+        });
+      }
+
+      status = status.toUpperCase();
+      // only these statuses are supported
+      const valid = ['ACTIVE', 'TERMINATED', 'EXPIRED'];
+      if (!valid.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Trạng thái không hợp lệ',
+        });
+      }
+
       const contracts =
         await this.contractsService.getContractsByStatus(status);
 
