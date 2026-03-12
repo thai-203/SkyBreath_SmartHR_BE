@@ -40,6 +40,23 @@ export class DepartmentsService {
             }
         }
 
+        if (updateDto.parentDepartmentId) {
+            if (updateDto.parentDepartmentId === id) {
+                throw new ConflictException(AppMessages.Errors.Department.SAME_AS_PARENT);
+            }
+
+            let currentParentId = updateDto.parentDepartmentId;
+            while (currentParentId) {
+                const parent = await this.departmentsRepository.findById(currentParentId);
+                if (!parent || !parent.parentDepartment) break;
+
+                if (parent.parentDepartment.id === id) {
+                    throw new ConflictException(AppMessages.Errors.Department.CIRCULAR_DEPENDENCY);
+                }
+                currentParentId = parent.parentDepartment.id;
+            }
+        }
+
         return this.departmentsRepository.update(id, updateDto);
     }
 
