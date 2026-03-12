@@ -191,6 +191,14 @@ export const AppMessages = {
         code: 'DEPT_004',
         message: 'Không thể xóa phòng ban đang có phòng ban con',
       },
+      CIRCULAR_DEPENDENCY: {
+        code: 'DEPT_005',
+        message: 'Lỗi vòng lặp: Không thể chọn phòng ban cấp dưới làm phòng ban cha',
+      },
+      SAME_AS_PARENT: {
+        code: 'DEPT_006',
+        message: 'Không thể chọn chính phòng ban này làm phòng ban cha',
+      },
     },
     Contract: {
       NOT_FOUND: { code: 'CONTRACT_001', message: 'Không tìm thấy hợp đồng' },
