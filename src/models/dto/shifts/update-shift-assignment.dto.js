@@ -6,8 +6,39 @@ import {
   ArrayNotEmpty,
   IsIn,
   ArrayUnique,
+  Validate,
+  ValidatorConstraint,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+// reuse some of the same validators from create dto
+@ValidatorConstraint({ name: 'dateRange', async: false })
+class DateRange {
+  validate(value, args) {
+    const obj = args.object;
+    if (obj.startDate && obj.endDate) {
+      return new Date(obj.startDate) <= new Date(obj.endDate);
+    }
+    return true;
+  }
+  defaultMessage() {
+    return 'startDate phải nhỏ hơn hoặc bằng endDate';
+  }
+}
+
+@ValidatorConstraint({ name: 'weekdayForRepeat', async: false })
+class WeekdayForRepeat {
+  validate(value, args) {
+    const obj = args.object;
+    if (obj.repeatType === 'weekly' || obj.repeatType === '2weeks') {
+      return obj.weekdays && obj.weekdays.length > 0;
+    }
+    return true;
+  }
+  defaultMessage() {
+    return 'Khi repeatType là weekly hoặc 2weeks phải cung cấp weekdays';
+  }
+}
 
 export class UpdateShiftAssignmentDto {
   @IsOptional()
@@ -49,6 +80,8 @@ export class UpdateShiftAssignmentDto {
   @IsDateString({}, { message: 'Ngày kết thúc phải là định dạng YYYY-MM-DD' })
   endDate;
 
+  // class-level checks added via Validate decorator at bottom
+
   @IsOptional()
   @IsArray({ message: 'weekdays phải là mảng số từ 1 đến 7' })
   @ArrayNotEmpty({ message: 'weekdays không được rỗng' })
@@ -65,4 +98,12 @@ export class UpdateShiftAssignmentDto {
     message: 'repeatType phải là một trong [weekly, 2weeks, monthly]',
   })
   repeatType;
+
+  @Validate(DateRange)
+  _dateRangeCheck;
+
+  @Validate(WeekdayForRepeat)
+  _weekdayRequirement;
+
+  // additional validators will be applied via external constraint classes below
 }

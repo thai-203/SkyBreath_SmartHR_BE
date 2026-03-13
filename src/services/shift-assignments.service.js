@@ -23,6 +23,36 @@ export class ShiftAssignmentsService {
   };
 
   /**
+   * Ensure there is no existing assignment for the same employee+shift that
+   * overlaps with the provided date range. Throws BadRequestException if a
+   * conflict is detected. Excludes a particular record id when provided (used
+   * during update).
+   */
+  async _ensureNoOverlap(empId, shiftId, from, to, excludeId = null) {
+    if (!empId || !shiftId) return; // nothing to check
+    // use unpaginated lookup to get every existing assignment
+    const items = await this.assignRepo.findByEmployeeAndShift(empId, shiftId);
+    for (const a of items) {
+      if (excludeId && a.id === excludeId) continue;
+      const aFrom = a.effectiveFrom ? new Date(a.effectiveFrom) : null;
+      const aTo = a.effectiveTo ? new Date(a.effectiveTo) : null;
+      if (
+        this._rangesOverlap(
+          aFrom,
+          aTo,
+          from ? new Date(from) : null,
+          to ? new Date(to) : null,
+        )
+      ) {
+        throw new BadRequestException(
+          AppMessages.Errors.ShiftAssignment.OVERLAP.message +
+            ` (emp ${empId} shift ${shiftId})`,
+        );
+      }
+    }
+  }
+
+  /**
    * create assignment for either a single employee or all employees in a department.
    * dto must include exactly one of employeeId or departmentId.
    */
@@ -94,6 +124,7 @@ export class ShiftAssignmentsService {
       repeatType,
     } = data;
 
+    // basic parameter validation (more complex rules handled below)
     const shiftsToUse =
       shiftIds && shiftIds.length > 0 ? shiftIds : shiftId ? [shiftId] : [];
     if (shiftsToUse.length === 0) {
@@ -109,14 +140,66 @@ export class ShiftAssignmentsService {
       );
     }
 
+    // date validation
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
+    }
+
+    // pattern validation
+    if (
+      (repeatType === 'weekly' || repeatType === '2weeks') &&
+      (!weekdays || weekdays.length === 0)
+    ) {
+      throw new BadRequestException(
+        'Khi sử dụng repeatType weekly hoặc 2weeks phải cung cấp weekdays',
+      );
+    }
+
+    // build target employee list (union of explicit ids + departments)
+    // we keep track of the originating department for each emp when possible
+    const targetMap = new Map(); // empId -> deptId|null
+    if (employeeIds && employeeIds.length > 0) {
+      employeeIds.forEach((id) => {
+        if (!targetMap.has(id)) {
+          targetMap.set(id, null);
+        }
+      });
+    }
+    if (departmentIds && departmentIds.length > 0) {
+      for (const deptId of departmentIds) {
+        const emps = await AppDataSource.getRepository(EmployeeEntity).find({
+          where: { departmentId: deptId, isDeleted: false },
+        });
+        for (const e of emps) {
+          // if employee was explicitly listed earlier we keep null dept, otherwise record the department
+          if (!targetMap.has(e.id)) {
+            targetMap.set(e.id, deptId);
+          }
+        }
+      }
+    }
+
     const assignments = [];
+
     const createForEmp = async (empId, deptId = null) => {
+      const emp = await AppDataSource.getRepository(EmployeeEntity).findOne({
+        where: { id: empId, isDeleted: false },
+      });
+      if (!emp) {
+        throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+      }
+      if (emp.employmentStatus === EmployeeStatus.ON_LEAVE) {
+        return; // skip employees on leave
+      }
+
       for (const sId of shiftsToUse) {
+        // check overlap/conflict with existing assignments
+        await this._ensureNoOverlap(empId, sId, startDate, endDate);
+
         const rec = await this.assignRepo.create({
           employeeId: empId,
           departmentId: deptId,
           shiftId: sId,
-          // store selections for audit / future editing
           employeeIds:
             employeeIds && employeeIds.length ? employeeIds.join(',') : null,
           departmentIds:
@@ -132,40 +215,24 @@ export class ShiftAssignmentsService {
       }
     };
 
-    if (employeeIds && employeeIds.length > 0) {
-      for (const empId of employeeIds) {
-        const emp = await AppDataSource.getRepository(EmployeeEntity).findOne({
-          where: { id: empId, isDeleted: false },
-        });
-        if (!emp) {
-          throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
-        }
-        if (emp.employmentStatus === EmployeeStatus.ON_LEAVE) {
-          continue; // skip
-        }
-        await createForEmp(empId, null);
-      }
-      return assignments;
+    for (const [empId, deptId] of targetMap) {
+      await createForEmp(empId, deptId);
     }
 
-    if (departmentIds && departmentIds.length > 0) {
-      for (const deptId of departmentIds) {
-        const employees = await AppDataSource.getRepository(
-          EmployeeEntity,
-        ).find({
-          where: { departmentId: deptId, isDeleted: false },
-        });
-        for (const emp of employees) {
-          if (emp.employmentStatus === EmployeeStatus.ON_LEAVE) continue;
-          await createForEmp(emp.id, deptId);
-        }
-      }
-      return assignments;
-    }
+    return assignments;
   }
-
   // update a single assignment record; convert any metadata arrays and pick shift
   async updateAssignment(id, data) {
+    // fetch existing so we can validate changes and fallback values
+    const existing = await this.assignRepo.findById(id);
+    if (!existing) {
+      throw new NotFoundException(
+        AppMessages.Errors.ShiftAssignment.NOT_FOUND ||
+          'Shift assignment not found',
+      );
+    }
+
+    // normalize arrays to strings etc.
     if (data.employeeIds && Array.isArray(data.employeeIds)) {
       data.employeeIds = data.employeeIds.join(',');
     }
@@ -179,11 +246,23 @@ export class ShiftAssignmentsService {
     ) {
       data.shiftId = data.shiftIds[0];
     }
+
+    // if dates provided validate range
+    const newFrom = data.effectiveFrom || existing.effectiveFrom;
+    const newTo = data.effectiveTo || existing.effectiveTo;
+    if (newFrom && newTo && new Date(newFrom) > new Date(newTo)) {
+      throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
+    }
+
+    const empId = data.employeeId || existing.employeeId;
+    const shiftId = data.shiftId || existing.shiftId;
+    // check overlap with others excluding current
+    await this._ensureNoOverlap(empId, shiftId, newFrom, newTo, id);
+
     return this.assignRepo.update(id, data);
   }
-
   async assignByDepartment(data) {
-    // keep compatibility but redirect to createAssignment
+    // redirect to unified creation logic, validation already handled there
     return this.createAssignment(data);
   }
 
@@ -265,6 +344,11 @@ export class ShiftAssignmentsService {
   async getSchedules(query) {
     const { startDate, endDate, departmentId, shiftId, keyword } = query;
 
+    // basic date validation
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
+    }
+
     // find raw assignments by filters
     const { items } = await this.assignRepo.findAll({ departmentId, shiftId });
     // optionally filter by keyword against employee name or code
@@ -282,9 +366,5 @@ export class ShiftAssignmentsService {
     const start = startDate ? new Date(startDate) : new Date();
     const end = endDate ? new Date(endDate) : new Date();
     return this._expandAssignments(filtered, start, end);
-  }
-
-  async findAll(queryDto) {
-    return this.assignRepo.findAll(queryDto);
   }
 }

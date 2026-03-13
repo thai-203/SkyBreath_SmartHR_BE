@@ -271,7 +271,8 @@ export const AppMessages = {
       ALREADY_EXISTS: { code: 'SG_002', message: 'Nhóm ca đã tồn tại' },
       HAS_SHIFTS: {
         code: 'SG_003',
-        message: 'Nhóm ca đang có ca làm việc, không thể thực hiện thao tác này',
+        message:
+          'Nhóm ca đang có ca làm việc, không thể thực hiện thao tác này',
       },
       INACTIVE: {
         code: 'SG_004',
@@ -284,6 +285,10 @@ export const AppMessages = {
     },
     ShiftAssignment: {
       NOT_FOUND: { code: 'SA_001', message: 'Không tìm thấy phân ca' },
+      OVERLAP: {
+        code: 'SA_002',
+        message: 'Phân ca trùng lặp trong khoảng thời gian',
+      },
     },
     Validation: {
       FAILED: { code: 'VAL_001', message: 'Validation failed' },

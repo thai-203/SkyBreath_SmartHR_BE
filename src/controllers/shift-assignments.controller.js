@@ -134,7 +134,19 @@ export class ShiftAssignmentsController {
   preview = async (req, res, next) => {
     try {
       const payload = req.body;
-      // no stringent validation here, service handles logic
+      // basic date range validation
+      if (
+        payload.startDate &&
+        payload.endDate &&
+        new Date(payload.startDate) > new Date(payload.endDate)
+      ) {
+        return ResponseUtil.sendResponse(
+          res,
+          'startDate phải nhỏ hơn hoặc bằng endDate',
+          null,
+          400,
+        );
+      }
       const result = await this.assignService.previewSchedule(payload);
       res.status(200).json({ success: true, data: result });
     } catch (error) {

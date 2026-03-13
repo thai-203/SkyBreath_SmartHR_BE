@@ -37,6 +37,18 @@ export class ShiftAssignmentsRepository {
     return { items, total };
   }
 
+  // returns all (unpaginated) assignments for a given employee and shift
+  async findByEmployeeAndShift(employeeId, shiftId) {
+    const query = this.repository
+      .createQueryBuilder('assign')
+      .leftJoinAndSelect('assign.employee', 'employee')
+      .leftJoinAndSelect('assign.shift', 'shift')
+      .where('assign.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('assign.employeeId = :employeeId', { employeeId })
+      .andWhere('assign.shiftId = :shiftId', { shiftId });
+    return query.orderBy('assign.effectiveFrom', 'DESC').getMany();
+  }
+
   async findById(id) {
     return this.repository.findOne({
       where: { id, isDeleted: false },

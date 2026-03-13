@@ -26,15 +26,15 @@ export class OnboardingProgressService {
 
     if (queryDto.page === 1) {
       // fetch total count first so we can reuse it as limit
-      const totalCount = await this.progressRepository.count();
+      const totalCount = await this.progressRepository.count(queryDto);
       effectiveLimit = totalCount;
       // update queryDto.limit for metadata calculations too
       queryDto.limit = totalCount;
     }
 
     const [progress, total] = await Promise.all([
-      this.progressRepository.findAll(queryDto.skip, effectiveLimit),
-      this.progressRepository.count(),
+      this.progressRepository.findAll(queryDto),
+      this.progressRepository.count(queryDto),
     ]);
 
     return new PaginatedResponseDto(progress, total, queryDto);

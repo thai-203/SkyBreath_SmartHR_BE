@@ -1,8 +1,4 @@
-import {
-  IsOptional,
-  IsInt,
-  IsString
-} from 'class-validator';
+import { IsOptional, IsInt, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaginationDto } from '../../../common/dto/pagination.dto.js';
 
@@ -21,6 +17,9 @@ import { PaginationDto } from '../../../common/dto/pagination.dto.js';
  *             overallStatus:
  *               type: string
  *               description: Filter by overall status
+ *             planId:
+ *               type: number
+ *               description: Filter by plan ID
  */
 export class QueryOnboardingProgressDto extends PaginationDto {
   @Type(() => Number)
@@ -31,4 +30,9 @@ export class QueryOnboardingProgressDto extends PaginationDto {
   @IsOptional()
   @IsString()
   overallStatus;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  planId;
 }

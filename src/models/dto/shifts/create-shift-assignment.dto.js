@@ -27,6 +27,48 @@ class OneOfEmployeeOrDepartment {
   }
 }
 
+// ensure at least one shift identifier is provided
+@ValidatorConstraint({ name: 'oneOfShift', async: false })
+class OneOfShift {
+  validate(value, args) {
+    const obj = args.object;
+    return (!!obj.shiftIds && obj.shiftIds.length > 0) || !!obj.shiftId;
+  }
+  defaultMessage() {
+    return 'Phải cung cấp shiftId hoặc shiftIds';
+  }
+}
+
+// validate the start/end date order when both are present
+@ValidatorConstraint({ name: 'dateRange', async: false })
+class DateRange {
+  validate(value, args) {
+    const obj = args.object;
+    if (obj.startDate && obj.endDate) {
+      return new Date(obj.startDate) <= new Date(obj.endDate);
+    }
+    return true;
+  }
+  defaultMessage() {
+    return 'startDate phải nhỏ hơn hoặc bằng endDate';
+  }
+}
+
+// require weekdays when using weekly/2weeks repeat types
+@ValidatorConstraint({ name: 'weekdayForRepeat', async: false })
+class WeekdayForRepeat {
+  validate(value, args) {
+    const obj = args.object;
+    if (obj.repeatType === 'weekly' || obj.repeatType === '2weeks') {
+      return obj.weekdays && obj.weekdays.length > 0;
+    }
+    return true;
+  }
+  defaultMessage() {
+    return 'Khi repeatType là weekly hoặc 2weeks phải cung cấp weekdays';
+  }
+}
+
 export class CreateShiftAssignmentDto {
   // allow both single and multiple by using arrays
   @IsOptional()
@@ -85,6 +127,16 @@ export class CreateShiftAssignmentDto {
   })
   repeatType;
 
+  // composable validators applied at the class level
   @Validate(OneOfEmployeeOrDepartment)
   _exclusiveCheck;
+
+  @Validate(OneOfShift)
+  _mustHaveShift;
+
+  @Validate(DateRange)
+  _dateRangeCheck;
+
+  @Validate(WeekdayForRepeat)
+  _weekdayRequirement;
 }
