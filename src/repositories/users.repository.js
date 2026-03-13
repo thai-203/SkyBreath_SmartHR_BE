@@ -87,6 +87,8 @@ export class UsersRepository {
       .addSelect('user.password')
       .leftJoinAndSelect('user.userRoles', 'userRoles')
       .leftJoinAndSelect('userRoles.role', 'role')
+      .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
+      .leftJoinAndSelect('rolePermissions.permission', 'permission')
       .where('user.id = :id', { id })
       .getOne();
   }
@@ -94,7 +96,12 @@ export class UsersRepository {
   async findByEmail(email) {
     return this.userRepository.findOne({
       where: { email: email.toLowerCase() },
-      relations: ['userRoles', 'userRoles.role'],
+      relations: [
+        'userRoles',
+        'userRoles.role',
+        'userRoles.role.rolePermissions',
+        'userRoles.role.rolePermissions.permission',
+      ],
     });
   }
 
@@ -104,6 +111,8 @@ export class UsersRepository {
       .addSelect('user.password')
       .leftJoinAndSelect('user.userRoles', 'userRoles')
       .leftJoinAndSelect('userRoles.role', 'role')
+      .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
+      .leftJoinAndSelect('rolePermissions.permission', 'permission')
       .where('user.email = :email', { email: email.toLowerCase() })
       .getOne();
   }

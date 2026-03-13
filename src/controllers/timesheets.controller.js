@@ -27,7 +27,7 @@ export class TimesheetsController {
     findAll = async (req, res, next) => {
         try {
             const queryDto = plainToInstance(TimesheetQueryDto, req.query);
-            const result = await this.timesheetsService.findAll(queryDto);
+            const result = await this.timesheetsService.findAll(queryDto, req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED_ALL, result);
         } catch (error) {
             next(error);
@@ -36,7 +36,7 @@ export class TimesheetsController {
 
     findById = async (req, res, next) => {
         try {
-            const result = await this.timesheetsService.findById(parseInt(req.params.id));
+            const result = await this.timesheetsService.findById(parseInt(req.params.id), req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED, result);
         } catch (error) {
             next(error);
@@ -45,7 +45,7 @@ export class TimesheetsController {
 
     getAttendanceDetails = async (req, res, next) => {
         try {
-            const result = await this.timesheetsService.getAttendanceDetails(parseInt(req.params.id));
+            const result = await this.timesheetsService.getAttendanceDetails(parseInt(req.params.id), req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED, result);
         } catch (error) {
             next(error);
@@ -54,7 +54,7 @@ export class TimesheetsController {
 
     recalculate = async (req, res, next) => {
         try {
-            const result = await this.timesheetsService.recalculate(parseInt(req.params.id));
+            const result = await this.timesheetsService.recalculate(parseInt(req.params.id), req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RECALCULATED, result);
         } catch (error) {
             next(error);
@@ -69,7 +69,7 @@ export class TimesheetsController {
                 const message = Object.values(errors[0].constraints)[0];
                 return ResponseUtil.sendResponse(res, message, null, 400);
             }
-            const result = await this.timesheetsService.update(parseInt(req.params.id), dto);
+            const result = await this.timesheetsService.update(parseInt(req.params.id), dto, req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.UPDATED, result);
         } catch (error) {
             next(error);
@@ -78,7 +78,7 @@ export class TimesheetsController {
 
     lock = async (req, res, next) => {
         try {
-            const result = await this.timesheetsService.lock(parseInt(req.params.id));
+            const result = await this.timesheetsService.lock(parseInt(req.params.id), req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.LOCKED, result);
         } catch (error) {
             next(error);
@@ -87,7 +87,7 @@ export class TimesheetsController {
 
     unlock = async (req, res, next) => {
         try {
-            const result = await this.timesheetsService.unlock(parseInt(req.params.id));
+            const result = await this.timesheetsService.unlock(parseInt(req.params.id), req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.UNLOCKED, result);
         } catch (error) {
             next(error);
@@ -98,7 +98,7 @@ export class TimesheetsController {
         try {
             const { month, year, departmentId } = req.query;
             const buffer = await this.timesheetsService.exportSummary(
-                parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : undefined
+                parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : undefined, req.user
             );
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename=timesheet_summary_${month}_${year}.xlsx`);
@@ -113,7 +113,7 @@ export class TimesheetsController {
         try {
             const { month, year, employeeId } = req.query;
             const buffer = await this.timesheetsService.exportDetailed(
-                parseInt(month), parseInt(year), employeeId ? parseInt(employeeId) : undefined
+                parseInt(month), parseInt(year), employeeId ? parseInt(employeeId) : undefined, req.user
             );
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename=attendance_detail_${month}_${year}.xlsx`);

@@ -1,5 +1,5 @@
 import { AppMessages } from '../common/constants/index.js';
-import { NotFoundException, ConflictException, BadRequestException } from '../common/exceptions/index.js';
+import { NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '../common/exceptions/index.js';
 import { AppDataSource } from '../database/data-source.js';
 import { AttendanceRecordEntity } from '../models/entities/attendance-record.entity.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
@@ -7,7 +7,7 @@ import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { ShiftAssignmentEntity } from '../models/entities/shift-assignment.entity.js';
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
-import { Between } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 export class TimesheetsService {
     constructor(timesheetsRepository) {
@@ -46,18 +46,37 @@ export class TimesheetsService {
         // 2. Get holidays for this month
         const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
         const holidays = await holidayRepo.find({
-            where: {
-                holidayDate: Between(
-                    startDate.toISOString().split('T')[0],
-                    endDate.toISOString().split('T')[0]
-                ),
-                isDeleted: false,
-            },
+            where: [
+                {
+                    startDate: Between(
+                        startDate.toISOString().split('T')[0],
+                        endDate.toISOString().split('T')[0]
+                    ),
+                    isDeleted: false,
+                },
+                {
+                    endDate: Between(
+                        startDate.toISOString().split('T')[0],
+                        endDate.toISOString().split('T')[0]
+                    ),
+                    isDeleted: false,
+                },
+                {
+                    startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
+                    endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+                    isDeleted: false,
+                }
+            ],
         });
-        const holidayDates = new Set(holidays.map(h => {
-            const d = new Date(h.holidayDate);
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        }));
+        const holidayDates = new Set();
+        holidays.forEach(h => {
+            const current = new Date(h.startDate);
+            const stop = new Date(h.endDate || h.startDate);
+            while (current <= stop) {
+                holidayDates.add(current.toISOString().split('T')[0]);
+                current.setDate(current.getDate() + 1);
+            }
+        });
 
         // 3. Calculate standard working days (weekdays minus holidays)
         const standardWorkingDays = this._countWorkingDays(year, month, holidayDates);
@@ -148,7 +167,19 @@ export class TimesheetsService {
         };
     }
 
-    async findAll(queryDto) {
+    async findAll(queryDto, userContext) {
+        console.log('[TimesheetsService] findAll - userContext:', userContext);
+        if (userContext && this._isEmployee(userContext)) {
+            const employee = await this._getEmployeeByUserId(userContext.id);
+            console.log('[TimesheetsService] findAll - identified employee:', employee?.id);
+            if (employee) {
+                queryDto.employeeId = employee.id;
+            } else {
+                console.warn('[TimesheetsService] findAll - employee record NOT FOUND for user:', userContext.id);
+                return { items: [], total: 0, page: queryDto.page, limit: queryDto.limit, totalPages: 0 };
+            }
+        }
+
         const result = await this.timesheetsRepository.findAll(queryDto);
         return {
             ...result,
@@ -158,16 +189,21 @@ export class TimesheetsService {
         };
     }
 
-    async findById(id) {
+    async findById(id, userContext) {
         const timesheet = await this.timesheetsRepository.findById(id);
         if (!timesheet) {
             throw new NotFoundException(AppMessages.Errors.Timesheet.NOT_FOUND);
         }
+
+        if (userContext) {
+            await this._checkAccess(timesheet, userContext);
+        }
+
         return timesheet;
     }
 
-    async getAttendanceDetails(timesheetId) {
-        const timesheet = await this.findById(timesheetId);
+    async getAttendanceDetails(timesheetId, userContext) {
+        const timesheet = await this.findById(timesheetId, userContext);
 
         const startDate = new Date(timesheet.year, timesheet.month - 1, 1);
         const endDate = new Date(timesheet.year, timesheet.month, 0, 23, 59, 59);
@@ -188,18 +224,37 @@ export class TimesheetsService {
         // Get holidays
         const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
         const holidays = await holidayRepo.find({
-            where: {
-                holidayDate: Between(
-                    startDate.toISOString().split('T')[0],
-                    endDate.toISOString().split('T')[0]
-                ),
-                isDeleted: false,
-            },
+            where: [
+                {
+                    startDate: Between(
+                        startDate.toISOString().split('T')[0],
+                        endDate.toISOString().split('T')[0]
+                    ),
+                    isDeleted: false,
+                },
+                {
+                    endDate: Between(
+                        startDate.toISOString().split('T')[0],
+                        endDate.toISOString().split('T')[0]
+                    ),
+                    isDeleted: false,
+                },
+                {
+                    startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
+                    endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+                    isDeleted: false,
+                }
+            ],
         });
-        const holidayDates = new Set(holidays.map(h => {
-            const d = new Date(h.holidayDate);
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        }));
+        const holidayDates = new Set();
+        holidays.forEach(h => {
+            const current = new Date(h.startDate);
+            const stop = new Date(h.endDate || h.startDate);
+            while (current <= stop) {
+                holidayDates.add(current.toISOString().split('T')[0]);
+                current.setDate(current.getDate() + 1);
+            }
+        });
 
         // Build daily detail with on-the-fly computation
         const dailyDetails = this._buildDailyDetails(
@@ -225,8 +280,8 @@ export class TimesheetsService {
     // UC25 - Timesheet Data Management
     // ──────────────────────────────────────
 
-    async recalculate(id) {
-        const timesheet = await this.findById(id);
+    async recalculate(id, userContext) {
+        const timesheet = await this.findById(id, userContext);
         if (timesheet.isLocked) {
             throw new BadRequestException(AppMessages.Errors.Timesheet.IS_LOCKED);
         }
@@ -272,8 +327,8 @@ export class TimesheetsService {
         });
     }
 
-    async update(id, updateDto) {
-        const timesheet = await this.findById(id);
+    async update(id, updateDto, userContext) {
+        const timesheet = await this.findById(id, userContext);
         if (timesheet.isLocked) {
             throw new BadRequestException(AppMessages.Errors.Timesheet.IS_LOCKED);
         }
@@ -284,16 +339,16 @@ export class TimesheetsService {
     // UC26 - Timesheet Locking
     // ──────────────────────────────────────
 
-    async lock(id) {
-        const timesheet = await this.findById(id);
+    async lock(id, userContext) {
+        const timesheet = await this.findById(id, userContext);
         if (timesheet.isLocked) {
             throw new BadRequestException(AppMessages.Errors.Timesheet.ALREADY_LOCKED);
         }
         return this.timesheetsRepository.update(id, { isLocked: true });
     }
 
-    async unlock(id) {
-        const timesheet = await this.findById(id);
+    async unlock(id, userContext) {
+        const timesheet = await this.findById(id, userContext);
         if (!timesheet.isLocked) {
             throw new BadRequestException(AppMessages.Errors.Timesheet.NOT_LOCKED);
         }
@@ -304,14 +359,23 @@ export class TimesheetsService {
     // UC27 - Export & Reporting
     // ──────────────────────────────────────
 
-    async exportSummary(month, year, departmentId) {
-        const { items } = await this.timesheetsRepository.findAll({
+    async exportSummary(month, year, departmentId, userContext) {
+        const options = {
             month,
             year,
             departmentId,
             take: 10000,
             skip: 0,
-        });
+        };
+
+        if (userContext && this._isEmployee(userContext)) {
+            const employee = await this._getEmployeeByUserId(userContext.id);
+            if (employee) {
+                options.employeeId = employee.id;
+            }
+        }
+
+        const { items } = await this.timesheetsRepository.findAll(options);
 
         const data = items.map((ts, index) => ({
             index: index + 1,
@@ -340,9 +404,15 @@ export class TimesheetsService {
         return ExcelUtil.export(data, columns, `Bang cham cong T${month}-${year}`);
     }
 
-    async exportDetailed(month, year, employeeId) {
+    async exportDetailed(month, year, employeeId, userContext) {
         const startDate = new Date(year, month - 1, 1);
         const endDate = new Date(year, month, 0, 23, 59, 59);
+
+        // Access check for export
+        if (userContext && this._isEmployee(userContext)) {
+            const employee = await this._getEmployeeByUserId(userContext.id);
+            employeeId = employee?.id;
+        }
 
         const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
         const query = attendanceRepo.createQueryBuilder('att')
@@ -484,6 +554,26 @@ export class TimesheetsService {
     // Private helpers
     // ──────────────────────────────────────
 
+    async _checkAccess(timesheet, userContext) {
+        if (this._isEmployee(userContext)) {
+            const employee = await this._getEmployeeByUserId(userContext.id);
+            if (!employee || timesheet.employeeId !== employee.id) {
+                throw new ForbiddenException('Bạn không có quyền truy cập dữ liệu này');
+            }
+        }
+    }
+
+    _isEmployee(userContext) {
+        const roles = userContext.roles || [];
+        return roles.includes('EMPLOYEE') && !roles.includes('ADMIN') && !roles.includes('HR');
+    }
+
+    async _getEmployeeByUserId(userId) {
+        return AppDataSource.getRepository(EmployeeEntity).findOne({
+            where: { userId, isDeleted: false },
+        });
+    }
+
     _countWorkingDays(year, month, holidayDates) {
         const daysInMonth = new Date(year, month, 0).getDate();
         let count = 0;
@@ -564,15 +654,22 @@ export class TimesheetsService {
             const dayOfWeek = date.getDay();
             const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
+            const formattedDate = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
             const detail = {
-                date: dateKey,
+                date: formattedDate,
                 dayOfWeek: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][dayOfWeek],
                 checkIn: null,
                 checkOut: null,
+                check_in: null,
+                check_out: null,
                 workingHours: 0,
+                working_hours: 0,
                 lateMinutes: 0,
+                late_minutes: 0,
                 earlyLeaveMinutes: 0,
+                early_leave_minutes: 0,
                 overtimeHours: 0,
+                overtime_hours: 0,
                 status: 'ABSENT',
                 attendanceStatus: null,
                 attendanceType: null,
@@ -593,13 +690,24 @@ export class TimesheetsService {
             const dayRecords = recordsByDate.get(dateKey);
             if (dayRecords && dayRecords.length > 0) {
                 // Take earliest check-in and latest check-out
-                const checkIn = new Date(Math.min(...dayRecords.map(r => new Date(r.checkInTime).getTime())));
-                const checkOut = dayRecords.some(r => r.checkOutTime)
-                    ? new Date(Math.max(...dayRecords.filter(r => r.checkOutTime).map(r => new Date(r.checkOutTime).getTime())))
-                    : null;
+                const checkInTimes = dayRecords.filter(r => r.checkInTime).map(r => new Date(r.checkInTime).getTime());
+                const checkOutTimes = dayRecords.filter(r => r.checkOutTime).map(r => new Date(r.checkOutTime).getTime());
+                
+                const checkIn = checkInTimes.length > 0 ? new Date(Math.min(...checkInTimes)) : null;
+                const checkOut = checkOutTimes.length > 0 ? new Date(Math.max(...checkOutTimes)) : null;
 
-                detail.checkIn = checkIn.toLocaleTimeString('vi-VN');
-                detail.checkOut = checkOut ? checkOut.toLocaleTimeString('vi-VN') : null;
+                const formatTime = (date) => {
+                    if (!date || isNaN(date.getTime())) return '-';
+                    const h = String(date.getHours()).padStart(2, '0');
+                    const m = String(date.getMinutes()).padStart(2, '0');
+                    return `${h}:${m}`;
+                };
+
+                detail.checkIn = formatTime(checkIn);
+                detail.checkOut = formatTime(checkOut);
+                detail.check_in = detail.checkIn;
+                detail.check_out = detail.checkOut;
+
                 detail.attendanceStatus = dayRecords[0].attendanceStatus;
                 detail.attendanceType = dayRecords[0].attendanceType;
                 detail.status = 'PRESENT';
@@ -607,9 +715,11 @@ export class TimesheetsService {
                 if (checkOut) {
                     const hoursWorked = (checkOut - checkIn) / (1000 * 60 * 60);
                     detail.workingHours = parseFloat(hoursWorked.toFixed(2));
+                    detail.working_hours = detail.workingHours;
 
                     if (hoursWorked > shiftHours) {
                         detail.overtimeHours = parseFloat((hoursWorked - shiftHours).toFixed(2));
+                        detail.overtime_hours = detail.overtimeHours;
                     }
                 }
 
@@ -617,6 +727,7 @@ export class TimesheetsService {
                 const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
                 if (checkInMinutes > shiftStart) {
                     detail.lateMinutes = checkInMinutes - shiftStart;
+                    detail.late_minutes = detail.lateMinutes;
                 }
 
                 // Early leave = check-out before shift end
@@ -624,6 +735,7 @@ export class TimesheetsService {
                     const checkOutMinutes = checkOut.getHours() * 60 + checkOut.getMinutes();
                     if (checkOutMinutes < shiftEnd) {
                         detail.earlyLeaveMinutes = shiftEnd - checkOutMinutes;
+                        detail.early_leave_minutes = detail.earlyLeaveMinutes;
                     }
                 }
             }

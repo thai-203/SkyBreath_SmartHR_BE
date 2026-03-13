@@ -57,12 +57,22 @@ export class AuthService {
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.usersService.updateLastLogin(user.id);
 
+    const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
+    const permissions = [
+      ...new Set(
+        user.userRoles?.flatMap((ur) =>
+          ur.role.rolePermissions?.map((rp) => rp.permission.permissionCode),
+        ) || [],
+      ),
+    ];
+
     return {
       user: {
         id: user.id,
         email: user.email,
         username: user.username,
-        roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
+        roles,
+        permissions,
       },
       ...tokens,
     };
@@ -301,10 +311,20 @@ export class AuthService {
   }
 
   async generateTokens(user) {
+    const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
+    const permissions = [
+      ...new Set(
+        user.userRoles?.flatMap((ur) =>
+          ur.role.rolePermissions?.map((rp) => rp.permission.permissionCode),
+        ) || [],
+      ),
+    ];
+
     const payload = {
       sub: user.id,
       email: user.email,
-      roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
+      roles,
+      permissions,
     };
 
     const secret = process.env.JWT_SECRET;
