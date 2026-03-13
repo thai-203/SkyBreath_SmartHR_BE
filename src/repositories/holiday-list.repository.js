@@ -1,5 +1,6 @@
-import { Between, Like } from 'typeorm';
+import { Between, Like, In } from 'typeorm';
 import { AppDataSource } from '../database/data-source.js';
+import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 
 export class HolidayListRepository {
@@ -8,7 +9,16 @@ export class HolidayListRepository {
     }
 
     async create(data) {
-        const holiday = this.repository.create(data);
+        const { employeeIds, ...holidayData } = data;
+        const holiday = this.repository.create(holidayData);
+        
+        if (employeeIds && employeeIds.length > 0) {
+            const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+            holiday.employees = await employeeRepo.find({
+                where: { id: In(employeeIds) }
+            });
+        }
+        
         return this.repository.save(holiday);
     }
 
@@ -54,12 +64,31 @@ export class HolidayListRepository {
     async findById(id) {
         return this.repository.findOne({
             where: { id, isDeleted: false },
+            relations: ['employees']
         });
     }
 
     async update(id, data) {
-        await this.repository.update(id, data);
-        return this.findById(id);
+        const { employeeIds, ...holidayData } = data;
+        let holiday = await this.findById(id);
+        
+        if (!holiday) return null;
+
+        // Update basic fields
+        Object.assign(holiday, holidayData);
+
+        if (employeeIds !== undefined) {
+            if (employeeIds.length > 0) {
+                const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+                holiday.employees = await employeeRepo.find({
+                    where: { id: In(employeeIds) }
+                });
+            } else {
+                holiday.employees = [];
+            }
+        }
+
+        return this.repository.save(holiday);
     }
 
     async delete(id) {

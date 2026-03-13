@@ -1,4 +1,5 @@
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, ManyToMany, JoinTable } from 'typeorm';
+import { EmployeeEntity } from './employee.entity.js';
 import { BaseEntity } from '../../common/entities/base.entity.js';
 
 @Entity('holiday_list')
@@ -23,4 +24,12 @@ export class HolidayListEntity extends BaseEntity {
 
   @Column({ nullable: true, type: 'varchar' })
   description;
+
+  @ManyToMany(() => EmployeeEntity)
+  @JoinTable({
+    name: 'holiday_employees',
+    joinColumn: { name: 'holiday_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'employee_id', referencedColumnName: 'id' }
+  })
+  employees;
 }

@@ -40,6 +40,23 @@ export class DepartmentsService {
             }
         }
 
+        if (updateDto.parentDepartmentId) {
+            if (updateDto.parentDepartmentId === id) {
+                throw new ConflictException(AppMessages.Errors.Department.SAME_AS_PARENT);
+            }
+
+            let currentParentId = updateDto.parentDepartmentId;
+            while (currentParentId) {
+                const parent = await this.departmentsRepository.findById(currentParentId);
+                if (!parent || !parent.parentDepartment) break;
+
+                if (parent.parentDepartment.id === id) {
+                    throw new ConflictException(AppMessages.Errors.Department.CIRCULAR_DEPENDENCY);
+                }
+                currentParentId = parent.parentDepartment.id;
+            }
+        }
+
         return this.departmentsRepository.update(id, updateDto);
     }
 
@@ -92,9 +109,17 @@ export class DepartmentsService {
     buildTree(departments, parentId = null) {
         return departments
             .filter(d => d.parentDepartmentId === parentId)
-            .map(d => ({
-                ...d,
-                children: this.buildTree(departments, d.id),
-            }));
+            .map(d => {
+                const children = this.buildTree(departments, d.id);
+                // Tính tổng bao gồm cả department con (đệ quy)
+                const totalEmployeeCount = (d.employeeCount || 0) + children.reduce((sum, c) => sum + (c.totalEmployeeCount || 0), 0);
+                const totalProbationCount = (d.probationCount || 0) + children.reduce((sum, c) => sum + (c.totalProbationCount || 0), 0);
+                return {
+                    ...d,
+                    children,
+                    totalEmployeeCount,
+                    totalProbationCount,
+                };
+            });
     }
 }

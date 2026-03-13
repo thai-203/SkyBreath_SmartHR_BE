@@ -1,6 +1,6 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
-import { IsNull, Between } from 'typeorm';
+import { IsNull, Between, In } from 'typeorm';
 
 export class EmployeesRepository {
   constructor() {
@@ -109,6 +109,17 @@ export class EmployeesRepository {
         'directManager',
         'hrMentor',
       ],
+    });
+  }
+
+  async findByIds(ids) {
+    if (!ids || ids.length === 0) return [];
+    return this.repository.find({
+      where: {
+        id: In(ids),
+        isDeleted: false,
+      },
+      relations: ['user', 'department'],
     });
   }
 

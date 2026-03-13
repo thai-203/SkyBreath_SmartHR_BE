@@ -13,6 +13,7 @@ router.get('/export', authMiddleware, permissionsMiddleware('HOLIDAY_EXPORT'), (
 router.get('/:id', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.findById(req, res, next));
 router.post('/', authMiddleware, permissionsMiddleware('HOLIDAY_CREATE'), (req, res, next) => controller.create(req, res, next));
 router.post('/bulk-create', authMiddleware, permissionsMiddleware('HOLIDAY_CREATE'), (req, res, next) => controller.bulkCreate(req, res, next));
+router.post('/send-notification', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.sendNotification(req, res, next));
 router.put('/:id', authMiddleware, permissionsMiddleware('HOLIDAY_UPDATE'), (req, res, next) => controller.update(req, res, next));
 router.delete('/:id', authMiddleware, permissionsMiddleware('HOLIDAY_DELETE'), (req, res, next) => controller.delete(req, res, next));
 

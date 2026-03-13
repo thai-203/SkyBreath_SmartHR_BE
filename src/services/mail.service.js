@@ -54,6 +54,16 @@ export class MailService {
       return false;
     }
   }
+
+  async sendHolidayNotification(to, subject, htmlContent) {
+    try {
+      await sendMail(to, subject, '', htmlContent);
+      return true;
+    } catch (error) {
+      console.error('[MailService] Failed to send holiday notification:', error.message);
+      return false;
+    }
+  }
 }
 
 export const mailService = new MailService();

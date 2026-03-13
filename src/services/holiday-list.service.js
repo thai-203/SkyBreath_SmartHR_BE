@@ -1,11 +1,14 @@
 import { PaginatedResponseDto } from '../common/dto/index.js';
 import { BadRequestException, NotFoundException } from '../common/exceptions/index.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { HolidayListRepository } from '../repositories/holiday-list.repository.js';
+import { mailService } from './mail.service.js';
 
 export class HolidayListService {
     constructor() {
         this.repository = new HolidayListRepository();
+        this.employeesRepository = new EmployeesRepository();
     }
 
     async findAll(queryDto) {
@@ -118,5 +121,61 @@ export class HolidayListService {
             updatedBy: user
         }));
         return this.repository.createMany(holidays);
+    }
+
+    async sendNotification(data) {
+        const { employeeIds, holidayId, type, scheduledAt } = data;
+
+        const holiday = await this.findById(holidayId);
+        const employees = await this.employeesRepository.findByIds(employeeIds);
+
+        if (employees.length === 0) {
+            throw new BadRequestException('No valid employees selected');
+        }
+
+        const subject = `Thông báo nghỉ lễ: ${holiday.holidayName}`;
+        const startDate = new Date(holiday.startDate).toLocaleDateString('vi-VN');
+        const endDate = new Date(holiday.endDate).toLocaleDateString('vi-VN');
+        
+        const content = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                <h2 style="color: #003399; text-align: center;">Thông báo nghỉ lễ</h2>
+                <p>Kính gửi anh/chị,</p>
+                <p>Công ty xin thông báo về kế hoạch nghỉ lễ <strong>${holiday.holidayName}</strong> như sau:</p>
+                <div style="background-color: #f9fafb; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p style="margin: 5px 0;"><strong>Thời gian bắt đầu:</strong> ${startDate}</p>
+                    <p style="margin: 5px 0;"><strong>Thời gian kết thúc:</strong> ${endDate}</p>
+                    <p style="margin: 5px 0;"><strong>Loại ngày nghỉ:</strong> ${holiday.holidayType}</p>
+                    ${holiday.description ? `<p style="margin: 5px 0;"><strong>Ghi chú:</strong> ${holiday.description}</p>` : ''}
+                </div>
+                <p>Trân trọng cảm ơn!</p>
+                <p style="margin-top: 30px; font-size: 12px; color: #6b7280; text-align: center;">
+                    Đây là email tự động từ hệ thống SmartHR. Vui lòng không phản hồi email này.
+                </p>
+            </div>
+        `;
+
+        // If type is auto, we should ideally schedule it. For now, let's treat it as manual or log it.
+        // Usually, you'd use a job queue like Bull or a cron job.
+        if (type === 'auto') {
+            console.log(`[Notification] Scheduled holiday notification for ${scheduledAt}`);
+            // TODO: Implement scheduling logic if needed
+        }
+
+        const results = await Promise.all(
+            employees.map(async (emp) => {
+                const email = emp.companyEmail || emp.user?.email;
+                if (email) {
+                    return mailService.sendHolidayNotification(email, subject, content);
+                }
+                return false;
+            })
+        );
+
+        return {
+            success: true,
+            message: `Sent notifications to ${employees.length} employees`,
+            count: results.filter(Boolean).length
+        };
     }
 }
