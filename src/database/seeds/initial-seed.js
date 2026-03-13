@@ -413,6 +413,26 @@ const seed = async () => {
     console.log('Assigned permissions to HR');
 
     console.log('Assigned permissions to HR');
+ 
+    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ
+    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ'];
+    for (const code of employeePerms) {
+      const p = permissions.find((perm) => perm.permissionCode === code);
+      if (p) {
+        const exists = await rolePermissionRepo.findOne({
+          where: { roleId: roles['EMPLOYEE'].id, permissionId: p.id },
+        });
+        if (!exists) {
+          await rolePermissionRepo.save(
+            rolePermissionRepo.create({
+              roleId: roles['EMPLOYEE'].id,
+              permissionId: p.id,
+            }),
+          );
+        }
+      }
+    }
+    console.log('Assigned permissions to EMPLOYEE');
 
     // 4. Create Departments
     const departmentRepo = dataSource.getRepository(DepartmentEntity);
@@ -528,24 +548,28 @@ const seed = async () => {
         email: 'admin@example.com',
         role: 'ADMIN',
         fullName: 'System Administrator',
+        employeeCode: 'EMP001'
       },
       {
         username: 'manager',
         email: 'manager@example.com',
         role: 'MANAGER',
         fullName: 'John Manager',
+        employeeCode: 'EMP002'
       },
       {
         username: 'employee',
         email: 'employee@example.com',
         role: 'EMPLOYEE',
         fullName: 'Jane Employee',
+        employeeCode: 'EMP003'
       },
       {
         username: 'hr',
         email: 'hr@example.com',
         role: 'HR',
         fullName: 'Alice HR',
+        employeeCode: 'EMP004'
       },
     ];
 
@@ -590,6 +614,7 @@ const seed = async () => {
         employee = employeeRepo.create({
           userId: user.id,
           fullName: u.fullName,
+          employeeCode: u.employeeCode,
           companyEmail: u.email,
           departmentId:
             u.role === 'HR'
@@ -601,6 +626,13 @@ const seed = async () => {
         });
         await employeeRepo.save(employee);
         console.log(`Created employee record for: ${u.fullName}`);
+      } else {
+        // Update existing employee with code if missing or changed
+        employee.employeeCode = u.employeeCode;
+        employee.fullName = u.fullName;
+        employee.companyEmail = u.email;
+        await employeeRepo.save(employee);
+        console.log(`Updated employee record for: ${u.fullName}`);
       }
     }
 
@@ -713,80 +745,45 @@ const seed = async () => {
     const attendanceRepo = dataSource.getRepository(AttendanceRecordEntity);
     const existingAttCount = await attendanceRepo.count();
     if (existingAttCount === 0) {
-      console.log('Seeding attendance records for Feb 2026...');
-
-      // Helper: build attendance for one employee
-      const buildAttendance = (employeeId, entries) => {
-        return entries.map((e) =>
-          attendanceRepo.create({
-            employeeId,
-            checkInTime: e.checkIn,
-            checkOutTime: e.checkOut,
-            attendanceStatus: e.status,
-            attendanceType: e.type,
-          }),
-        );
-      };
-
-      // Feb 2026 weekdays (skip: 1(Sun),7(Sat),8(Sun),14(Sat),15(Sun),21(Sat),22(Sun),28(Sat))
-      // Also skip Feb 2 (holiday)
-      // Weekdays: 3,4,5,6, 9,10,11,12,13, 16,17,18,19,20, 23,24,25,26,27
+      console.log('Seeding high-quality attendance records for Feb 2026...');
+      
+      // Clear existing records for Feb 2026 to avoid duplicates
+      await attendanceRepo.delete({
+          checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59')
+      });
 
       for (const emp of allEmployees) {
-        // Generate varied attendance per employee
         const records = [];
-        const weekdays = [
-          3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26, 27,
-        ];
-
-        // Some employees skip certain days (absent)
-        const absentDays = [];
-        if (emp.id % 3 === 0) absentDays.push(6); // some miss Feb 6
-        if (emp.id % 4 === 0) absentDays.push(19, 20); // some miss Feb 19-20
-        if (emp.id % 5 === 0) absentDays.push(10, 11); // some miss Feb 10-11
+        // February 2026: 28 days. Weekdays are 2-6, 9-13, 16-20, 23-27
+        const weekdays = [2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26, 27];
 
         for (const day of weekdays) {
-          if (absentDays.includes(day)) continue;
+          // Feb 2 is holiday but some might work (OT) - let's skip it for normal behavior
+          if (day === 2) continue;
 
-          // Vary check-in time
-          let checkInHour = 8;
-          let checkInMin = 0;
+          // Default: 08:00 - 17:00
+          let cinH = 7, cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
+          let coutH = 17, coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
           let status = 'ON_TIME';
           let type = 'NORMAL';
 
-          // Some late arrivals
-          if ((emp.id + day) % 7 === 0) {
-            checkInMin = 15 + (day % 20);
+          // Randomize some behavior
+          const rand = Math.random();
+          if (rand < 0.1) { // 10% late
+            cinM = 10 + Math.floor(Math.random() * 20); // 08:10 - 08:30
             status = 'LATE';
-          } else if ((emp.id + day) % 11 === 0) {
-            checkInMin = 5;
-          } else if (day % 5 === 0) {
-            checkInHour = 7;
-            checkInMin = 50 + (day % 10);
-          }
-
-          // Vary check-out time
-          let checkOutHour = 17;
-          let checkOutMin = 0;
-
-          // Some OT
-          if ((emp.id + day) % 9 === 0) {
-            checkOutHour = 18 + (day % 2);
-            checkOutMin = 30;
+          } else if (rand < 0.2) { // 10% early leave
+            coutH = 16;
+            coutM = 30 + Math.floor(Math.random() * 20); // 16:30 - 16:50
+            status = 'EARLY_LEAVE';
+          } else if (rand < 0.3) { // 10% OT
+            coutH = 18 + Math.floor(Math.random() * 2); // 18:00 - 20:00
+            coutM = Math.floor(Math.random() * 60);
             type = 'OVERTIME';
-          } else if (day % 8 === 0) {
-            checkOutMin = 15;
           }
 
-          // Some early leave
-          if ((emp.id + day) % 13 === 0) {
-            checkOutHour = 16;
-            checkOutMin = 30;
-          }
-
-          const pad = (n) => String(n).padStart(2, '0');
-          const checkIn = `2026-02-${pad(day)} ${pad(checkInHour)}:${pad(checkInMin)}:00`;
-          const checkOut = `2026-02-${pad(day)} ${pad(checkOutHour)}:${pad(checkOutMin)}:00`;
+          const checkIn = new Date(2026, 1, day, cinH, cinM, 0);
+          const checkOut = new Date(2026, 1, day, coutH, coutM, 0);
 
           records.push(
             attendanceRepo.create({
@@ -798,11 +795,8 @@ const seed = async () => {
             }),
           );
         }
-
         await attendanceRepo.save(records);
-        console.log(
-          `Created ${records.length} attendance records for: ${emp.fullName}`,
-        );
+        console.log(`Created ${records.length} high-quality records for ${emp.fullName}`);
       }
     } else {
       console.log(
