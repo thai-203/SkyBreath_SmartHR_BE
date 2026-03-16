@@ -6,16 +6,13 @@ import { DepartmentEntity } from '../../models/entities/department.entity.js';
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
 import { HolidayListEntity } from '../../models/entities/holiday-list.entity.js';
 import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
+import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js';
 import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
-import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
-import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
-import { ActionLogEntity } from '../../models/entities/action-log.entity.js';
-import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -478,7 +475,7 @@ const seed = async () => {
     console.log('Assigned permissions to HR');
 
     console.log('Assigned permissions to HR');
- 
+
     // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ
     const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ'];
     for (const code of employeePerms) {
@@ -701,86 +698,7 @@ const seed = async () => {
       }
     }
 
-    // ──────────────────────────────────────
-    // 6. Seed Shift Groups + Working Shifts
-    // ──────────────────────────────────────
-    const groupRepo = dataSource.getRepository(ShiftGroupEntity);
-    const groupData = [
-      { groupName: 'Nhóm ca chính' },
-      { groupName: 'Nhóm ca phụ' },
-    ];
-    const groups = {};
-    for (const g of groupData) {
-      let group = await groupRepo.findOne({
-        where: { groupName: g.groupName },
-      });
-      if (!group) {
-        group = groupRepo.create(g);
-        await groupRepo.save(group);
-        console.log(`Created shift group: ${g.groupName}`);
-      }
-      groups[g.groupName] = group;
-    }
 
-    const shiftRepo = dataSource.getRepository(WorkingShiftEntity);
-    const shiftsData = [
-      {
-        shiftName: 'Ca hành chính',
-        startTime: '08:00:00',
-        endTime: '17:00:00',
-        breakStartTime: '12:00:00',
-        breakEndTime: '13:00:00',
-        groupId: groups['Nhóm ca chính'].id,
-      },
-      {
-        shiftName: 'Ca sáng',
-        startTime: '06:00:00',
-        endTime: '14:00:00',
-        breakStartTime: '10:00:00',
-        breakEndTime: '10:30:00',
-        groupId: groups['Nhóm ca chính'].id,
-      },
-    ];
-    const shifts = {};
-    for (const s of shiftsData) {
-      let shift = await shiftRepo.findOne({
-        where: { shiftName: s.shiftName },
-      });
-      if (!shift) {
-        shift = shiftRepo.create(s);
-        await shiftRepo.save(shift);
-        console.log(`Created shift: ${s.shiftName}`);
-      } else if (!shift.groupId && s.groupId) {
-        shift.groupId = s.groupId;
-        await shiftRepo.save(shift);
-      }
-      shifts[s.shiftName] = shift;
-    }
-
-    // ──────────────────────────────────────
-    // 7. Assign Shifts to Employees
-    // ──────────────────────────────────────
-    const shiftAssignmentRepo = dataSource.getRepository(ShiftAssignmentEntity);
-    const allEmployees = await employeeRepo.find({
-      where: { isDeleted: false },
-    });
-    for (const emp of allEmployees) {
-      const existing = await shiftAssignmentRepo.findOne({
-        where: { employeeId: emp.id, isDeleted: false },
-      });
-      if (!existing) {
-        await shiftAssignmentRepo.save(
-          shiftAssignmentRepo.create({
-            employeeId: emp.id,
-            shiftId: shifts['Ca hành chính'].id,
-            effectiveFrom: '2026-01-01',
-          }),
-        );
-        console.log(`Assigned shift to employee: ${emp.fullName}`);
-      }
-    }
-
-    // ──────────────────────────────────────
     // 8. Seed Holidays
     // ──────────────────────────────────────
     const holidayRepo = dataSource.getRepository(HolidayListEntity);
@@ -851,10 +769,10 @@ const seed = async () => {
     const existingAttCount = await attendanceRepo.count();
     if (existingAttCount === 0) {
       console.log('Seeding high-quality attendance records for Feb 2026...');
-      
+
       // Clear existing records for Feb 2026 to avoid duplicates
       await attendanceRepo.delete({
-          checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59')
+        checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59')
       });
 
       for (const emp of allEmployees) {

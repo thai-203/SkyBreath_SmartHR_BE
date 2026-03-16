@@ -1,4 +1,4 @@
-import { requestContext } from "../context/request-context";
+import { requestContext } from "../context/request-context.js";
 
 export function requestContextMiddleware(req, res, next) {
 

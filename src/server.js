@@ -7,6 +7,7 @@ import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 // import { actionLogMiddleware } from './common/middleware/action-log.middleware.js';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
+import { requestContextMiddleware } from './common/middleware/request-context.middleware.js';
 import { config } from './config/env.config.js';
 import redis from './config/redis.config.js';
 import { swaggerSpec } from './config/swagger.config.js';
