@@ -96,7 +96,24 @@ const actionLogsController = new ActionLogsController();
  *         description: Not found
  */
 
-router.get('/', authMiddleware, actionLogsController.findAll);
-router.get('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), actionLogsController.findOne);
+router.get(
+  '/',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  actionLogsController.findAll,
+);
+router.get(
+  '/:id',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  actionLogsController.findOne,
+);
+
+router.get(
+  '/export/excel',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  (req, res, next) => actionLogsController.export(req, res, next)
+);
 
 export const actionLogsRoutes = router;

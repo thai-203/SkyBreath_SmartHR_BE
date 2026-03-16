@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
-import { actionLogMiddleware } from './common/middleware/action-log.middleware.js';
+// import { actionLogMiddleware } from './common/middleware/action-log.middleware.js';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { config } from './config/env.config.js';
 import redis from './config/redis.config.js';
@@ -28,6 +28,7 @@ import { rolesRoutes } from './routes/roles.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { shiftsRoutes } from './routes/shifts.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
+import { requestContextMiddleware } from './common/middleware/request-context.middleware.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
@@ -53,9 +54,8 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
-app.use(actionLogMiddleware);
 app.use('/uploads', express.static(path.resolve('uploads')));
-
+app.use(requestContextMiddleware);
 // Routes
 app.use(`/${API_PREFIX}/${API_VERSION}/auth`, authRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/users`, usersRoutes);

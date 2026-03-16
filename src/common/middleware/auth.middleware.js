@@ -3,6 +3,7 @@ import { AppDataSource } from '../../database/data-source.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
 import { AppMessages } from '../constants/index.js';
 import { UnauthorizedException } from '../exceptions/index.js';
+import { setRequestContextValue } from '../context/request-context.js';
 
 export const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -60,7 +61,7 @@ export const authMiddleware = async (req, res, next) => {
       roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
       permissions: Array.from(permissions),
     };
-
+    setRequestContextValue("userId", user.id)
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
