@@ -43,6 +43,7 @@ import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-d
 import { PenaltyEntity } from '../models/entities/penalty.entity.js';
 
 import { config } from './env.config.js';
+import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
 
 export const databaseConfig = {
   type: 'mysql',
@@ -98,6 +99,6 @@ export const databaseConfig = {
     OvertimeRuleDepartmentEntity,
     PenaltyEntity,
   ],
-  subscribers: [],
+  subscribers: [AuditSubscriber],
   migrations: [],
 };

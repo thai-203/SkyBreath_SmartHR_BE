@@ -5,7 +5,6 @@ import { validationMiddleware } from '../common/middleware/validation.middleware
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import {
   LoginDto,
-  RegisterDto,
   ChangePasswordDto,
   ForgotPasswordDto,
   ResetPasswordDto,

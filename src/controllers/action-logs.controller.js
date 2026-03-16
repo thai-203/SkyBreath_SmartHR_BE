@@ -40,4 +40,21 @@ export class ActionLogsController {
       next(error);
     }
   };
+   export = async (req, res, next) => {
+    try {
+      const buffer = await this.actionLogsService.exportExcel();
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename=employees.xlsx',
+      );
+      res.setHeader('Content-Length', buffer.length);
+      res.end(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }; 
 }

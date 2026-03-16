@@ -56,7 +56,6 @@ export class AuthService {
 
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.usersService.updateLastLogin(user.id);
-
     const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
     const permissions = [
       ...new Set(
@@ -87,6 +86,10 @@ export class AuthService {
 
     if (!compareRefreshToken(user.refreshToken, refreshToken)) {
       throw new UnauthorizedException('Access denied');
+    }
+
+    if (user.status !== 'ACTIVE' || user.isDeleted) {
+      throw new UnauthorizedException(AppMessages.Errors.User.INACTIVE);
     }
 
     const tokens = await this.generateTokens(user);
@@ -123,7 +126,9 @@ export class AuthService {
     }
 
     const hashedPassword = await hashPassword(changePasswordDto.newPassword);
-    await this.usersService.update(userId, { password: hashedPassword });
+    await this.usersService.update(userId, {
+      password: changePasswordDto.newPassword,
+    });
 
     return { message: 'Đổi mật khẩu thành công' };
   }
@@ -175,28 +180,28 @@ export class AuthService {
       // Organization info
       department: employee?.department
         ? {
-          id: employee.department.id,
-          name: employee.department.departmentName,
-        }
+            id: employee.department.id,
+            name: employee.department.departmentName,
+          }
         : null,
       position: employee?.position
         ? {
-          id: employee.position.id,
-          name: employee.position.positionName,
-        }
+            id: employee.position.id,
+            name: employee.position.positionName,
+          }
         : null,
       jobGrade: employee?.jobGrade
         ? {
-          id: employee.jobGradeId,
-          name: employee.jobGrade.gradeName,
-        }
+            id: employee.jobGradeId,
+            name: employee.jobGrade.gradeName,
+          }
         : null,
       manager: employee?.directManager?.fullName || null,
       directManager: employee?.directManager
         ? {
-          id: employee.directManager.id,
-          name: employee.directManager.fullName,
-        }
+            id: employee.directManager.id,
+            name: employee.directManager.fullName,
+          }
         : null,
       hrMentor: employee?.hrMentor?.fullName || null,
       employmentStatus: employee?.employmentStatus || null,
@@ -289,21 +294,21 @@ export class AuthService {
       permanentAddress: updated.permanentAddress,
       department: updated.department
         ? {
-          id: updated.department.id,
-          name: updated.department.departmentName,
-        }
+            id: updated.department.id,
+            name: updated.department.departmentName,
+          }
         : null,
       position: updated.position
         ? {
-          id: updated.position.id,
-          name: updated.position.positionName,
-        }
+            id: updated.position.id,
+            name: updated.position.positionName,
+          }
         : null,
       jobGrade: updated.jobGrade
         ? {
-          id: updated.jobGrade.id,
-          name: updated.jobGrade.name,
-        }
+            id: updated.jobGrade.id,
+            name: updated.jobGrade.name,
+          }
         : null,
       manager: updated.directManager?.fullName || null,
       hrMentor: updated.hrMentor?.fullName || null,

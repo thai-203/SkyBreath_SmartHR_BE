@@ -4,6 +4,7 @@ import { UserEntity } from '../../models/entities/user.entity.js';
 import { UnauthorizedException } from '../exceptions/index.js';
 import { AppMessages } from '../constants/index.js';
 import { config } from '../../config/env.config.js';
+import { setRequestContextValue } from '../context/request-context.js';
 
 export const refreshTokenMiddleware = async (req, res, next) => {
     const refreshToken = req.cookies?.refreshToken;
@@ -37,7 +38,7 @@ export const refreshTokenMiddleware = async (req, res, next) => {
             id: user.id,
             email: user.email
         };
-
+        setRequestContextValue("userId", user.id)
         next();
     } catch (error) {
         if (error instanceof jwt.TokenExpiredError) {
