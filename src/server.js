@@ -28,6 +28,9 @@ import { rolesRoutes } from './routes/roles.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { shiftsRoutes } from './routes/shifts.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
+import { payrollRoutes } from './routes/payroll.routes.js';
+import { payrollTypeRoutes } from './routes/payroll-type.routes.js';
+import { requestsRoutes } from './routes/requests.routes.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
@@ -77,6 +80,9 @@ app.use(`/${API_PREFIX}/${API_VERSION}/overtime-rules`, overtimeRulesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/penalties`, penaltiesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/shifts`, shiftsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/holiday-list`, holidayListRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/payroll`, payrollRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/payroll-types`, payrollTypeRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/requests`, requestsRoutes);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');

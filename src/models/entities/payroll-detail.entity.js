@@ -11,6 +11,9 @@ export class PayrollDetailEntity extends BaseEntity {
     @Column({ name: 'employee_id', type: 'int' })
     employeeId;
 
+    @Column({ name: 'working_days', type: 'decimal', precision: 5, scale: 2, default: 0 })
+    workingDays;
+
     @Column({ name: 'base_salary', type: 'decimal', precision: 15, scale: 2 })
     baseSalary;
 
@@ -34,6 +37,12 @@ export class PayrollDetailEntity extends BaseEntity {
 
     @Column({ name: 'tax_deduction', type: 'decimal', precision: 15, scale: 2, default: 0 })
     taxDeduction;
+
+    @Column({ name: 'note', type: 'text', nullable: true })
+    note;
+
+    @Column({ name: 'payslip_sent_at', type: 'datetime', nullable: true })
+    payslipSentAt;
 
     @ManyToOne(() => PayrollEntity)
     @JoinColumn({ name: 'payroll_id' })
