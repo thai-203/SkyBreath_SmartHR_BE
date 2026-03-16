@@ -14,7 +14,8 @@ import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.en
 import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
-import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
+import { ActionLogEntity } from '../../models/entities/action-log.entity.js';
+import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -251,6 +252,58 @@ const seed = async () => {
         description: 'View shift schedules',
         module: 'Shift',
       },
+      // Payroll
+      {
+        permissionCode: 'PAYROLL_READ',
+        description: 'View payroll list and details',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_CREATE',
+        description: 'Create new payroll period',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_UPDATE',
+        description: 'Update payroll details and auto-calculate',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_APPROVE',
+        description: 'Submit, Approve, or Reject payroll',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_LOCK',
+        description: 'Lock payroll and send payslips',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_EXPORT',
+        description: 'Export payroll summary or payslips',
+        module: 'Payroll',
+      },
+      // Payroll Type
+      {
+        permissionCode: 'PAYROLL_TYPE_READ',
+        description: 'View payroll type list',
+        module: 'PayrollType',
+      },
+      {
+        permissionCode: 'PAYROLL_TYPE_CREATE',
+        description: 'Create new payroll type',
+        module: 'PayrollType',
+      },
+      {
+        permissionCode: 'PAYROLL_TYPE_UPDATE',
+        description: 'Update payroll type',
+        module: 'PayrollType',
+      },
+      {
+        permissionCode: 'PAYROLL_TYPE_DELETE',
+        description: 'Delete payroll type',
+        module: 'PayrollType',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -393,6 +446,18 @@ const seed = async () => {
       'SHIFT_ASSIGN_UPDATE',
       'SHIFT_ASSIGN_DELETE',
       'SHIFT_SCHEDULE_READ',
+      // Payroll
+      'PAYROLL_READ',
+      'PAYROLL_CREATE',
+      'PAYROLL_UPDATE',
+      'PAYROLL_APPROVE',
+      'PAYROLL_LOCK',
+      'PAYROLL_EXPORT',
+      // Payroll Type
+      'PAYROLL_TYPE_READ',
+      'PAYROLL_TYPE_CREATE',
+      'PAYROLL_TYPE_UPDATE',
+      'PAYROLL_TYPE_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -414,8 +479,8 @@ const seed = async () => {
 
     console.log('Assigned permissions to HR');
  
-    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ
-    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ'];
+    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ
+    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ'];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
       if (p) {
@@ -739,8 +804,48 @@ const seed = async () => {
       }
     }
 
+    // 9. Seed Payroll Types
+    const payrollTypeRepo = dataSource.getRepository(PayrollTypeEntity);
+    const adminUser = await userRepo.findOne({ where: { username: 'admin' } });
+    const payrollTypesData = [
+      {
+        payrollTypeCode: '1',
+        name: 'Bảng lương sản xuất',
+        keyword: 'LUONG_SAN_XUAT',
+        description: 'Bảng lương dành cho công nhân sản xuất (theo sản lượng)',
+        departmentId: departments['Software Development'].id, // Placeholder
+        createdById: adminUser.id,
+      },
+      {
+        payrollTypeCode: '101',
+        name: 'Bảng lương cấp đông',
+        keyword: 'LUONG_CAP_DONG_TAG',
+        description: 'Bảng lương dành cho bộ phận cấp đông (theo công đoạn)',
+        departmentId: departments['Software Development'].id, // Placeholder
+        createdById: adminUser.id,
+      },
+      {
+        payrollTypeCode: 'OFFICE_01',
+        name: 'Bảng lương văn phòng',
+        keyword: 'LUONG_VAN_PHONG',
+        description: 'Bảng lương dành cho nhân viên văn phòng (theo tháng)',
+        departmentId: departments['Software Development'].id, // Placeholder
+        createdById: adminUser.id,
+      },
+    ];
+
+    for (const pt of payrollTypesData) {
+      const existing = await payrollTypeRepo.findOne({
+        where: { payrollTypeCode: pt.payrollTypeCode },
+      });
+      if (!existing) {
+        await payrollTypeRepo.save(payrollTypeRepo.create(pt));
+        console.log(`Created payroll type: ${pt.name}`);
+      }
+    }
+
     // ──────────────────────────────────────
-    // 9. Seed Attendance Records (Feb 2026)
+    // 10. Seed Attendance Records (Feb 2026)
     // ──────────────────────────────────────
     const attendanceRepo = dataSource.getRepository(AttendanceRecordEntity);
     const existingAttCount = await attendanceRepo.count();
