@@ -56,7 +56,6 @@ export class AuthService {
 
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.usersService.updateLastLogin(user.id);
-
     const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
     const permissions = [
       ...new Set(
@@ -87,6 +86,10 @@ export class AuthService {
 
     if (!compareRefreshToken(user.refreshToken, refreshToken)) {
       throw new UnauthorizedException('Access denied');
+    }
+
+    if (user.status !== 'ACTIVE' || user.isDeleted) {
+      throw new UnauthorizedException(AppMessages.Errors.User.INACTIVE);
     }
 
     const tokens = await this.generateTokens(user);
@@ -123,7 +126,9 @@ export class AuthService {
     }
 
     const hashedPassword = await hashPassword(changePasswordDto.newPassword);
-    await this.usersService.update(userId, { password: hashedPassword });
+    await this.usersService.update(userId, {
+      password: changePasswordDto.newPassword,
+    });
 
     return { message: 'Đổi mật khẩu thành công' };
   }

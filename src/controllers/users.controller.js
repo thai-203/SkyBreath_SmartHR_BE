@@ -12,7 +12,7 @@ export class UsersController {
 
   create = async (req, res, next) => {
     try {
-      const result = await this.usersService.create(req.body);
+      const result = await this.usersService.create(req.body, req);
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.User.CREATED,
@@ -29,7 +29,10 @@ export class UsersController {
       // Extract pagination params from query
       const currentUserId = req.user.id; // From auth middleware
       const paginationDto = plainToInstance(SearchUserDto, req.query);
-      const result = await this.usersService.findAll(paginationDto, currentUserId);
+      const result = await this.usersService.findAll(
+        paginationDto,
+        currentUserId,
+      );
 
       // Transform to DTO
       const data = plainToInstance(UserResponseDto, result.data);
@@ -92,7 +95,11 @@ export class UsersController {
     try {
       const currentUserId = req.user.id; // From auth middleware
       await this.usersService.lockUser(parseInt(req.params.id), currentUserId);
-      ResponseUtil.sendResponse(res, 'Tài khoản người dùng đã được khóa thành công', null);
+      ResponseUtil.sendResponse(
+        res,
+        'Tài khoản người dùng đã được khóa thành công',
+        null,
+      );
     } catch (error) {
       next(error);
     }

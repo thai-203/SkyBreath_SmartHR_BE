@@ -56,7 +56,7 @@ export class UsersRepository {
       )
       .setParameter('adminRole', 'admin')
       .orderBy('is_admin', 'DESC');
-      
+
     if (
       sortBy === 'id' ||
       sortBy === 'username' ||
@@ -125,12 +125,15 @@ export class UsersRepository {
   }
 
   async update(id, data) {
-    await this.userRepository.update(id, data);
-    const updated = await this.findById(id);
-    if (!updated) {
+    const user = await this.userRepository.findOne({ where: { id } });
+
+    if (!user) {
       throw new Error('User not found');
     }
-    return updated;
+
+    Object.assign(user, data);
+
+    return await this.userRepository.save(user);
   }
 
   async delete(id) {

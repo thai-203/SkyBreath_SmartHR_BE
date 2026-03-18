@@ -41,8 +41,10 @@ import { TaskAssignmentEntity } from '../models/entities/task-assignment.entity.
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { PenaltyEntity } from '../models/entities/penalty.entity.js';
+import { PayrollTypeEntity } from '../models/entities/payroll-type.entity.js';
 
 import { config } from './env.config.js';
+import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
 
 export const databaseConfig = {
   type: 'mysql',
@@ -97,7 +99,8 @@ export const databaseConfig = {
     OvertimeRuleEntity,
     OvertimeRuleDepartmentEntity,
     PenaltyEntity,
+    PayrollTypeEntity,
   ],
-  subscribers: [],
+  subscribers: [AuditSubscriber],
   migrations: [],
 };

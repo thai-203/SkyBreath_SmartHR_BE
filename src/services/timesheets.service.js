@@ -7,7 +7,8 @@ import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { ShiftAssignmentEntity } from '../models/entities/shift-assignment.entity.js';
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
-import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
+import { RequestEntity } from '../models/entities/request.entity.js';
 
 export class TimesheetsService {
     constructor(timesheetsRepository) {
@@ -256,9 +257,23 @@ export class TimesheetsService {
             }
         });
 
+        // Get approved leave requests
+        const requestRepo = AppDataSource.getRepository(RequestEntity);
+        const leaveRequests = await requestRepo.find({
+            where: {
+                employeeId: timesheet.employeeId,
+                requestStatus: 'APPROVED',
+                requestType: 'LEAVE',
+                startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
+                endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+                isDeleted: false,
+            },
+            relations: ['leaveType'],
+        });
+
         // Build daily detail with on-the-fly computation
         const dailyDetails = this._buildDailyDetails(
-            records, shift, timesheet.year, timesheet.month, holidayDates
+            records, shift, timesheet.year, timesheet.month, holidayDates, leaveRequests
         );
 
         return {
@@ -627,7 +642,7 @@ export class TimesheetsService {
         return parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
     }
 
-    _buildDailyDetails(records, shift, year, month, holidayDates) {
+    _buildDailyDetails(records, shift, year, month, holidayDates, leaveRequests = []) {
         const daysInMonth = new Date(year, month, 0).getDate();
 
         // Index records by date
@@ -673,7 +688,22 @@ export class TimesheetsService {
                 status: 'ABSENT',
                 attendanceStatus: null,
                 attendanceType: null,
+                shiftName: shift?.shiftName || 'CA_HC',
+                leaveType: null,
             };
+
+            // Check if there is an approved leave request for this date
+            const leave = (leaveRequests || []).find(l => {
+                const start = new Date(l.startDate);
+                const end = new Date(l.endDate);
+                const current = new Date(dateKey);
+                return current >= start && current <= end;
+            });
+
+            if (leave) {
+                detail.status = 'LEAVE';
+                detail.leaveType = leave.leaveType?.leaveTypeName || 'Nghỉ';
+            }
 
             if (dayOfWeek === 0 || dayOfWeek === 6) {
                 detail.status = 'WEEKEND';

@@ -101,6 +101,19 @@ export const AppMessages = {
       UPDATED: 'Cập nhật phân ca thành công',
       DELETED: 'Hủy phân ca thành công',
     },
+    Payroll: {
+      CREATED: 'Bảng lương đã được tạo thành công',
+      CALCULATED: 'Đã tính toán lương tự động thành công',
+      UPDATED: 'Cập nhật bảng lương thành công',
+      RETRIEVED_ALL: 'Danh sách bảng lương đã được tải',
+      RETRIEVED: 'Thông tin bảng lương đã được tải',
+      SUBMITTED: 'Bảng lương đã được gửi phê duyệt',
+      APPROVED: 'Bảng lương đã được phê duyệt',
+      REJECTED: 'Bảng lương đã bị từ chối',
+      LOCKED: 'Bảng lương đã được khóa thành công',
+      PAYSLIPS_SENT: 'Phiếu lương đã được gửi đến nhân viên',
+      EXPORTED: 'Xuất file thành công',
+    },
   },
 
   Errors: {
@@ -222,11 +235,12 @@ export const AppMessages = {
     },
     Payroll: {
       NOT_FOUND: { code: 'PAY_001', message: 'Không tìm thấy bảng lương' },
-      ALREADY_PROCESSED: {
-        code: 'PAY_002',
-        message: 'Bảng lương đã được xử lý',
-      },
+      ALREADY_EXISTS: { code: 'PAY_002', message: 'Bảng lương cho tháng/năm này đã tồn tại' },
       INVALID_PERIOD: { code: 'PAY_003', message: 'Kỳ lương không hợp lệ' },
+      IS_LOCKED: { code: 'PAY_004', message: 'Bảng lương đã bị khóa, không thể chỉnh sửa' },
+      NOT_LOCKED: { code: 'PAY_005', message: 'Bảng lương chưa được khóa' },
+      INVALID_STATUS_TRANSITION: { code: 'PAY_006', message: 'Trạng thái bảng lương không hợp lệ cho thao tác này' },
+      DETAIL_NOT_FOUND: { code: 'PAY_007', message: 'Không tìm thấy chi tiết lương' },
     },
     ActionLog: {
       NOT_FOUND: {
