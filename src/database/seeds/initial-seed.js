@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { Between, DataSource } from 'typeorm';
 import { hashPassword } from '../../common/utils/index.js';
 import { databaseConfig } from '../../config/database.config.js';
 import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
@@ -13,6 +13,9 @@ import { RolePermissionEntity } from '../../models/entities/role-permission.enti
 import { RoleEntity } from '../../models/entities/role.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
+import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
+import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
+import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -154,6 +157,63 @@ const seed = async () => {
         permissionCode: 'JOB_GRADE_EXPORT',
         description: 'Export job grades',
         module: 'JobGrade',
+      },
+
+      // Onboarding permissions
+      {
+        permissionCode: 'ONBOARDING_PLAN_READ',
+        description: 'View onboarding plans',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_CREATE',
+        description: 'Create onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_UPDATE',
+        description: 'Update onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_DELETE',
+        description: 'Delete onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_EXPORT',
+        description: 'Export onboarding plans',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PROGRESS_READ',
+        description: 'View onboarding progress',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PROGRESS_UPDATE',
+        description: 'Update onboarding progress',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_READ',
+        description: 'View onboarding tasks',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_CREATE',
+        description: 'Create onboarding task',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_UPDATE',
+        description: 'Update onboarding task',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_DELETE',
+        description: 'Delete onboarding task',
+        module: 'Onboarding',
       },
 
       // Employee Salaries
@@ -369,6 +429,10 @@ const seed = async () => {
       'SHIFT_READ',
       'SHIFT_ASSIGN_READ',
       'SHIFT_SCHEDULE_READ',
+      // allow managers to view onboarding data
+      'ONBOARDING_PLAN_READ',
+      'ONBOARDING_PROGRESS_READ',
+      'ONBOARDING_TASK_READ',
     ];
     for (const code of managerPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -455,6 +519,18 @@ const seed = async () => {
       'PAYROLL_TYPE_CREATE',
       'PAYROLL_TYPE_UPDATE',
       'PAYROLL_TYPE_DELETE',
+      // onboarding-related for HR
+      'ONBOARDING_PLAN_READ',
+      'ONBOARDING_PLAN_CREATE',
+      'ONBOARDING_PLAN_UPDATE',
+      'ONBOARDING_PLAN_DELETE',
+      'ONBOARDING_PLAN_EXPORT',
+      'ONBOARDING_PROGRESS_READ',
+      'ONBOARDING_PROGRESS_UPDATE',
+      'ONBOARDING_TASK_READ',
+      'ONBOARDING_TASK_CREATE',
+      'ONBOARDING_TASK_UPDATE',
+      'ONBOARDING_TASK_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -610,28 +686,28 @@ const seed = async () => {
         email: 'admin@example.com',
         role: 'ADMIN',
         fullName: 'System Administrator',
-        employeeCode: 'EMP001'
+        employeeCode: 'EMP001',
       },
       {
         username: 'manager',
         email: 'manager@example.com',
         role: 'MANAGER',
         fullName: 'John Manager',
-        employeeCode: 'EMP002'
+        employeeCode: 'EMP002',
       },
       {
         username: 'employee',
         email: 'employee@example.com',
         role: 'EMPLOYEE',
         fullName: 'Jane Employee',
-        employeeCode: 'EMP003'
+        employeeCode: 'EMP003',
       },
       {
         username: 'hr',
         email: 'hr@example.com',
         role: 'HR',
         fullName: 'Alice HR',
-        employeeCode: 'EMP004'
+        employeeCode: 'EMP004',
       },
     ];
 
@@ -698,7 +774,91 @@ const seed = async () => {
       }
     }
 
+    // ──────────────────────────────────────
+    // 6. Seed Shift Groups + Working Shifts
+    // ──────────────────────────────────────
+    const groupRepo = dataSource.getRepository(ShiftGroupEntity);
+    const groupData = [
+      { groupName: 'Nhóm ca chính', status: 'active' },
+      { groupName: 'Nhóm ca phụ', status: 'active' },
+    ];
+    const groups = {};
+    for (const g of groupData) {
+      let group = await groupRepo.findOne({
+        where: { groupName: g.groupName },
+      });
+      if (!group) {
+        group = groupRepo.create(g);
+        await groupRepo.save(group);
+        console.log(`Created shift group: ${g.groupName}`);
+      } else if (g.status && group.status !== g.status) {
+        // ensure existing rows have status field populated
+        group.status = g.status;
+        await groupRepo.save(group);
+      }
+      groups[g.groupName] = group;
+    }
 
+    const shiftRepo = dataSource.getRepository(WorkingShiftEntity);
+    const shiftsData = [
+      {
+        shiftName: 'Ca hành chính',
+        startTime: '08:00:00',
+        endTime: '17:00:00',
+        breakStartTime: '12:00:00',
+        breakEndTime: '13:00:00',
+        groupId: groups['Nhóm ca chính'].id,
+      },
+      {
+        shiftName: 'Ca sáng',
+        startTime: '06:00:00',
+        endTime: '14:00:00',
+        breakStartTime: '10:00:00',
+        breakEndTime: '10:30:00',
+        groupId: groups['Nhóm ca chính'].id,
+      },
+    ];
+    const shifts = {};
+    for (const s of shiftsData) {
+      let shift = await shiftRepo.findOne({
+        where: { shiftName: s.shiftName },
+      });
+      if (!shift) {
+        shift = shiftRepo.create(s);
+        await shiftRepo.save(shift);
+        console.log(`Created shift: ${s.shiftName}`);
+      } else if (!shift.groupId && s.groupId) {
+        shift.groupId = s.groupId;
+        await shiftRepo.save(shift);
+      }
+      shifts[s.shiftName] = shift;
+    }
+
+    // ──────────────────────────────────────
+    // 7. Assign Shifts to Employees
+    // ──────────────────────────────────────
+    const shiftAssignmentRepo = dataSource.getRepository(ShiftAssignmentEntity);
+    const allEmployees = await employeeRepo.find({
+      where: { isDeleted: false },
+    });
+    for (const emp of allEmployees) {
+      const existing = await shiftAssignmentRepo.findOne({
+        where: { employeeId: emp.id, isDeleted: false },
+      });
+      if (!existing) {
+        await shiftAssignmentRepo.save(
+          shiftAssignmentRepo.create({
+            employeeId: emp.id,
+            departmentId: null,
+            shiftId: shifts['Ca hành chính'].id,
+            effectiveFrom: '2026-01-01',
+          }),
+        );
+        console.log(`Assigned shift to employee: ${emp.fullName}`);
+      }
+    }
+
+    // ──────────────────────────────────────
     // 8. Seed Holidays
     // ──────────────────────────────────────
     const holidayRepo = dataSource.getRepository(HolidayListEntity);
@@ -772,34 +932,42 @@ const seed = async () => {
 
       // Clear existing records for Feb 2026 to avoid duplicates
       await attendanceRepo.delete({
-        checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59')
+        checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59'),
       });
 
       for (const emp of allEmployees) {
         const records = [];
         // February 2026: 28 days. Weekdays are 2-6, 9-13, 16-20, 23-27
-        const weekdays = [2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26, 27];
+        const weekdays = [
+          2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26,
+          27,
+        ];
 
         for (const day of weekdays) {
           // Feb 2 is holiday but some might work (OT) - let's skip it for normal behavior
           if (day === 2) continue;
 
           // Default: 08:00 - 17:00
-          let cinH = 7, cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
-          let coutH = 17, coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
+          let cinH = 7,
+            cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
+          let coutH = 17,
+            coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
           let status = 'ON_TIME';
           let type = 'NORMAL';
 
           // Randomize some behavior
           const rand = Math.random();
-          if (rand < 0.1) { // 10% late
+          if (rand < 0.1) {
+            // 10% late
             cinM = 10 + Math.floor(Math.random() * 20); // 08:10 - 08:30
             status = 'LATE';
-          } else if (rand < 0.2) { // 10% early leave
+          } else if (rand < 0.2) {
+            // 10% early leave
             coutH = 16;
             coutM = 30 + Math.floor(Math.random() * 20); // 16:30 - 16:50
             status = 'EARLY_LEAVE';
-          } else if (rand < 0.3) { // 10% OT
+          } else if (rand < 0.3) {
+            // 10% OT
             coutH = 18 + Math.floor(Math.random() * 2); // 18:00 - 20:00
             coutM = Math.floor(Math.random() * 60);
             type = 'OVERTIME';
@@ -819,7 +987,9 @@ const seed = async () => {
           );
         }
         await attendanceRepo.save(records);
-        console.log(`Created ${records.length} high-quality records for ${emp.fullName}`);
+        console.log(
+          `Created ${records.length} high-quality records for ${emp.fullName}`,
+        );
       }
     } else {
       console.log(

@@ -22,14 +22,13 @@ export class ShiftAssignmentsController {
         const message = Object.values(errors[0].constraints)[0];
         return ResponseUtil.sendResponse(res, message, null, 400);
       }
-      const assignment = await this.assignService.assignToEmployee(dto);
-      res
-        .status(201)
-        .json({
-          success: true,
-          data: assignment,
-          message: AppMessages.Success.CREATED,
-        });
+      // unified creation method handles both employee and department cases
+      const result = await this.assignService.createAssignment(dto);
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: AppMessages.Success.CREATED,
+      });
     } catch (error) {
       next(error);
     }
@@ -44,13 +43,11 @@ export class ShiftAssignmentsController {
         return ResponseUtil.sendResponse(res, message, null, 400);
       }
       const assignments = await this.assignService.assignByDepartment(dto);
-      res
-        .status(201)
-        .json({
-          success: true,
-          data: assignments,
-          message: AppMessages.Success.CREATED,
-        });
+      res.status(201).json({
+        success: true,
+        data: assignments,
+        message: AppMessages.Success.CREATED,
+      });
     } catch (error) {
       next(error);
     }
@@ -66,13 +63,11 @@ export class ShiftAssignmentsController {
         return ResponseUtil.sendResponse(res, message, null, 400);
       }
       const updated = await this.assignService.updateAssignment(id, dto);
-      res
-        .status(200)
-        .json({
-          success: true,
-          data: updated,
-          message: AppMessages.Success.UPDATED,
-        });
+      res.status(200).json({
+        success: true,
+        data: updated,
+        message: AppMessages.Success.UPDATED,
+      });
     } catch (error) {
       next(error);
     }
@@ -93,8 +88,17 @@ export class ShiftAssignmentsController {
   list = async (req, res, next) => {
     try {
       const queryDto = plainToInstance(ShiftAssignmentQueryDto, req.query);
-      const result = await this.assignService.assignRepo.findAll(queryDto);
-      res.status(200).json({ success: true, ...result });
+      const errors = await validate(queryDto);
+      if (errors.length > 0) {
+        const message = Object.values(errors[0].constraints)[0];
+        return ResponseUtil.sendResponse(res, message, null, 400);
+      }
+      const result = await this.assignService.findAll(queryDto);
+
+      res.status(200).json({
+        success: true,
+        ...result,
+      });
     } catch (error) {
       next(error);
     }
@@ -102,12 +106,14 @@ export class ShiftAssignmentsController {
 
   viewEmployeeSchedule = async (req, res, next) => {
     try {
+      console.log("Viewing schedule for employee ID:", req.params.employeeId, "with query:", req.query);
       const employeeId = parseInt(req.params.employeeId);
-      const { month, year } = req.query;
+      const { startDate, endDate, month, year } = req.query;
       const schedule = await this.assignService.getEmployeeSchedule(
         employeeId,
-        parseInt(month),
-        parseInt(year),
+        startDate || month,
+        endDate || year,
+        req.user,
       );
       res.status(200).json({ success: true, data: schedule });
     } catch (error) {
@@ -118,13 +124,47 @@ export class ShiftAssignmentsController {
   viewDepartmentSchedule = async (req, res, next) => {
     try {
       const departmentId = parseInt(req.params.departmentId);
-      const { month, year } = req.query;
+      const { startDate, endDate, month, year } = req.query;
       const schedule = await this.assignService.getDepartmentSchedule(
         departmentId,
-        parseInt(month),
-        parseInt(year),
+        startDate || month,
+        endDate || year,
       );
       res.status(200).json({ success: true, data: schedule });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // preview schedule during assignment creation
+  preview = async (req, res, next) => {
+    try {
+      const payload = req.body;
+      // basic date range validation
+      if (
+        payload.startDate &&
+        payload.endDate &&
+        new Date(payload.startDate) > new Date(payload.endDate)
+      ) {
+        return ResponseUtil.sendResponse(
+          res,
+          'startDate phải nhỏ hơn hoặc bằng endDate',
+          null,
+          400,
+        );
+      }
+      const result = await this.assignService.previewSchedule(payload);
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // list schedules with optional filters (start/end, department, shift, keyword)
+  listSchedules = async (req, res, next) => {
+    try {
+      const schedules = await this.assignService.getSchedules(req.query);
+      res.status(200).json({ success: true, data: schedules });
     } catch (error) {
       next(error);
     }

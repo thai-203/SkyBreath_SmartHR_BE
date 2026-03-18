@@ -61,7 +61,6 @@ export class TaskAssignmentsService {
             updatedAt: new Date(),
         });
 
-        // Update progress percentage if status changed
         if (data.status) {
             await this.progressService.updateProgressPercentage(assignment.progressId);
         }

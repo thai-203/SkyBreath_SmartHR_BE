@@ -17,6 +17,7 @@ import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 import { ShiftGroupEntity } from '../models/entities/shift-group.entity.js';
 import { ShiftAssignmentEntity } from '../models/entities/shift-assignment.entity.js';
+import { ShiftScheduleEntity } from '../models/entities/shift-schedule.entity.js';
 import { AttendanceRecordEntity } from '../models/entities/attendance-record.entity.js';
 import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
 import { FaceDataEntity } from '../models/entities/face-data.entity.js';
@@ -75,6 +76,7 @@ export const databaseConfig = {
     WorkingShiftEntity,
     ShiftGroupEntity,
     ShiftAssignmentEntity,
+    ShiftScheduleEntity,
     AttendanceRecordEntity,
     TimeSheetEntity,
     FaceDataEntity,

@@ -11,6 +11,7 @@ export class ShiftAssignmentsRepository {
     const query = this.repository
       .createQueryBuilder('assign')
       .leftJoinAndSelect('assign.employee', 'employee')
+      .leftJoinAndSelect('assign.department', 'department')
       .leftJoinAndSelect('assign.shift', 'shift')
       .where('assign.isDeleted = :isDeleted', { isDeleted: false });
 
@@ -22,7 +23,10 @@ export class ShiftAssignmentsRepository {
     }
     // department filtering would require join on employee.department
     if (departmentId) {
-      query.andWhere('employee.departmentId = :departmentId', { departmentId });
+      query.andWhere(
+        '(employee.departmentId = :departmentId OR assign.departmentId = :departmentId)',
+        { departmentId },
+      );
     }
 
     const [items, total] = await query
@@ -32,6 +36,43 @@ export class ShiftAssignmentsRepository {
       .getManyAndCount();
 
     return { items, total };
+  }
+
+  async findAllActive(options = {}) {
+    const { employeeId, departmentId, shiftId } = options;
+    const query = this.repository
+      .createQueryBuilder('assign')
+      .leftJoinAndSelect('assign.employee', 'employee')
+      .leftJoinAndSelect('assign.department', 'department')
+      .leftJoinAndSelect('assign.shift', 'shift')
+      .where('assign.isDeleted = :isDeleted', { isDeleted: false });
+
+    if (employeeId) {
+      query.andWhere('assign.employeeId = :employeeId', { employeeId });
+    }
+    if (shiftId) {
+      query.andWhere('assign.shiftId = :shiftId', { shiftId });
+    }
+    if (departmentId) {
+      query.andWhere(
+        '(employee.departmentId = :departmentId OR assign.departmentId = :departmentId)',
+        { departmentId },
+      );
+    }
+
+    return query.orderBy('assign.effectiveFrom', 'DESC').getMany();
+  }
+
+  // returns all (unpaginated) assignments for a given employee and shift
+  async findByEmployeeAndShift(employeeId, shiftId) {
+    const query = this.repository
+      .createQueryBuilder('assign')
+      .leftJoinAndSelect('assign.employee', 'employee')
+      .leftJoinAndSelect('assign.shift', 'shift')
+      .where('assign.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('assign.employeeId = :employeeId', { employeeId })
+      .andWhere('assign.shiftId = :shiftId', { shiftId });
+    return query.orderBy('assign.effectiveFrom', 'DESC').getMany();
   }
 
   async findById(id) {

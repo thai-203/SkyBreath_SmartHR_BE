@@ -208,6 +208,7 @@ export class AuthService {
       joinDate: employee?.joinDate || null,
 
       // System info
+      employeeId: employee?.id || null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       lastLoginTime: user.lastLoginTime,
