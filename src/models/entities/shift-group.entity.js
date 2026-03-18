@@ -10,7 +10,6 @@ export class ShiftGroupEntity extends BaseEntity {
   @Column({ name: 'description', type: 'varchar', nullable: true })
   description;
 
-  // active/inactive status to control availability for working shifts
   @Column({ name: 'status', type: 'varchar', length: 20, default: 'active' })
   status;
 

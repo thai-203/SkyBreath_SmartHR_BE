@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { Between, DataSource } from 'typeorm';
 import { hashPassword } from '../../common/utils/index.js';
 import { databaseConfig } from '../../config/database.config.js';
 import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
@@ -13,6 +13,9 @@ import { RolePermissionEntity } from '../../models/entities/role-permission.enti
 import { RoleEntity } from '../../models/entities/role.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
+import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
+import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
+import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -683,28 +686,28 @@ const seed = async () => {
         email: 'admin@example.com',
         role: 'ADMIN',
         fullName: 'System Administrator',
-        employeeCode: 'EMP001'
+        employeeCode: 'EMP001',
       },
       {
         username: 'manager',
         email: 'manager@example.com',
         role: 'MANAGER',
         fullName: 'John Manager',
-        employeeCode: 'EMP002'
+        employeeCode: 'EMP002',
       },
       {
         username: 'employee',
         email: 'employee@example.com',
         role: 'EMPLOYEE',
         fullName: 'Jane Employee',
-        employeeCode: 'EMP003'
+        employeeCode: 'EMP003',
       },
       {
         username: 'hr',
         email: 'hr@example.com',
         role: 'HR',
         fullName: 'Alice HR',
-        employeeCode: 'EMP004'
+        employeeCode: 'EMP004',
       },
     ];
 
@@ -929,34 +932,42 @@ const seed = async () => {
 
       // Clear existing records for Feb 2026 to avoid duplicates
       await attendanceRepo.delete({
-        checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59')
+        checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59'),
       });
 
       for (const emp of allEmployees) {
         const records = [];
         // February 2026: 28 days. Weekdays are 2-6, 9-13, 16-20, 23-27
-        const weekdays = [2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26, 27];
+        const weekdays = [
+          2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26,
+          27,
+        ];
 
         for (const day of weekdays) {
           // Feb 2 is holiday but some might work (OT) - let's skip it for normal behavior
           if (day === 2) continue;
 
           // Default: 08:00 - 17:00
-          let cinH = 7, cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
-          let coutH = 17, coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
+          let cinH = 7,
+            cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
+          let coutH = 17,
+            coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
           let status = 'ON_TIME';
           let type = 'NORMAL';
 
           // Randomize some behavior
           const rand = Math.random();
-          if (rand < 0.1) { // 10% late
+          if (rand < 0.1) {
+            // 10% late
             cinM = 10 + Math.floor(Math.random() * 20); // 08:10 - 08:30
             status = 'LATE';
-          } else if (rand < 0.2) { // 10% early leave
+          } else if (rand < 0.2) {
+            // 10% early leave
             coutH = 16;
             coutM = 30 + Math.floor(Math.random() * 20); // 16:30 - 16:50
             status = 'EARLY_LEAVE';
-          } else if (rand < 0.3) { // 10% OT
+          } else if (rand < 0.3) {
+            // 10% OT
             coutH = 18 + Math.floor(Math.random() * 2); // 18:00 - 20:00
             coutM = Math.floor(Math.random() * 60);
             type = 'OVERTIME';
@@ -976,7 +987,9 @@ const seed = async () => {
           );
         }
         await attendanceRepo.save(records);
-        console.log(`Created ${records.length} high-quality records for ${emp.fullName}`);
+        console.log(
+          `Created ${records.length} high-quality records for ${emp.fullName}`,
+        );
       }
     } else {
       console.log(
