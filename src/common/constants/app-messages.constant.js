@@ -79,6 +79,9 @@ export const AppMessages = {
       RECALCULATED: 'Đã tính lại bảng chấm công',
       LOCKED: 'Bảng chấm công đã được khóa',
       UNLOCKED: 'Bảng chấm công đã được mở khóa',
+      ADDED_EMPLOYEE: 'Đã thêm nhân viên vào bảng chấm công',
+      REMOVED_EMPLOYEE: 'Đã xóa nhân viên khỏi bảng chấm công',
+      BULK_LOCKED: 'Đã khóa tất cả bảng chấm công',
     },
     ShiftGroup: {
       CREATED: 'Nhóm ca đã được tạo thành công',
@@ -279,6 +282,7 @@ export const AppMessages = {
         message: 'Bảng chấm công đã được khóa rồi',
       },
       NOT_LOCKED: { code: 'TS_005', message: 'Bảng chấm công chưa bị khóa' },
+      EMPLOYEE_NOT_FOUND: { code: 'TS_006', message: 'Không tìm thấy nhân viên' },
     },
     ShiftGroup: {
       NOT_FOUND: { code: 'SG_001', message: 'Không tìm thấy nhóm ca' },

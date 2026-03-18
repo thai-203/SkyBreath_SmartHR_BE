@@ -21,6 +21,7 @@ const timesheetsController = new TimesheetsController(timesheetsService);
 
 // UC24 - Generate & View
 router.post('/generate', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.generate);
+router.post('/add-employee', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.addEmployee);
 router.get('/', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.findAll);
 
 // UC27 - Export (must be before /:id routes)
@@ -34,8 +35,10 @@ router.get('/:id/attendance', authMiddleware, permissionsMiddleware('TIMESHEET_R
 // UC25 - Recalculate & Edit
 router.post('/:id/recalculate', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.recalculate);
 router.put('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.update);
+router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.remove);
 
 // UC26 - Lock / Unlock
+router.post('/bulk-lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.bulkLock);
 router.post('/:id/lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.lock);
 router.post('/:id/unlock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.unlock);
 
