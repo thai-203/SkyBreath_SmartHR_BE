@@ -1,12 +1,14 @@
+import { Type } from 'class-transformer';
 import {
-    IsEmail,
-    IsString,
-    MinLength,
-    MaxLength,
-    IsOptional,
-    IsArray,
-    IsUUID,
-    IsNotEmpty,
+  IsEmail,
+  IsString,
+  MinLength,
+  MaxLength,
+  IsOptional,
+  IsArray,
+  IsUUID,
+  IsNotEmpty,
+  IsInt,
 } from 'class-validator';
 
 /**
@@ -26,14 +28,6 @@ import {
  *           format: password
  *           description: User's password
  *           example: password123
- *         firstName:
- *           type: string
- *           description: First name
- *           example: John
- *         lastName:
- *           type: string
- *           description: Last name
- *           example: Doe
  *         roleIds:
  *           type: array
  *           items:
@@ -43,31 +37,29 @@ import {
  *           example: ["uuid-1", "uuid-2"]
  */
 export class UpdateUserDto {
-    @IsOptional()
-    @IsEmail()
-    email;
+  @IsOptional()
+  @IsEmail()
+  email;
 
-    @IsOptional()
-    @IsString()
-    @MinLength(6)
-    @IsNotEmpty()
-    @MaxLength(50)
-    password;
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  username;
 
-    @IsOptional()
-    @IsString()
-    @IsNotEmpty()
-    @MaxLength(50)
-    firstName;
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  @MaxLength(50)
+  password;
 
-    @IsOptional()
-    @IsString()
-    @MaxLength(50)
-    @IsNotEmpty()
-    lastName;
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  @Type(() => Number) // QUAN TRỌNG
+  roleIds;
 
-    @IsOptional()
-    @IsArray()
-    @IsUUID('4', { each: true })
-    roleIds;
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  status;
 }

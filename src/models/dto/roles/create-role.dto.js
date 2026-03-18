@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
  * @swagger
@@ -11,24 +11,31 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
  *       properties:
  *         name:
  *           type: string
- *           description: Role name
+ *           description: Role name (min 2 chars)
  *           example: Admin
  *         description:
  *           type: string
  *           description: Role description
  *           example: Administrator role
+ *         status:
+ *           type: string
+ *           description: Role status
+ *           enum: [active, inactive]
+ *           example: active
  */
 export class CreateRoleDto {
     @IsString()
-    @MaxLength(50)
+    @IsNotEmpty({ message: 'Tên vai trò không được để trống' })
+    @MinLength(2, { message: 'Tên vai trò phải có ít nhất 2 ký tự' })
+    @MaxLength(50, { message: 'Tên vai trò tối đa 50 ký tự' })
     name;
 
     @IsOptional()
-    @IsString()
+    @IsEnum(['active', 'inactive'], { message: 'Trạng thái không hợp lệ' })
     status;
 
     @IsOptional()
     @IsString()
-    @MaxLength(255)
+    @MaxLength(255, { message: 'Mô tả tối đa 255 ký tự' })
     description;
 }

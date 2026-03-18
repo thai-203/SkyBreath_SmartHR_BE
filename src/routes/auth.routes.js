@@ -1,15 +1,16 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller.js';
+import { upload } from '../common/middleware/upload.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import {
   LoginDto,
-  RegisterDto,
   ChangePasswordDto,
-  RefreshTokenDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  UpdateProfileDto,
 } from '../models/dto/auth/index.js';
+import { refreshTokenMiddleware } from '../common/middleware/refresh-token.middleware.js';
 
 const router = Router();
 const authController = new AuthController();
@@ -36,29 +37,6 @@ router.post('/login', validationMiddleware(LoginDto), authController.login);
 
 /**
  * @swagger
- * /auth/register:
- *   post:
- *     summary: Register new user
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/RegisterDto'
- *     responses:
- *       201:
- *         description: User registered successfully
- *       400:
- *         description: Validation error
- */
-router.post(
-  '/register',
-  validationMiddleware(RegisterDto),
-  authController.register,
-);
-/**
- * @swagger
  * /auth/refresh:
  *   post:
  *     summary: Refresh access token
@@ -75,12 +53,7 @@ router.post(
  *       401:
  *         description: Invalid refresh token
  */
-router.post(
-  '/refresh',
-  authMiddleware,
-  validationMiddleware(RefreshTokenDto),
-  authController.refreshTokens,
-);
+router.post('/refresh', refreshTokenMiddleware, authController.refreshTokens);
 
 /**
  * @swagger
@@ -142,6 +115,36 @@ router.post(
  *         description: Unauthorized
  */
 router.get('/profile', authMiddleware, authController.getProfile);
+
+/**
+ * @swagger
+ * /auth/profile:
+ *   put:
+ *     summary: Update user profile (personalEmail, phoneNumber, currentAddress, permanentAddress) - fullName cannot be changed
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateProfileDto'
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+router.put(
+  '/profile',
+  authMiddleware,
+  upload.single('avatar'),
+  validationMiddleware(UpdateProfileDto),
+  authController.editProfile,
+);
 
 /**
  * @swagger

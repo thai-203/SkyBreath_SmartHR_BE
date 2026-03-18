@@ -1,93 +1,341 @@
 import { UsersRepository } from '../repositories/users.repository.js';
 import { RolesRepository } from '../repositories/roles.repository.js';
-import { hashPassword } from '../common/utils/index.js';
+import { hashPassword, hashResetPasswordToken } from '../common/utils/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
-import { ConflictException, NotFoundException } from '../common/exceptions/index.js';
-
+import {
+  ConflictException,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '../common/exceptions/index.js';
+import { RoleEntity } from '../models/entities/role.entity.js';
+import { AppDataSource } from '../database/data-source.js';
+import { UserRoleRepository } from '../repositories/user-role.repository.js';
+import crypto from 'crypto';
+import { RedisService } from './redis.service.js';
+import { MailService } from './mail.service.js';
+import { config } from '../config/env.config.js';
 export class UsersService {
-    constructor() {
-        this.usersRepository = new UsersRepository();
-        this.rolesRepository = new RolesRepository();
+  constructor(
+    usersRepository = new UsersRepository(),
+    rolesRepository = new RolesRepository(),
+    userRoleRepository = new UserRoleRepository(),
+    cacheService = new RedisService(),
+    mailServiceInstance = new MailService(),
+  ) {
+    this.usersRepository = usersRepository;
+    this.rolesRepository = rolesRepository;
+    this.userRoleRepository = userRoleRepository;
+    this.cacheService = cacheService;
+    this.mailService = mailServiceInstance;
+  }
+
+  async create(createUserDto) {
+    // Check if email already exists
+    const existingUserByEmail = await this.usersRepository.findByEmail(
+      createUserDto.email,
+    );
+    if (existingUserByEmail) {
+      throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
     }
 
-    async create(createUserDto) {
-        const existingUser = await this.usersRepository.findByEmail(
-            createUserDto.email,
+    // Check if username already exists
+    const existingUserByUsername = await this.usersRepository.findOne({
+      username: createUserDto.username,
+    });
+    if (existingUserByUsername) {
+      throw new ConflictException('Tên đăng nhập đã tồn tại');
+    }
+
+    // Validate roles exist if provided
+    let roles = [];
+    if (createUserDto.roleIds?.length) {
+      roles = await this.rolesRepository.findByIds(createUserDto.roleIds);
+
+      if (roles.length !== createUserDto.roleIds.length) {
+        throw new NotFoundException('Một hoặc nhiều vai trò không tồn tại');
+      }
+    }
+
+    const hashedPassword = await hashPassword(createUserDto.password);
+
+    const user = await this.usersRepository.create({
+      email: createUserDto.email,
+      username: createUserDto.username,
+      password: hashedPassword,
+      status: createUserDto.status || 'ACTIVE',
+    });
+
+    if (roles.length > 0) {
+      const userRoles = roles.map((role) => ({
+        userId: user.id,
+        roleId: role,
+      }));
+
+      await this.userRoleRepository.bulkCreate(userRoles);
+    }
+    // TODO: Handle role assignment via UserRoleEntity if roleIds provided
+
+    return user;
+  }
+
+  async findAll(paginationDto, currentUserId) {
+    const [users, total] = await this.usersRepository.findAll(paginationDto);
+    const result = users.map((u) => ({
+      ...u,
+      isCurrentUser: u.id === currentUserId,
+    }));
+    return new PaginatedResponseDto(result, total, paginationDto);
+  }
+
+  async getMetadata() {
+    const roleRepository = AppDataSource.getRepository(RoleEntity);
+
+    const roles = await roleRepository.find({
+      where: { isDeleted: false },
+      order: { roleName: 'ASC' },
+    });
+
+    const statusOptions = [
+      { value: 'ACTIVE', label: 'Hoạt động' },
+      { value: 'INACTIVE', label: 'Ngưng hoạt động' },
+      { value: 'LOCKED', label: 'Đã khóa' },
+    ];
+
+    const passwordPolicy = {
+      minLength: 8,
+      requireUppercase: true,
+      requireLowercase: true,
+      requireNumber: true,
+      requireSpecialChar: true,
+    };
+
+    return {
+      roles,
+      statusOptions,
+      passwordPolicy,
+    };
+  }
+
+  async findById(id) {
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
+    }
+    return user;
+  }
+
+  async findByEmail(email) {
+    return this.usersRepository.findByEmail(email);
+  }
+
+  async findByEmailWithPassword(email) {
+    return this.usersRepository.findByEmailWithPasswordBuilder(email);
+  }
+
+  async findByIdWithPassword(id) {
+    return this.usersRepository.findByIdWithPassword(id);
+  }
+
+  async update(id, updateUserDto) {
+    const user = await this.findById(id);
+
+    // Check email uniqueness if email is being updated
+    if (updateUserDto.email && updateUserDto.email !== user.email) {
+      const existingUser = await this.usersRepository.findByEmail(
+        updateUserDto.email,
+      );
+      if (existingUser) {
+        throw new ConflictException('Email đã tồn tại');
+      }
+    }
+
+    // Check username uniqueness if username is being updated
+    if (updateUserDto.username && updateUserDto.username !== user.username) {
+      const existingUser = await this.usersRepository.findOne({
+        username: updateUserDto.username,
+      });
+      if (existingUser) {
+        throw new ConflictException('Tên đăng nhập đã tồn tại');
+      }
+    }
+
+    // Validate roles exist if provided
+    if (updateUserDto.roleIds && updateUserDto.roleIds.length > 0) {
+      for (const roleId of updateUserDto.roleIds) {
+        const role = await this.rolesRepository.findById(roleId);
+        if (!role) {
+          throw new NotFoundException(`Vai trò với ID ${roleId} không tồn tại`);
+        }
+      }
+    }
+
+    // Hash password if being updated
+    if (updateUserDto.password) {
+      updateUserDto.password = await hashPassword(updateUserDto.password);
+    }
+
+    // TODO: Handle role updates via UserRoleEntity if roleIds provided
+    const { roleIds, ...userData } = updateUserDto;
+    await this.usersRepository.update(id, userData);
+    if (roleIds) {
+      await this.userRoleRepository.deleteByUserId(id);
+      const userRoles = roleIds.map((roleId) => ({
+        userId: id,
+        roleId,
+      }));
+      await this.userRoleRepository.bulkCreate(userRoles);
+    }
+    return user;
+  }
+
+  async remove(id, currentUserId) {
+    const user = await this.findById(id);
+
+    // Cannot delete self
+    if (id === currentUserId) {
+      throw new ForbiddenException('Không thể xóa tài khoản của chính bạn');
+    }
+
+    // Check if user is the last system admin
+    const userRoles = user.userRoles || [];
+    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+
+    if (isAdmin) {
+      const activeAdminCount = await this.usersRepository.countActiveAdmins();
+      if (activeAdminCount <= 1) {
+        throw new ForbiddenException(
+          'Không thể xóa người quản trị hệ thống cuối cùng',
         );
-
-        if (existingUser) {
-            throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
-        }
-
-        const hashedPassword = await hashPassword(createUserDto.password);
-
-        // Note: Role assignment needs to be handled via UserRoleEntity
-
-        const user = await this.usersRepository.create({
-            email: createUserDto.email,
-            username: createUserDto.email, // Default username
-            password: hashedPassword,
-            status: 'ACTIVE',
-        });
-
-        // TODO: Handle role assignment
-
-        return user;
+      }
     }
 
-    async findAll(paginationDto) {
-        const [users, total] = await this.usersRepository.findAll(paginationDto);
-        return new PaginatedResponseDto(users, total, paginationDto);
+    // Soft delete - update status to DELETED
+    await this.usersRepository.delete(id);
+  }
+
+  async lockUser(id, currentUserId) {
+    const user = await this.findById(id);
+
+    // Cannot lock self
+    if (id === currentUserId) {
+      throw new ForbiddenException('Không thể khóa tài khoản của chính bạn');
     }
 
-    async findById(id) {
-        const user = await this.usersRepository.findById(id);
-        if (!user) {
-            throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
-        }
-        return user;
+    // Check if trying to lock last admin
+    const userRoles = user.userRoles || [];
+    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+
+    if (isAdmin) {
+      const activeAdminCount = await this.usersRepository.countActiveAdmins();
+      if (activeAdminCount <= 1) {
+        throw new ForbiddenException(
+          'Không thể khóa người quản trị hệ thống cuối cùng',
+        );
+      }
     }
 
-    async findByEmail(email) {
-        return this.usersRepository.findByEmail(email);
+    if (user.status === 'LOCKED') {
+      throw new BadRequestException('Tài khoản đã bị khóa');
     }
 
-    async findByEmailWithPassword(email) {
-        return this.usersRepository.findByEmailWithPasswordBuilder(email);
+    await this.usersRepository.lockUser(id);
+  }
+
+  async unlockUser(id) {
+    const user = await this.findById(id);
+
+    if (user.status === 'ACTIVE') {
+      throw new BadRequestException('Người dùng đã ở trạng thái hoạt động');
     }
 
-    async findByIdWithPassword(id) {
-        return this.usersRepository.findByIdWithPassword(id);
+    if (user.status === 'DELETED') {
+      throw new BadRequestException('Không thể mở khóa tài khoản đã bị xóa');
     }
 
-    async update(id, updateUserDto) {
-        const user = await this.findById(id);
+    await this.usersRepository.unlockUser(id);
+  }
 
-        if (updateUserDto.email && updateUserDto.email !== user.email) {
-            const existingUser = await this.usersRepository.findByEmail(
-                updateUserDto.email,
-            );
-            if (existingUser) {
-                throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
-            }
-        }
+  async updateRefreshToken(id, refreshToken) {
+    await this.usersRepository.updateRefreshToken(id, refreshToken);
+  }
 
-        // TODO: Handle role updates via UserRoleEntity
+  async updateLastLogin(id) {
+    await this.usersRepository.updateLastLogin(id);
+  }
 
-        return this.usersRepository.update(id, updateUserDto);
+  async removeUserRoles(userId, currentUserId) {
+    const user = await this.findById(userId);
+
+    if (userId === currentUserId) {
+      throw new ForbiddenException('Không thể xóa vai trò của chính bạn');
     }
 
-    async remove(id) {
-        await this.findById(id);
-        await this.usersRepository.delete(id);
+    if (!user) {
+      throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
+    }
+    const userRoles = user.userRoles || [];
+    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+
+    if (isAdmin) {
+      const activeAdminCount = await this.usersRepository.countActiveAdmins();
+      if (activeAdminCount <= 1) {
+        throw new ForbiddenException(
+          'Không thể xóa vai trò của người quản trị hệ thống cuối cùng',
+        );
+      }
+    }
+    if (userRoles.length === 0) {
+      throw new BadRequestException('Người dùng không có vai trò nào để xóa');
+    }
+    await this.userRoleRepository.deleteByUserId(userId);
+  }
+
+  async resetPassword(userId, currentUserId) {
+    const user = await this.findById(userId);
+
+    if (userId === currentUserId) {
+      throw new ForbiddenException('Không thể đặt lại mật khẩu của chính bạn');
     }
 
-    async updateRefreshToken(id, refreshToken) {
-        await this.usersRepository.updateRefreshToken(id, refreshToken);
+    if (!user) {
+      throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
     }
 
-    async updateLastLogin(id) {
-        await this.usersRepository.updateLastLogin(id);
+    const userRoles = user.userRoles || [];
+    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+
+    if (isAdmin) {
+      const activeAdminCount = await this.usersRepository.countActiveAdmins();
+      if (activeAdminCount <= 1) {
+        throw new ForbiddenException(
+          'Không thể đặt lại mật khẩu của người quản trị hệ thống cuối cùng',
+        );
+      }
     }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    const hashedToken = hashResetPasswordToken(resetToken);
+
+    const redisKey = `reset-password:${hashedToken}`;
+
+    await this.cacheService.set(redisKey, user.id);
+
+    // 4. Tạo link reset
+    const resetUrl = `${config.frontEndUrl}/forgot-password?token=${resetToken}`;
+
+    // 5. Gửi email
+    await this.mailService.AdminResetPasswordEmail(
+      user.email,
+      user.username,
+      resetUrl,
+    );
+    const temporaryPassword = crypto
+      .randomBytes(12)
+      .toString('base64')
+      .slice(0, 12);
+    this.update(userId, { password: temporaryPassword });
+  }
 }

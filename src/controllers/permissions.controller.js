@@ -8,12 +8,41 @@ export class PermissionsController {
 
     findAll = async (req, res, next) => {
         try {
-            console.log('[API] GET /permissions - Request started');
-            const result = await this.permissionsService.findAll();
-            console.log(`[API] GET /permissions - Success: Found ${result.length} permissions`);
+            console.log('[API] GET /permissions - Request started', req.query);
+            const result = await this.permissionsService.findAll(req.query);
+            console.log(`[API] GET /permissions - Success: Found ${result.data?.length || 0} permissions`);
             ResponseUtil.sendResponse(res, AppMessages.Success.Permission.RETRIEVED_ALL, result);
         } catch (error) {
             console.error('[API] GET /permissions - Error occurred:', error);
+            next(error);
+        }
+    }
+
+    create = async (req, res, next) => {
+        try {
+            const result = await this.permissionsService.create(req.body);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Permission.CREATED, result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    update = async (req, res, next) => {
+        try {
+            const { id } = req.params;
+            const result = await this.permissionsService.update(id, req.body);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Permission.UPDATED, result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    delete = async (req, res, next) => {
+        try {
+            const { id } = req.params;
+            await this.permissionsService.delete(id);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Permission.DELETED);
+        } catch (error) {
             next(error);
         }
     }

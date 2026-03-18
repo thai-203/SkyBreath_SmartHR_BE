@@ -8,16 +8,19 @@ export class RolesController {
 
     create = async (req, res, next) => {
         try {
+            console.log('[RolesController] Creating role with data:', req.body);
             const result = await this.rolesService.create(req.body);
             ResponseUtil.sendResponse(res, AppMessages.Success.Role.CREATED, result, 201);
         } catch (error) {
+            console.error('[RolesController] Error in create:', error);
             next(error);
         }
     }
 
     findAll = async (req, res, next) => {
         try {
-            const result = await this.rolesService.findAll();
+            const query = req.query;
+            const result = await this.rolesService.findAll(query);
             ResponseUtil.sendResponse(res, AppMessages.Success.Role.RETRIEVED_ALL, result);
         } catch (error) {
             next(error);

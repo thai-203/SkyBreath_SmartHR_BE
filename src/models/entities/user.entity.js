@@ -22,12 +22,12 @@ export class UserEntity extends BaseEntity {
     email;
 
     @Column({ default: 'ACTIVE', type: 'varchar' })
-    status;
+    status; // ACTIVE, LOCKED, DELETED
 
     @Column({ name: 'last_login_time', nullable: true, type: 'datetime' })
     lastLoginTime;
 
-    @Column({ name: 'refresh_token', nullable: true, select: false, type: 'varchar' })
+    @Column({ name: 'refresh_token', nullable: true, type: 'varchar' })
     @Exclude()
     refreshToken;
 

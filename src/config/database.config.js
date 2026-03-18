@@ -15,7 +15,9 @@ import { EmployeeWorkHistoryEntity } from '../models/entities/employee-work-hist
 import { ContractEntity } from '../models/entities/contract.entity.js';
 import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
+import { ShiftGroupEntity } from '../models/entities/shift-group.entity.js';
 import { ShiftAssignmentEntity } from '../models/entities/shift-assignment.entity.js';
+import { ShiftScheduleEntity } from '../models/entities/shift-schedule.entity.js';
 import { AttendanceRecordEntity } from '../models/entities/attendance-record.entity.js';
 import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
 import { FaceDataEntity } from '../models/entities/face-data.entity.js';
@@ -33,55 +35,74 @@ import { AIEvaluationResultEntity } from '../models/entities/ai-evaluation-resul
 import { NotificationEntity } from '../models/entities/notification.entity.js';
 import { NotificationRecipientEntity } from '../models/entities/notification-recipient.entity.js';
 import { ActionLogEntity } from '../models/entities/action-log.entity.js';
+import { OnboardingPlanEntity } from '../models/entities/onboarding-plan.entity.js';
+import { OnboardingTaskEntity } from '../models/entities/onboarding-task.entity.js';
+import { OnboardingProgressEntity } from '../models/entities/onboarding-progress.entity.js';
+import { TaskAssignmentEntity } from '../models/entities/task-assignment.entity.js';
+import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
+import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
+import { PenaltyEntity } from '../models/entities/penalty.entity.js';
+import { PayrollTypeEntity } from '../models/entities/payroll-type.entity.js';
 
 import { config } from './env.config.js';
+import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
 
 export const databaseConfig = {
-    type: 'mysql',
-    host: config.database.host,
-    port: config.database.port,
-    username: config.database.username,
-    password: config.database.password,
-    database: config.database.name,
-    synchronize: true, // Auto-create tables (dev only)
-    logging: false,
-    entities: [
-        UserEntity,
-        RoleEntity,
-        PermissionEntity,
-        UserRoleEntity,
-        RolePermissionEntity,
-        DepartmentEntity,
-        PositionEntity,
-        JobGradeEntity,
-        EmployeeEntity,
-        EmployeeBankAccountEntity,
-        EmployeeEmergencyContactEntity,
-        EmployeeDependentEntity,
-        EmployeeEducationEntity,
-        EmployeeWorkHistoryEntity,
-        ContractEntity,
-        EmployeeSalaryEntity,
-        WorkingShiftEntity,
-        ShiftAssignmentEntity,
-        AttendanceRecordEntity,
-        TimeSheetEntity,
-        FaceDataEntity,
-        FaceRecognitionConfigEntity,
-        LeaveTypeEntity,
-        LeavePolicyEntity,
-        LeaveBalanceEntity,
-        RequestEntity,
-        RequestApproveEntity,
-        HolidayListEntity,
-        PayrollEntity,
-        PayrollDetailEntity,
-        AICriteriaEntity,
-        AIEvaluationResultEntity,
-        NotificationEntity,
-        NotificationRecipientEntity,
-        ActionLogEntity,
-    ],
-    subscribers: [],
-    migrations: [],
+  type: 'mysql',
+  host: config.database.host,
+  port: config.database.port,
+  username: config.database.username,
+  password: config.database.password,
+  database: config.database.name,
+  synchronize: true, // Auto-create tables (dev only)
+  logging: false,
+  entities: [
+    UserEntity,
+    RoleEntity,
+    PermissionEntity,
+    UserRoleEntity,
+    RolePermissionEntity,
+    DepartmentEntity,
+    PositionEntity,
+    JobGradeEntity,
+    EmployeeEntity,
+    EmployeeBankAccountEntity,
+    EmployeeEmergencyContactEntity,
+    EmployeeDependentEntity,
+    EmployeeEducationEntity,
+    EmployeeWorkHistoryEntity,
+    ContractEntity,
+    EmployeeSalaryEntity,
+    WorkingShiftEntity,
+    ShiftGroupEntity,
+    ShiftAssignmentEntity,
+    ShiftScheduleEntity,
+    AttendanceRecordEntity,
+    TimeSheetEntity,
+    FaceDataEntity,
+    FaceRecognitionConfigEntity,
+    LeaveTypeEntity,
+    LeavePolicyEntity,
+    LeaveBalanceEntity,
+    RequestEntity,
+    RequestApproveEntity,
+    HolidayListEntity,
+    PayrollEntity,
+    PayrollDetailEntity,
+    AICriteriaEntity,
+    AIEvaluationResultEntity,
+    NotificationEntity,
+    NotificationRecipientEntity,
+    ActionLogEntity,
+    OnboardingPlanEntity,
+    OnboardingTaskEntity,
+    OnboardingProgressEntity,
+    TaskAssignmentEntity,
+    OvertimeRuleEntity,
+    OvertimeRuleDepartmentEntity,
+    PenaltyEntity,
+    PayrollTypeEntity,
+  ],
+  subscribers: [AuditSubscriber],
+  migrations: [],
 };

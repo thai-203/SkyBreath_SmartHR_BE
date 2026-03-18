@@ -1,9 +1,14 @@
 import * as jwt from 'jsonwebtoken';
 import { UsersService } from './users.service.js';
+import { AppDataSource } from '../database/data-source.js';
+import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
+import { ActionLogsRepository } from '../repositories/action-logs.repository.js';
 import {
   hashPassword,
   comparePassword,
   hashResetPasswordToken,
+  compareRefreshToken,
 } from '../common/utils/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import {
@@ -39,7 +44,7 @@ export class AuthService {
       return null;
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (user.status !== 'ACTIVE' || user.isDeleted) {
       throw new UnauthorizedException(AppMessages.Errors.User.INACTIVE);
     }
 
@@ -51,48 +56,26 @@ export class AuthService {
 
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.usersService.updateLastLogin(user.id);
+    const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
+    const permissions = [
+      ...new Set(
+        user.userRoles?.flatMap((ur) =>
+          ur.role.rolePermissions?.map((rp) => rp.permission.permissionCode),
+        ) || [],
+      ),
+    ];
 
     return {
       user: {
         id: user.id,
         email: user.email,
         username: user.username,
-        roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
+        roles,
+        permissions,
       },
       ...tokens,
     };
   }
-
-  //   async register(registerDto) {
-  //     const existingUser = await this.usersService.findByEmail(registerDto.email);
-
-  //     if (existingUser) {
-  //       throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
-  //     }
-
-  //     const hashedPassword = await hashPassword(registerDto.password);
-
-  //     const user = await this.usersRepository.create({
-  //       email: registerDto.email,
-  //       username: registerDto.email, // Default username to email
-  //       password: hashedPassword,
-  //       status: 'ACTIVE',
-  //     });
-
-  //     // TODO: Assign default role using UserRoleEntity
-
-  //     const tokens = await this.generateTokens(user);
-  //     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
-
-  //     return {
-  //       user: {
-  //         id: user.id,
-  //         email: user.email,
-  //         username: user.username,
-  //       },
-  //       ...tokens,
-  //     };
-  //   }
 
   async refreshTokens(userId, refreshToken) {
     const user = await this.usersService.findById(userId);
@@ -101,8 +84,12 @@ export class AuthService {
       throw new UnauthorizedException('Access denied');
     }
 
-    if (user.refreshToken !== refreshToken) {
+    if (!compareRefreshToken(user.refreshToken, refreshToken)) {
       throw new UnauthorizedException('Access denied');
+    }
+
+    if (user.status !== 'ACTIVE' || user.isDeleted) {
+      throw new UnauthorizedException(AppMessages.Errors.User.INACTIVE);
     }
 
     const tokens = await this.generateTokens(user);
@@ -132,29 +119,218 @@ export class AuthService {
       throw new BadRequestException(AppMessages.Errors.User.INVALID_PASSWORD);
     }
 
-    const hashedPassword = await hashPassword(changePasswordDto.newPassword);
-    await this.usersRepository.update(userId, { password: hashedPassword });
+    if (changePasswordDto.newPassword === changePasswordDto.currentPassword) {
+      throw new BadRequestException(
+        'Mật khẩu mới không được trùng với mật khẩu hiện tại',
+      );
+    }
 
-    return { message: 'Password changed successfully' };
+    const hashedPassword = await hashPassword(changePasswordDto.newPassword);
+    await this.usersService.update(userId, {
+      password: changePasswordDto.newPassword,
+    });
+
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   async getProfile(userId) {
     const user = await this.usersService.findById(userId);
+
+    const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
+      where: { userId: userId, isDeleted: false },
+      relations: [
+        'department',
+        'position',
+        'directManager',
+        'jobGrade',
+        'hrMentor',
+      ],
+    });
+
     return {
+      // User account info
       id: user.id,
-      email: user.email,
       username: user.username,
+      email: user.email,
+      companyEmail: employee?.companyEmail || null,
       roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
+      role: user.userRoles?.[0]?.role.roleName || null,
       status: user.status,
+
+      // Personal info
+      avatar: employee?.avatar || null,
+      fullName: employee?.fullName || null,
+      personalEmail: employee?.personalEmail || null,
+      phoneNumber: employee?.phoneNumber || null,
+      dateOfBirth: employee?.dateOfBirth || null,
+      gender: employee?.gender || null,
+      maritalStatus: employee?.maritalStatus || null,
+      nationality: employee?.nationality || null,
+
+      // Address info
+      currentAddress: employee?.currentAddress || null,
+      permanentAddress: employee?.permanentAddress || null,
+
+      // Government IDs
+      nationalId: employee?.nationalId || null,
+      nationalIdIssuedDate: employee?.nationalIdIssuedDate || null,
+      nationalIdIssuedPlace: employee?.nationalIdIssuedPlace || null,
+      taxCode: employee?.taxCode || null,
+
+      // Organization info
+      department: employee?.department
+        ? {
+            id: employee.department.id,
+            name: employee.department.departmentName,
+          }
+        : null,
+      position: employee?.position
+        ? {
+            id: employee.position.id,
+            name: employee.position.positionName,
+          }
+        : null,
+      jobGrade: employee?.jobGrade
+        ? {
+            id: employee.jobGradeId,
+            name: employee.jobGrade.gradeName,
+          }
+        : null,
+      manager: employee?.directManager?.fullName || null,
+      directManager: employee?.directManager
+        ? {
+            id: employee.directManager.id,
+            name: employee.directManager.fullName,
+          }
+        : null,
+      hrMentor: employee?.hrMentor?.fullName || null,
+      employmentStatus: employee?.employmentStatus || null,
+      joinDate: employee?.joinDate || null,
+
+      // System info
+      employeeId: employee?.id || null,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
       lastLoginTime: user.lastLoginTime,
     };
   }
 
+  async editProfile(userId, updateProfileDto) {
+    const employeeRepo = new EmployeesRepository();
+    const actionLogsRepo = new ActionLogsRepository();
+
+    const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
+      where: { userId: userId, isDeleted: false },
+      relations: [
+        'department',
+        'position',
+        'directManager',
+        'jobGrade',
+        'hrMentor',
+      ],
+    });
+
+    if (!employee) {
+      throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
+
+    // Store previous data for audit logging
+    const beforeData = {
+      // fullName intentionally not part of editable data
+      personalEmail: employee.personalEmail,
+      phoneNumber: employee.phoneNumber,
+      currentAddress: employee.currentAddress,
+      permanentAddress: employee.permanentAddress,
+      avatar: employee.avatar,
+    };
+
+    // Prevent full name changes coming from client
+    if (
+      updateProfileDto.fullName &&
+      updateProfileDto.fullName !== employee.fullName
+    ) {
+      throw new BadRequestException('Không được phép chỉnh sửa họ và tên');
+    }
+    // Remove if present to avoid accidental overwrite
+    delete updateProfileDto.fullName;
+
+    // Update employee
+    const updated = await employeeRepo.update(employee.id, updateProfileDto);
+
+    // Track changed fields
+    const changedFields = [];
+    Object.keys(beforeData).forEach((key) => {
+      if (beforeData[key] !== updateProfileDto[key]) {
+        changedFields.push(key);
+      }
+    });
+
+    // Log action if there are changes
+    if (changedFields.length > 0) {
+      try {
+        await actionLogsRepo.create({
+          userId: userId,
+          actionType: 'UPDATE',
+          targetTable: 'employees',
+          targetRecordId: employee.id,
+          beforeData,
+          afterData: updateProfileDto,
+          changedFields,
+          description: `Profile updated: ${changedFields.join(', ')}`,
+        });
+      } catch (error) {
+        console.error('Failed to log action:', error);
+        // Don't throw error, just log it
+      }
+    }
+
+    return {
+      id: updated.id,
+      fullName: updated.fullName,
+      avatar: updated.avatar,
+      companyEmail: updated.companyEmail,
+      personalEmail: updated.personalEmail,
+      phoneNumber: updated.phoneNumber,
+      currentAddress: updated.currentAddress,
+      permanentAddress: updated.permanentAddress,
+      department: updated.department
+        ? {
+            id: updated.department.id,
+            name: updated.department.departmentName,
+          }
+        : null,
+      position: updated.position
+        ? {
+            id: updated.position.id,
+            name: updated.position.positionName,
+          }
+        : null,
+      jobGrade: updated.jobGrade
+        ? {
+            id: updated.jobGrade.id,
+            name: updated.jobGrade.name,
+          }
+        : null,
+      manager: updated.directManager?.fullName || null,
+      hrMentor: updated.hrMentor?.fullName || null,
+    };
+  }
+
   async generateTokens(user) {
+    const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
+    const permissions = [
+      ...new Set(
+        user.userRoles?.flatMap((ur) =>
+          ur.role.rolePermissions?.map((rp) => rp.permission.permissionCode),
+        ) || [],
+      ),
+    ];
+
     const payload = {
       sub: user.id,
       email: user.email,
-      roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
+      roles,
+      permissions,
     };
 
     const secret = process.env.JWT_SECRET;
@@ -221,10 +397,18 @@ export class AuthService {
       );
     }
 
-    const hashedPassword = await hashPassword(newPassword);
+    const user = await this.usersService.findByIdWithPassword(userId);
+
+    const duplicatePassword = await comparePassword(newPassword, user.password);
+
+    if (duplicatePassword) {
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.PASSWORD_NOT_DIFFERENT,
+      );
+    }
 
     await this.usersService.update(userId, {
-      password: hashedPassword,
+      password: newPassword,
     });
 
     // Xóa token sau khi dùng

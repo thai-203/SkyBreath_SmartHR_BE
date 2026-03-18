@@ -1,5 +1,5 @@
-import { ForbiddenException, UnauthorizedException } from '../exceptions/index.js';
 import { AppMessages } from '../constants/index.js';
+import { ForbiddenException, UnauthorizedException } from '../exceptions/index.js';
 
 export const permissionsMiddleware = (requiredPermission) => {
     return (req, res, next) => {
@@ -10,6 +10,8 @@ export const permissionsMiddleware = (requiredPermission) => {
         }
 
         const hasPermission = user.permissions?.includes(requiredPermission);
+
+        console.log(`[Permission] Checking for ${requiredPermission}. User has:`, user.permissions, `Result: ${hasPermission}`);
 
         if (!hasPermission) {
             next(new ForbiddenException(AppMessages.Errors.Auth.FORBIDDEN));

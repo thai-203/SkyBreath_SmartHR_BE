@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsDateString, IsDecimal } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  IsNumber,
+  Min,
+  Allow,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 /**
  * @swagger
@@ -7,47 +16,182 @@ import { IsString, IsOptional, IsDateString, IsDecimal } from 'class-validator';
  *     UpdateContractDto:
  *       type: object
  *       properties:
+ *         contractNumber:
+ *           type: string
  *         contractType:
  *           type: string
- *           description: The type of contract
- *           example: Permanent
+ *         departmentId:
+ *           type: integer
+ *         positionId:
+ *           type: integer
+ *         jobGradeId:
+ *           type: integer
+ *         startDate:
+ *           type: string
+ *           format: date
  *         endDate:
  *           type: string
  *           format: date
- *           description: Contract end date
- *           example: 2024-12-31
- *         workingHours:
- *           type: number
- *           description: Working hours per day
- *           example: 8
- *         contractStatus:
- *           type: string
- *           description: Contract status
- *           example: Active
  *         signedDate:
  *           type: string
  *           format: date
- *           description: Date contract was signed
- *           example: 2024-01-01
+ *         workingHours:
+ *           type: number
+ *         baseSalary:
+ *           type: number
+ *         performanceSalary:
+ *           type: number
+ *         phoneAllowance:
+ *           type: number
+ *         lunchAllowance:
+ *           type: number
+ *         fuelAllowance:
+ *           type: number
+ *         otherAllowance:
+ *           type: number
+ *         contractStatus:
+ *           type: string
+ *           example: active | terminated
+ *         terminationDate:
+ *           type: string
+ *           format: date
+ *           description: 'Ngày chấm dứt hợp đồng; có thể đặt trong tương lai để lên lịch.'
+ *         terminationReason:
+ *           type: string
+ *         terminationCompensation:
+ *           type: number
+ *         terminationNote:
+ *           type: string
+ *         note:
+ *           type: string
+ *         attachments:
+ *           type: array
+ *           items:
+ *             type: string
+ *             format: binary
  */
 export class UpdateContractDto {
-    @IsOptional()
-    @IsString()
-    contractType;
+  /* ========= EXISTING FIELDS ========= */
 
-    @IsOptional()
-    @IsDateString()
-    endDate;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  employeeId; // when provided, must match the current contract's employee
 
-    @IsOptional()
-    @IsDecimal()
-    workingHours;
+  @IsOptional()
+  @IsString()
+  contractNumber;
 
-    @IsOptional()
-    @IsString()
-    contractStatus;
+  @IsOptional()
+  @IsString()
+  contractType;
 
-    @IsOptional()
-    @IsDateString()
-    signedDate;
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  departmentId;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  positionId;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  jobGradeId;
+
+  @IsOptional()
+  @IsDateString()
+  startDate;
+
+  @IsOptional()
+  @IsDateString()
+  endDate;
+
+  @IsOptional()
+  @IsDateString()
+  signedDate;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  workingHours;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseSalary;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  performanceSalary;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  phoneAllowance;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lunchAllowance;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fuelAllowance;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherAllowance;
+
+  @IsOptional()
+  @IsString()
+  contractStatus;
+
+  @IsOptional()
+  @IsString()
+  note;
+
+  /* ========= TERMINATION FIELDS ========= */
+
+  @IsOptional()
+  @IsDateString()
+  // can be a future date; actual status update happens when the date arrives
+  terminationDate;
+
+  @IsOptional()
+  @IsString()
+  terminationReason;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  terminationCompensation;
+
+  @IsOptional()
+  @IsString()
+  terminationNote;
+
+  /**
+   * FILE UPLOAD (multipart/form-data)
+   */
+  @IsOptional()
+  @Allow()
+  attachments;
 }

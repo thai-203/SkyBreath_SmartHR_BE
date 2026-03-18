@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsOptional, IsInt, IsDateString, IsDecimal, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  IsNumber,
+  Min,
+  Allow,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 /**
  * @swagger
@@ -10,75 +20,169 @@ import { IsString, IsNotEmpty, IsOptional, IsInt, IsDateString, IsDecimal, Min }
  *         - employeeId
  *         - contractType
  *         - startDate
- *         - contractStatus
+ *         - signedDate
+ *         - contractNumber
+ *         - departmentId
+ *         - positionId
+ *         - jobGradeId
  *       properties:
  *         employeeId:
  *           type: integer
- *           description: The ID of the employee
- *           example: 1
+ *           example: 4
  *         contractNumber:
  *           type: string
- *           description: The contract number
- *           example: CT-2024-001
+ *           example: "HD-0002"
  *         contractType:
  *           type: string
- *           description: The type of contract
- *           example: Permanent
+ *           example: "permanent"
+ *         departmentId:
+ *           type: integer
+ *           example: 2
+ *         positionId:
+ *           type: integer
+ *           example: 1
+ *         jobGradeId:
+ *           type: integer
+ *           example: 9
  *         startDate:
  *           type: string
  *           format: date
- *           description: Contract start date
- *           example: 2024-01-01
+ *           example: "2026-02-08"
  *         endDate:
  *           type: string
  *           format: date
- *           description: Contract end date (optional for permanent contracts)
- *           example: 2024-12-31
- *         workingHours:
- *           type: number
- *           description: Working hours per day
- *           example: 8
- *         contractStatus:
- *           type: string
- *           description: Contract status
- *           example: Active
+ *           nullable: true
  *         signedDate:
  *           type: string
  *           format: date
- *           description: Date contract was signed
- *           example: 2024-01-01
+ *           example: "2026-02-08"
+ *         workingHours:
+ *           type: number
+ *           example: 40
+ *         baseSalary:
+ *           type: number
+ *           example: 20000000
+ *         performanceSalary:
+ *           type: number
+ *           example: 0
+ *         phoneAllowance:
+ *           type: number
+ *           example: 0
+ *         lunchAllowance:
+ *           type: number
+ *           example: 0
+ *         fuelAllowance:
+ *           type: number
+ *           example: 0
+ *         otherAllowance:
+ *           type: number
+ *           example: 0
+ *         note:
+ *           type: string
+ *           example: ""
+ *         attachments:
+ *           type: array
+ *           items:
+ *             type: string
+ *             format: binary
  */
 export class CreateContractDto {
-    @IsInt()
-    @Min(1)
-    @IsNotEmpty()
-    employeeId;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  employeeId;
 
-    @IsOptional()
-    @IsString()
-    contractNumber;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  departmentId;
 
-    @IsString()
-    @IsNotEmpty()
-    contractType;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  positionId;
 
-    @IsDateString()
-    @IsNotEmpty()
-    startDate;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  jobGradeId;
 
-    @IsOptional()
-    @IsDateString()
-    endDate;
+  @IsString()
+  @IsNotEmpty()
+  contractNumber;
 
-    @IsOptional()
-    @IsDecimal()
-    workingHours;
+  @IsString()
+  @IsNotEmpty()
+  contractType;
 
-    @IsString()
-    @IsNotEmpty()
-    contractStatus;
+  @IsDateString()
+  @IsNotEmpty()
+  startDate;
 
-    @IsOptional()
-    @IsDateString()
-    signedDate;
+  @IsOptional()
+  @IsDateString()
+  endDate;
+
+  @IsDateString()
+  @IsNotEmpty()
+  signedDate;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @IsNotEmpty()
+  workingHours;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseSalary;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  performanceSalary;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  phoneAllowance;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lunchAllowance;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fuelAllowance;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherAllowance;
+
+  @IsOptional()
+  @IsString()
+  note;
+
+  /**
+   * FILE UPLOAD (multipart/form-data)
+   * Không validate bằng class-validator
+   * Multer sẽ xử lý
+   */
+  @IsOptional()
+  @Allow()
+  attachments;
 }

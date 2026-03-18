@@ -8,32 +8,34 @@ export class RolesService {
     }
 
     async create(createRoleDto) {
-        const existingRole = await this.rolesRepository.findByName(createRoleDto.name);
-        if (existingRole) {
-            throw new ConflictException(AppMessages.Errors.General.RESOURCE_ALREADY_EXISTS);
+        try {
+            const existingRole = await this.rolesRepository.findByName(createRoleDto.name);
+            if (existingRole) {
+                throw new ConflictException(AppMessages.Errors.Role.ALREADY_EXISTS);
+            }
+            return await this.rolesRepository.create({
+                roleName: createRoleDto.name,
+                description: createRoleDto.description,
+                status: createRoleDto.status || 'active'
+            });
+        } catch (error) {
+            console.error('[RolesService] Error in create:', error);
+            throw error;
         }
-        return this.rolesRepository.create({
-            roleName: createRoleDto.name,
-            description: createRoleDto.description,
-            status: createRoleDto.status || 'active'
-        });
-
-        // Log action
-        // Note: Actual action logging would typically be handled via an event bus or direct repository call if available
-        // For now, assuming ActionLogEntity creation logic would go here or be handled by an interceptor
-        // Since we don't have a direct ActionLogService injected here yet, we'll stick to core logic
-
-        return newRole;
     }
 
-    async findAll() {
-        return this.rolesRepository.findAll();
+    async findAll(query = {}) {
+        const filters = {
+            search: query.search || '',
+            status: query.status || null
+        };
+        return this.rolesRepository.findAll(filters);
     }
 
     async findById(id) {
         const role = await this.rolesRepository.findById(id);
         if (!role) {
-            throw new NotFoundException(AppMessages.Errors.General.NOT_FOUND);
+            throw new NotFoundException(AppMessages.Errors.Role.NOT_FOUND);
         }
         return role;
     }
@@ -45,7 +47,7 @@ export class RolesService {
             // Check if name is taken by another role
             const existingRole = await this.rolesRepository.findByNameExcludeId(updateRoleDto.name, id);
             if (existingRole) {
-                throw new ConflictException(AppMessages.Errors.General.RESOURCE_ALREADY_EXISTS);
+                throw new ConflictException(AppMessages.Errors.Role.ALREADY_EXISTS);
             }
             role.roleName = updateRoleDto.name;
         }
@@ -70,12 +72,12 @@ export class RolesService {
         const role = await this.findById(id);
 
         if (role.isSystem) {
-            throw new ConflictException('Cannot delete system roles');
+            throw new ConflictException(AppMessages.Errors.Role.SYSTEM_ROLE);
         }
 
         const isInUse = await this.rolesRepository.isRoleInUse(id);
         if (isInUse) {
-            throw new ConflictException('Role is currently assigned to users and cannot be deleted');
+            throw new ConflictException(AppMessages.Errors.Role.IN_USE);
         }
 
         await this.rolesRepository.delete(id);
