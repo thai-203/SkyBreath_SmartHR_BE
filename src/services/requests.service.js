@@ -1,7 +1,7 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { RequestEntity } from '../models/entities/request.entity.js';
-import { BadRequestException, NotFoundException } from '../common/exceptions/index.js';
+import { BadRequestException, NotFoundException, ForbiddenException } from '../common/exceptions/index.js';
 
 export class RequestsService {
     constructor(requestsRepository) {
@@ -73,6 +73,27 @@ export class RequestsService {
         });
 
         return await requestRepo.save(newReq);
+    }
+
+    async updateStatus(id, status, userContext) {
+        if (this._isEmployee(userContext)) {
+            throw new ForbiddenException('Bạn không có quyền duyệt đơn');
+        }
+
+        const requestRepo = AppDataSource.getRepository(RequestEntity);
+        const request = await requestRepo.findOne({ where: { id, isDeleted: false } });
+        if (!request) {
+            throw new NotFoundException('Không tìm thấy đơn này');
+        }
+
+        if (!['APPROVED', 'REJECTED'].includes(status)) {
+            throw new BadRequestException('Trạng thái không hợp lệ');
+        }
+
+        request.requestStatus = status;
+        await requestRepo.save(request);
+        
+        return { success: true, message: 'Đã cập nhật trạng thái đơn' };
     }
 
     _isEmployee(userContext) {

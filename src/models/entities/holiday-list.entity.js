@@ -40,4 +40,11 @@ export class HolidayListEntity extends BaseEntity {
   @ManyToOne(() => HolidayGroupEntity, (group) => group.holidays)
   @JoinColumn({ name: 'holiday_group_id' })
   holidayGroup;
+
+  /**
+   * Danh sách ngày làm bù cho ngày nghỉ này.
+   * Mỗi phần tử: { date: 'YYYY-MM-DD', note: 'Làm bù ngày nghỉ ...' }
+   */
+  @Column({ name: 'compensatory_days', type: 'json', nullable: true })
+  compensatoryDays;
 }
