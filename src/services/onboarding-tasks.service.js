@@ -9,9 +9,20 @@ export class OnboardingTasksService {
     return this.onboardingTasksRepository.findByPlanId(planId);
   }
 
+  async findById(id) {
+    return this.onboardingTasksRepository.findById(id);
+  }
+
   async create(planId, body) {
+    let taskOrder = body.taskOrder;
+    if (!taskOrder) {
+      const existing =
+        await this.onboardingTasksRepository.findByPlanId(planId);
+      taskOrder = existing.length + 1;
+    }
     const task = this.onboardingTasksRepository.create({
       planId,
+      taskOrder,
       description: body.description,
       category: body.category,
       estimatedDays: body.estimatedDays,
@@ -32,7 +43,7 @@ export class OnboardingTasksService {
       status: body.status,
     });
 
-    return true;
+    return this.onboardingTasksRepository.findById(id);
   }
 
   async delete(id) {

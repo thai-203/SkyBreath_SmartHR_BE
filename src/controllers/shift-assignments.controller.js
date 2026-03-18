@@ -87,8 +87,12 @@ export class ShiftAssignmentsController {
 
   list = async (req, res, next) => {
     try {
-      console.log('Received query parameters:', req.query);
       const queryDto = plainToInstance(ShiftAssignmentQueryDto, req.query);
+      const errors = await validate(queryDto);
+      if (errors.length > 0) {
+        const message = Object.values(errors[0].constraints)[0];
+        return ResponseUtil.sendResponse(res, message, null, 400);
+      }
       const result = await this.assignService.findAll(queryDto);
 
       res.status(200).json({
@@ -102,12 +106,14 @@ export class ShiftAssignmentsController {
 
   viewEmployeeSchedule = async (req, res, next) => {
     try {
+      console.log("Viewing schedule for employee ID:", req.params.employeeId, "with query:", req.query);
       const employeeId = parseInt(req.params.employeeId);
-      const { month, year } = req.query;
+      const { startDate, endDate, month, year } = req.query;
       const schedule = await this.assignService.getEmployeeSchedule(
         employeeId,
-        parseInt(month),
-        parseInt(year),
+        startDate || month,
+        endDate || year,
+        req.user,
       );
       res.status(200).json({ success: true, data: schedule });
     } catch (error) {
@@ -118,11 +124,11 @@ export class ShiftAssignmentsController {
   viewDepartmentSchedule = async (req, res, next) => {
     try {
       const departmentId = parseInt(req.params.departmentId);
-      const { month, year } = req.query;
+      const { startDate, endDate, month, year } = req.query;
       const schedule = await this.assignService.getDepartmentSchedule(
         departmentId,
-        parseInt(month),
-        parseInt(year),
+        startDate || month,
+        endDate || year,
       );
       res.status(200).json({ success: true, data: schedule });
     } catch (error) {

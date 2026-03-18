@@ -1,9 +1,13 @@
 import { ShiftAssignmentsRepository } from '../repositories/shift-assignments.repository.js';
+import { ShiftSchedulesRepository } from '../repositories/shift-schedules.repository.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { DepartmentEntity } from '../models/entities/department.entity.js';
+import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 import { AppDataSource } from '../database/data-source.js';
 import {
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { EmployeeStatus } from '../common/enums/status.enum.js';
@@ -11,109 +15,290 @@ import { EmployeeStatus } from '../common/enums/status.enum.js';
 export class ShiftAssignmentsService {
   constructor() {
     this.assignRepo = new ShiftAssignmentsRepository();
+    this.scheduleRepo = new ShiftSchedulesRepository();
   }
 
-  /**
-   * helper to check if two ranges overlap. null means unbounded.
-   */
+  _toNumberArray(value, fallback = []) {
+    if (!value) return fallback || [];
+    if (Array.isArray(value)) {
+      const arr = value
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v > 0);
+      return arr.length > 0 ? arr : fallback || [];
+    }
+    const arr = String(value)
+      .split(',')
+      .map((v) => Number(v.trim()))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    return arr.length > 0 ? arr : fallback || [];
+  }
+
+  _dateOnly(value) {
+    if (!value) return null;
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  _resolveRange(startDate, endDate) {
+    if (startDate && endDate) {
+      return {
+        start: this._dateOnly(startDate),
+        end: this._dateOnly(endDate),
+      };
+    }
+
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      start: this._dateOnly(start),
+      end: this._dateOnly(end),
+    };
+  }
+
+  _expandLegacyEmployeeAssignments(
+    assignments,
+    employeeId,
+    startDate,
+    endDate,
+  ) {
+    const { start, end } = this._resolveRange(startDate, endDate);
+    const startObj = new Date(`${start}T00:00:00`);
+    const endObj = new Date(`${end}T00:00:00`);
+
+    const rows = [];
+
+    assignments.forEach((assignment) => {
+      const fromDate = assignment.effectiveFrom
+        ? this._dateOnly(assignment.effectiveFrom)
+        : start;
+      const toDate = assignment.effectiveTo
+        ? this._dateOnly(assignment.effectiveTo)
+        : end;
+
+      if (!fromDate || !toDate) return;
+
+      const fromObj = new Date(`${fromDate}T00:00:00`);
+      const toObj = new Date(`${toDate}T00:00:00`);
+
+      if (toObj < startObj || fromObj > endObj) {
+        return;
+      }
+
+      const weekdays = this._toNumberArray(assignment.weekdays);
+      const repeatType = assignment.repeatType || 'weekly';
+      const rangeStart = fromObj > startObj ? fromObj : startObj;
+      const rangeEnd = toObj < endObj ? toObj : endObj;
+
+      const workDates = this._generateDates(
+        this._dateOnly(rangeStart),
+        this._dateOnly(rangeEnd),
+        weekdays,
+        repeatType,
+      );
+
+      workDates.forEach((date) => {
+        rows.push({
+          id: `${assignment.id}-${date}-${assignment.shiftId}`,
+          assignmentId: assignment.id,
+          employeeId,
+          shiftId: assignment.shiftId,
+          shift: assignment.shift || null,
+          employee: assignment.employee || null,
+          date,
+          workDate: date,
+          effectiveFrom: assignment.effectiveFrom || null,
+          effectiveTo: assignment.effectiveTo || null,
+        });
+      });
+    });
+
+    return rows.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }
+
   _rangesOverlap = (aFrom, aTo, bFrom, bTo) => {
     if (aFrom && bTo && aFrom > bTo) return false;
     if (bFrom && aTo && bFrom > aTo) return false;
     return true;
   };
 
-  /**
-   * Ensure there is no existing assignment for the same employee+shift that
-   * overlaps with the provided date range. Throws BadRequestException if a
-   * conflict is detected. Excludes a particular record id when provided (used
-   * during update).
-   */
-  async _ensureNoOverlap(empId, shiftId, from, to, excludeId = null) {
-    if (!empId || !shiftId) return; // nothing to check
-    // use unpaginated lookup to get every existing assignment
-    const items = await this.assignRepo.findByEmployeeAndShift(empId, shiftId);
-    for (const a of items) {
-      if (excludeId && a.id === excludeId) continue;
-      const aFrom = a.effectiveFrom ? new Date(a.effectiveFrom) : null;
-      const aTo = a.effectiveTo ? new Date(a.effectiveTo) : null;
-      if (
-        this._rangesOverlap(
-          aFrom,
-          aTo,
-          from ? new Date(from) : null,
-          to ? new Date(to) : null,
-        )
-      ) {
-        throw new BadRequestException(
-          AppMessages.Errors.ShiftAssignment.OVERLAP.message +
-            ` (emp ${empId} shift ${shiftId})`,
-        );
-      }
-    }
-  }
-
-  /**
-   * create assignment for either a single employee or all employees in a department.
-   * dto must include exactly one of employeeId or departmentId.
-   */
-  // generate all dates between start & end that match the pattern
   _generateDates(startDate, endDate, weekdays, repeatType) {
     const result = [];
     if (!startDate || !endDate) return result;
-    let current = new Date(startDate);
+
+    const daySet = new Set((weekdays || []).map(Number));
     const last = new Date(endDate);
-    // normalise weekdays to set for quick check
-    const daySet = new Set(weekdays || []);
+    let current = new Date(startDate);
 
-    const weekCycle = {
-      weekly: 1,
-      '2weeks': 2,
-    };
-
-    // for monthly we'll handle separately by adding same day each month
     if (repeatType === 'monthly') {
       while (current <= last) {
-        if (
-          !weekdays ||
-          weekdays.length === 0 ||
-          daySet.has(current.getDay() || 7)
-        ) {
-          result.push(new Date(current));
+        const dayNum = current.getDay() === 0 ? 7 : current.getDay();
+        if (daySet.size === 0 || daySet.has(dayNum)) {
+          result.push(this._dateOnly(current));
         }
         current.setMonth(current.getMonth() + 1);
       }
       return result;
     }
 
-    // default to daily scanning with cycle
     let weekCounter = 0;
     while (current <= last) {
-      const dayNum = current.getDay() === 0 ? 7 : current.getDay(); // convert sunday to 7
-      if (!weekdays || weekdays.length === 0 || daySet.has(dayNum)) {
-        // check cycle
-        if (
-          !repeatType ||
-          repeatType === 'weekly' ||
-          (weekCycle[repeatType] && weekCounter % weekCycle[repeatType] === 0)
-        ) {
-          result.push(new Date(current));
-        }
+      const dayNum = current.getDay() === 0 ? 7 : current.getDay();
+      const dayMatched = daySet.size === 0 || daySet.has(dayNum);
+      const cycleMatched =
+        !repeatType ||
+        repeatType === 'weekly' ||
+        (repeatType === '2weeks' && weekCounter % 2 === 0);
+
+      if (dayMatched && cycleMatched) {
+        result.push(this._dateOnly(current));
       }
+
       current.setDate(current.getDate() + 1);
-      // increment week counter when Monday
       if (current.getDay() === 1) {
         weekCounter++;
       }
     }
+
     return result;
   }
 
-  /**
-   * dto now accepts employeeIds or departmentIds arrays, plus start/end, weekdays, repeatType.
-   * we create a record per employee/department assignment with pattern information stored.
-   */
+  async _resolveTargetEmployees(employeeIds = [], departmentIds = []) {
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+
+    const explicitIds = this._toNumberArray(employeeIds);
+    const deptIds = this._toNumberArray(departmentIds);
+
+    const byId = new Map();
+
+    if (explicitIds.length > 0) {
+      const rows = await employeeRepo
+        .createQueryBuilder('employee')
+        .where('employee.id IN (:...ids)', { ids: explicitIds })
+        .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
+        .getMany();
+      rows.forEach((row) => byId.set(row.id, row));
+    }
+
+    if (deptIds.length > 0) {
+      const rows = await employeeRepo
+        .createQueryBuilder('employee')
+        .where('employee.departmentId IN (:...deptIds)', { deptIds })
+        .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
+        .getMany();
+      rows.forEach((row) => {
+        if (!byId.has(row.id)) {
+          byId.set(row.id, row);
+        }
+      });
+    }
+
+    const filtered = [...byId.values()].filter(
+      (emp) => emp.employmentStatus !== EmployeeStatus.ON_LEAVE,
+    );
+
+    return {
+      employeeIds: filtered.map((emp) => emp.id),
+      employees: filtered,
+      departmentIds: deptIds,
+    };
+  }
+
+  async _loadLookupMaps(employeeIds = [], departmentIds = [], shiftIds = []) {
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const departmentRepo = AppDataSource.getRepository(DepartmentEntity);
+    const shiftRepo = AppDataSource.getRepository(WorkingShiftEntity);
+
+    const empIds = this._toNumberArray(employeeIds);
+    const deptIds = this._toNumberArray(departmentIds);
+    const shIds = this._toNumberArray(shiftIds);
+
+    const [employees, departments, shifts] = await Promise.all([
+      empIds.length
+        ? employeeRepo
+            .createQueryBuilder('employee')
+            .where('employee.id IN (:...ids)', { ids: empIds })
+            .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
+            .getMany()
+        : Promise.resolve([]),
+      deptIds.length
+        ? departmentRepo
+            .createQueryBuilder('department')
+            .where('department.id IN (:...ids)', { ids: deptIds })
+            .andWhere('department.isDeleted = :isDeleted', { isDeleted: false })
+            .getMany()
+        : Promise.resolve([]),
+      shIds.length
+        ? shiftRepo
+            .createQueryBuilder('shift')
+            .where('shift.id IN (:...ids)', { ids: shIds })
+            .andWhere('shift.isDeleted = :isDeleted', { isDeleted: false })
+            .getMany()
+        : Promise.resolve([]),
+    ]);
+
+    return {
+      employeeMap: new Map(employees.map((e) => [e.id, e.fullName])),
+      departmentMap: new Map(departments.map((d) => [d.id, d.departmentName])),
+      shiftMap: new Map(shifts.map((s) => [s.id, s.shiftName])),
+    };
+  }
+
+  async _rebuildSchedulesForAssignment(assignment, payload) {
+    await this.scheduleRepo.softDeleteByAssignmentId(assignment.id);
+
+    const target = await this._resolveTargetEmployees(
+      payload.employeeIds,
+      payload.departmentIds,
+    );
+
+    if (target.employeeIds.length === 0) {
+      return [];
+    }
+
+    const shiftIds = this._toNumberArray(payload.shiftIds, [payload.shiftId]);
+    const weekdays = this._toNumberArray(payload.weekdays);
+    const workDates = this._generateDates(
+      payload.startDate,
+      payload.endDate,
+      weekdays,
+      payload.repeatType,
+    );
+
+    if (workDates.length === 0 || shiftIds.length === 0) {
+      return [];
+    }
+
+    const rows = [];
+    for (const emp of target.employees) {
+      for (const workDate of workDates) {
+        for (const shiftId of shiftIds) {
+          rows.push({
+            assignmentId: assignment.id,
+            employeeId: emp.id,
+            departmentId: emp.departmentId || null,
+            shiftId,
+            workDate,
+          });
+        }
+      }
+    }
+
+    return this.scheduleRepo.bulkCreate(rows);
+  }
+
   async createAssignment(data) {
     const {
+      assignmentName,
       employeeIds,
       departmentIds,
       shiftIds,
@@ -124,10 +309,18 @@ export class ShiftAssignmentsService {
       repeatType,
     } = data;
 
-    // basic parameter validation (more complex rules handled below)
-    const shiftsToUse =
-      shiftIds && shiftIds.length > 0 ? shiftIds : shiftId ? [shiftId] : [];
-    if (shiftsToUse.length === 0) {
+    const normalizedShiftIds = this._toNumberArray(
+      shiftIds,
+      shiftId ? [shiftId] : [],
+    );
+
+    if (!assignmentName || !String(assignmentName).trim()) {
+      throw new BadRequestException('Tên bản phân ca không được để trống');
+    }
+
+    const normalizedAssignmentName = String(assignmentName).trim();
+
+    if (normalizedShiftIds.length === 0) {
       throw new BadRequestException('Phải cung cấp ít nhất một ca làm việc');
     }
 
@@ -140,90 +333,62 @@ export class ShiftAssignmentsService {
       );
     }
 
-    // date validation
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
     }
 
-    // pattern validation
+    const normalizedWeekdays = this._toNumberArray(weekdays);
     if (
       (repeatType === 'weekly' || repeatType === '2weeks') &&
-      (!weekdays || weekdays.length === 0)
+      normalizedWeekdays.length === 0
     ) {
       throw new BadRequestException(
         'Khi sử dụng repeatType weekly hoặc 2weeks phải cung cấp weekdays',
       );
     }
 
-    // build target employee list (union of explicit ids + departments)
-    // we keep track of the originating department for each emp when possible
-    const targetMap = new Map(); // empId -> deptId|null
-    if (employeeIds && employeeIds.length > 0) {
-      employeeIds.forEach((id) => {
-        if (!targetMap.has(id)) {
-          targetMap.set(id, null);
-        }
-      });
-    }
-    if (departmentIds && departmentIds.length > 0) {
-      for (const deptId of departmentIds) {
-        const emps = await AppDataSource.getRepository(EmployeeEntity).find({
-          where: { departmentId: deptId, isDeleted: false },
-        });
-        for (const e of emps) {
-          // if employee was explicitly listed earlier we keep null dept, otherwise record the department
-          if (!targetMap.has(e.id)) {
-            targetMap.set(e.id, deptId);
-          }
-        }
-      }
+    const target = await this._resolveTargetEmployees(
+      employeeIds,
+      departmentIds,
+    );
+    if (target.employeeIds.length === 0) {
+      throw new BadRequestException(
+        'Không tìm thấy nhân viên phù hợp để tạo lịch phân ca',
+      );
     }
 
-    const assignments = [];
+    const assignment = await this.assignRepo.create({
+      assignmentName: normalizedAssignmentName,
+      employeeId: target.employeeIds[0] || null,
+      departmentId: target.departmentIds[0] || null,
+      employeeIds: target.employeeIds.join(','),
+      departmentIds: target.departmentIds.join(','),
+      shiftId: normalizedShiftIds[0],
+      shiftIds: normalizedShiftIds.join(','),
+      effectiveFrom: startDate,
+      effectiveTo: endDate,
+      weekdays: normalizedWeekdays.join(','),
+      repeatType: repeatType || 'weekly',
+    });
 
-    const createForEmp = async (empId, deptId = null) => {
-      const emp = await AppDataSource.getRepository(EmployeeEntity).findOne({
-        where: { id: empId, isDeleted: false },
-      });
-      if (!emp) {
-        throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
-      }
-      if (emp.employmentStatus === EmployeeStatus.ON_LEAVE) {
-        return; // skip employees on leave
-      }
+    await this._rebuildSchedulesForAssignment(assignment, {
+      employeeIds: target.employeeIds,
+      departmentIds: target.departmentIds,
+      shiftIds: normalizedShiftIds,
+      startDate,
+      endDate,
+      weekdays: normalizedWeekdays,
+      repeatType: repeatType || 'weekly',
+    });
 
-      for (const sId of shiftsToUse) {
-        // check overlap/conflict with existing assignments
-        await this._ensureNoOverlap(empId, sId, startDate, endDate);
-
-        const rec = await this.assignRepo.create({
-          employeeId: empId,
-          departmentId: deptId,
-          shiftId: sId,
-          employeeIds:
-            employeeIds && employeeIds.length ? employeeIds.join(',') : null,
-          departmentIds:
-            departmentIds && departmentIds.length
-              ? departmentIds.join(',')
-              : null,
-          effectiveFrom: startDate,
-          effectiveTo: endDate,
-          weekdays: weekdays ? weekdays.join(',') : null,
-          repeatType,
-        });
-        assignments.push(rec);
-      }
-    };
-
-    for (const [empId, deptId] of targetMap) {
-      await createForEmp(empId, deptId);
-    }
-
-    return assignments;
+    return assignment;
   }
-  // update a single assignment record; convert any metadata arrays and pick shift
+
+  async assignByDepartment(data) {
+    return this.createAssignment(data);
+  }
+
   async updateAssignment(id, data) {
-    // fetch existing so we can validate changes and fallback values
     const existing = await this.assignRepo.findById(id);
     if (!existing) {
       throw new NotFoundException(
@@ -232,139 +397,405 @@ export class ShiftAssignmentsService {
       );
     }
 
-    // normalize arrays to strings etc.
-    if (data.employeeIds && Array.isArray(data.employeeIds)) {
-      data.employeeIds = data.employeeIds.join(',');
-    }
-    if (data.departmentIds && Array.isArray(data.departmentIds)) {
-      data.departmentIds = data.departmentIds.join(',');
-    }
+    const currentEmployeeIds = this._toNumberArray(
+      existing.employeeIds,
+      existing.employeeId ? [existing.employeeId] : [],
+    );
+    const currentDepartmentIds = this._toNumberArray(
+      existing.departmentIds,
+      existing.departmentId ? [existing.departmentId] : [],
+    );
+    const currentShiftIds = this._toNumberArray(
+      existing.shiftIds,
+      existing.shiftId ? [existing.shiftId] : [],
+    );
+    const currentWeekdays = this._toNumberArray(existing.weekdays);
+
+    const nextEmployeeIds =
+      data.employeeIds && data.employeeIds.length > 0
+        ? this._toNumberArray(data.employeeIds)
+        : currentEmployeeIds;
+    const nextDepartmentIds =
+      data.departmentIds && data.departmentIds.length > 0
+        ? this._toNumberArray(data.departmentIds)
+        : currentDepartmentIds;
+    const nextShiftIds =
+      data.shiftIds && data.shiftIds.length > 0
+        ? this._toNumberArray(data.shiftIds)
+        : data.shiftId
+          ? [Number(data.shiftId)]
+          : currentShiftIds;
+    const nextAssignmentName = data.assignmentName
+      ? String(data.assignmentName).trim()
+      : existing.assignmentName;
+    const nextStartDate = data.startDate || existing.effectiveFrom;
+    const nextEndDate = data.endDate || existing.effectiveTo;
+    const nextWeekdays =
+      data.weekdays && data.weekdays.length > 0
+        ? this._toNumberArray(data.weekdays)
+        : currentWeekdays;
+    const nextRepeatType = data.repeatType || existing.repeatType || 'weekly';
+
     if (
-      data.shiftIds &&
-      Array.isArray(data.shiftIds) &&
-      data.shiftIds.length > 0
+      (!nextEmployeeIds || nextEmployeeIds.length === 0) &&
+      (!nextDepartmentIds || nextDepartmentIds.length === 0)
     ) {
-      data.shiftId = data.shiftIds[0];
+      throw new BadRequestException(
+        'Phải cung cấp danh sách employeeIds hoặc departmentIds',
+      );
     }
 
-    // if dates provided validate range
-    const newFrom = data.effectiveFrom || existing.effectiveFrom;
-    const newTo = data.effectiveTo || existing.effectiveTo;
-    if (newFrom && newTo && new Date(newFrom) > new Date(newTo)) {
+    if (!nextShiftIds || nextShiftIds.length === 0) {
+      throw new BadRequestException('Phải cung cấp ít nhất một ca làm việc');
+    }
+
+    if (!nextAssignmentName || !String(nextAssignmentName).trim()) {
+      throw new BadRequestException('Tên bản phân ca không được để trống');
+    }
+
+    if (
+      nextStartDate &&
+      nextEndDate &&
+      new Date(nextStartDate) > new Date(nextEndDate)
+    ) {
       throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
     }
 
-    const empId = data.employeeId || existing.employeeId;
-    const shiftId = data.shiftId || existing.shiftId;
-    // check overlap with others excluding current
-    await this._ensureNoOverlap(empId, shiftId, newFrom, newTo, id);
+    if (
+      (nextRepeatType === 'weekly' || nextRepeatType === '2weeks') &&
+      nextWeekdays.length === 0
+    ) {
+      throw new BadRequestException(
+        'Khi sử dụng repeatType weekly hoặc 2weeks phải cung cấp weekdays',
+      );
+    }
 
-    return this.assignRepo.update(id, data);
+    const target = await this._resolveTargetEmployees(
+      nextEmployeeIds,
+      nextDepartmentIds,
+    );
+
+    if (target.employeeIds.length === 0) {
+      throw new BadRequestException(
+        'Không tìm thấy nhân viên phù hợp để cập nhật lịch phân ca',
+      );
+    }
+
+    const updated = await this.assignRepo.update(id, {
+      assignmentName: nextAssignmentName,
+      employeeId: target.employeeIds[0] || null,
+      departmentId: target.departmentIds[0] || null,
+      employeeIds: target.employeeIds.join(','),
+      departmentIds: target.departmentIds.join(','),
+      shiftId: nextShiftIds[0],
+      shiftIds: nextShiftIds.join(','),
+      effectiveFrom: nextStartDate,
+      effectiveTo: nextEndDate,
+      weekdays: nextWeekdays.join(','),
+      repeatType: nextRepeatType,
+    });
+
+    await this._rebuildSchedulesForAssignment(updated, {
+      employeeIds: target.employeeIds,
+      departmentIds: target.departmentIds,
+      shiftIds: nextShiftIds,
+      startDate: nextStartDate,
+      endDate: nextEndDate,
+      weekdays: nextWeekdays,
+      repeatType: nextRepeatType,
+    });
+
+    return updated;
   }
-  async assignByDepartment(data) {
-    // redirect to unified creation logic, validation already handled there
-    return this.createAssignment(data);
+
+  async cancelAssignment(id) {
+    const existing = await this.assignRepo.findById(id);
+    if (!existing) {
+      throw new NotFoundException(
+        AppMessages.Errors.ShiftAssignment.NOT_FOUND ||
+          'Shift assignment not found',
+      );
+    }
+
+    await this.assignRepo.softDelete(id);
+    await this.scheduleRepo.softDeleteByAssignmentId(id);
+
+    return { deletedCount: 1 };
   }
 
   async previewSchedule(data) {
     const { startDate, endDate, weekdays, repeatType, shiftIds, shiftId } =
       data;
-    const ids =
-      shiftIds && shiftIds.length > 0 ? shiftIds : shiftId ? [shiftId] : [];
-    const dates = this._generateDates(startDate, endDate, weekdays, repeatType);
-    // return list of date entries; include all shifts for each date
-    return dates.map((d) => ({
-      date: d.toISOString().split('T')[0],
+    const ids = this._toNumberArray(shiftIds, shiftId ? [shiftId] : []);
+    const normalizedWeekdays = this._toNumberArray(weekdays);
+    const dates = this._generateDates(
+      startDate,
+      endDate,
+      normalizedWeekdays,
+      repeatType,
+    );
+
+    return dates.map((date) => ({
+      date,
       shiftIds: ids,
     }));
   }
 
-  async getEmployeeSchedule(employeeId, startDate, endDate) {
-    // if start/end provided use them, else fall back to month/year
-    let start, end;
-    if (startDate && endDate) {
-      start = new Date(startDate);
-      end = new Date(endDate);
-    } else {
-      // period passed as month/year previously
-      const [month, year] = [startDate ? parseInt(startDate) : null, null];
-      // not used
-      start = new Date();
-      end = new Date();
-    }
-    const { items } = await this.assignRepo.findAll({ employeeId });
-    return this._expandAssignments(items, start, end);
-  }
+  async findAll(queryDto = {}) {
+    const page = Number(queryDto.page || 1);
+    const limit = Number(queryDto.limit || 10);
 
-  async getDepartmentSchedule(departmentId, startDate, endDate) {
-    let start = startDate ? new Date(startDate) : null;
-    let end = endDate ? new Date(endDate) : null;
-    if (!start || !end) {
-      const now = new Date();
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    }
-    const { items } = await this.assignRepo.findAll({ departmentId });
-    return this._expandAssignments(items, start, end);
-  }
+    const allAssignments = await this.assignRepo.findAllActive();
 
-  // take raw assignment records and expand them to daily schedule entries within range
-  _expandAssignments(assignments, start, end) {
-    const result = [];
-    for (const a of assignments) {
-      const from = a.effectiveFrom ? new Date(a.effectiveFrom) : null;
-      const to = a.effectiveTo ? new Date(a.effectiveTo) : null;
-      // compute intersection with [start,end]
-      const rangeStart = from && from > start ? from : start;
-      const rangeEnd = to && to < end ? to : end;
-      if (rangeEnd < rangeStart) continue;
-      const weekdays = a.weekdays ? a.weekdays.split(',').map(Number) : [];
-      const repeatType = a.repeatType;
-      const dates = this._generateDates(
-        rangeStart,
-        rangeEnd,
-        weekdays,
-        repeatType,
+    const filtered = allAssignments.filter((item) => {
+      const itemShiftIds = this._toNumberArray(
+        item.shiftIds,
+        item.shiftId ? [item.shiftId] : [],
       );
-      dates.forEach((d) => {
-        result.push({
-          ...a,
-          date: d.toISOString().split('T')[0],
-        });
-      });
-    }
-    return result;
+      const itemDepartmentIds = this._toNumberArray(
+        item.departmentIds,
+        item.departmentId ? [item.departmentId] : [],
+      );
+
+      if (
+        queryDto.shiftId &&
+        !itemShiftIds.includes(Number(queryDto.shiftId))
+      ) {
+        return false;
+      }
+      if (
+        queryDto.departmentId &&
+        !itemDepartmentIds.includes(Number(queryDto.departmentId))
+      ) {
+        return false;
+      }
+
+      if (queryDto.startDate || queryDto.endDate) {
+        const from = item.effectiveFrom ? new Date(item.effectiveFrom) : null;
+        const to = item.effectiveTo ? new Date(item.effectiveTo) : null;
+        const qFrom = queryDto.startDate ? new Date(queryDto.startDate) : null;
+        const qTo = queryDto.endDate ? new Date(queryDto.endDate) : null;
+        if (!this._rangesOverlap(from, to, qFrom, qTo)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    const employeeIds = new Set();
+    const departmentIds = new Set();
+    const shiftIds = new Set();
+
+    filtered.forEach((item) => {
+      this._toNumberArray(
+        item.employeeIds,
+        item.employeeId ? [item.employeeId] : [],
+      ).forEach((id) => employeeIds.add(id));
+      this._toNumberArray(
+        item.departmentIds,
+        item.departmentId ? [item.departmentId] : [],
+      ).forEach((id) => departmentIds.add(id));
+      this._toNumberArray(
+        item.shiftIds,
+        item.shiftId ? [item.shiftId] : [],
+      ).forEach((id) => shiftIds.add(id));
+    });
+
+    const maps = await this._loadLookupMaps(
+      [...employeeIds],
+      [...departmentIds],
+      [...shiftIds],
+    );
+
+    const searchValue = (queryDto.search || queryDto.keyword || '')
+      .trim()
+      .toLowerCase();
+
+    const transformed = filtered
+      .map((item) => {
+        const itemEmployeeIds = this._toNumberArray(
+          item.employeeIds,
+          item.employeeId ? [item.employeeId] : [],
+        );
+        const itemDepartmentIds = this._toNumberArray(
+          item.departmentIds,
+          item.departmentId ? [item.departmentId] : [],
+        );
+        const itemShiftIds = this._toNumberArray(
+          item.shiftIds,
+          item.shiftId ? [item.shiftId] : [],
+        );
+
+        const employeeNames = itemEmployeeIds
+          .map((id) => maps.employeeMap.get(id))
+          .filter(Boolean);
+        const departmentNames = itemDepartmentIds
+          .map((id) => maps.departmentMap.get(id))
+          .filter(Boolean);
+        const shiftNames = itemShiftIds
+          .map((id) => maps.shiftMap.get(id))
+          .filter(Boolean);
+
+        return {
+          id: item.id,
+          assignmentName: item.assignmentName || `Bang phan ca #${item.id}`,
+          effectiveFrom: this._dateOnly(item.effectiveFrom),
+          effectiveTo: this._dateOnly(item.effectiveTo),
+          weekdays: this._toNumberArray(item.weekdays),
+          repeatType: item.repeatType || 'weekly',
+          shiftIds: itemShiftIds,
+          shiftNames,
+          employeeIds: itemEmployeeIds,
+          employeeNames,
+          departmentIds: itemDepartmentIds,
+          departmentNames,
+          appliedShifts: shiftNames.join(', '),
+          appliedDepartments:
+            departmentNames.length > 0
+              ? departmentNames.join(', ')
+              : 'Tat ca phong ban',
+          appliedTargets:
+            employeeNames.length > 0
+              ? `${employeeNames.length} nhan vien`
+              : 'Theo phong ban',
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        };
+      })
+      .filter((item) => {
+        if (!searchValue) return true;
+        const searchable = [
+          item.assignmentName,
+          ...item.shiftNames,
+          ...item.departmentNames,
+          ...item.employeeNames,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return searchable.includes(searchValue);
+      })
+      .sort((a, b) => b.id - a.id);
+
+    const totalItems = transformed.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+    const safePage = Math.min(Math.max(page, 1), totalPages);
+    const startIndex = (safePage - 1) * limit;
+
+    return {
+      items: transformed.slice(startIndex, startIndex + limit),
+      totalItems,
+      totalPages,
+      page: safePage,
+      limit,
+    };
   }
 
-  async findAll(queryDto) {
-    return this.assignRepo.findAll(queryDto);
-  }
-
-  // new method for /schedules
   async getSchedules(query) {
     const { startDate, endDate, departmentId, shiftId, keyword } = query;
 
-    // basic date validation
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
     }
 
-    // find raw assignments by filters
-    const { items } = await this.assignRepo.findAll({ departmentId, shiftId });
-    // optionally filter by keyword against employee name or code
-    let filtered = items;
-    if (keyword) {
-      filtered = filtered.filter((a) => {
-        const name = a.employee?.name || '';
-        const code = a.employee?.employeeCode || '';
-        return (
-          name.toLowerCase().includes(keyword.toLowerCase()) ||
-          code.toLowerCase().includes(keyword.toLowerCase())
-        );
-      });
+    const rows = await this.scheduleRepo.findAll({
+      startDate,
+      endDate,
+      departmentId,
+      shiftId,
+      keyword,
+    });
+
+    return rows.map((row) => ({
+      ...row,
+      date: this._dateOnly(row.workDate),
+      effectiveFrom: row.assignment?.effectiveFrom || null,
+      effectiveTo: row.assignment?.effectiveTo || null,
+    }));
+  }
+
+  async getEmployeeSchedule(employeeId, startDate, endDate, userContext) {
+    await this._assertCanViewEmployeeSchedule(employeeId, userContext);
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
     }
-    const start = startDate ? new Date(startDate) : new Date();
-    const end = endDate ? new Date(endDate) : new Date();
-    return this._expandAssignments(filtered, start, end);
+
+    const rows = await this.scheduleRepo.findAll({
+      employeeId,
+      startDate,
+      endDate,
+    });
+
+    if (rows.length === 0) {
+      const legacyAssignments = await this.assignRepo.findAllActive({
+        employeeId,
+      });
+      if (legacyAssignments.length > 0) {
+        return this._expandLegacyEmployeeAssignments(
+          legacyAssignments,
+          employeeId,
+          startDate,
+          endDate,
+        );
+      }
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      date: this._dateOnly(row.workDate),
+      effectiveFrom: row.assignment?.effectiveFrom || null,
+      effectiveTo: row.assignment?.effectiveTo || null,
+    }));
+  }
+
+  _isEmployeeOnly(userContext) {
+    const roles = userContext?.roles || [];
+    return (
+      roles.includes('EMPLOYEE') &&
+      !roles.includes('ADMIN') &&
+      !roles.includes('HR')
+    );
+  }
+
+  async _getEmployeeByUserId(userId) {
+    if (!userId) return null;
+    return AppDataSource.getRepository(EmployeeEntity).findOne({
+      where: { userId, isDeleted: false },
+      select: ['id'],
+    });
+  }
+
+  async _assertCanViewEmployeeSchedule(employeeId, userContext) {
+    if (!this._isEmployeeOnly(userContext)) {
+      return;
+    }
+
+    const employee = await this._getEmployeeByUserId(userContext.id);
+    if (!employee || employee.id !== employeeId) {
+      throw new ForbiddenException(
+        'Bạn không có quyền xem lịch của nhân viên này',
+      );
+    }
+  }
+
+  async getDepartmentSchedule(departmentId, startDate, endDate) {
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
+    }
+
+    const rows = await this.scheduleRepo.findAll({
+      departmentId,
+      startDate,
+      endDate,
+    });
+
+    return rows.map((row) => ({
+      ...row,
+      date: this._dateOnly(row.workDate),
+      effectiveFrom: row.assignment?.effectiveFrom || null,
+      effectiveTo: row.assignment?.effectiveTo || null,
+    }));
   }
 }

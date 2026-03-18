@@ -1,4 +1,9 @@
-import { IsOptional, IsNumberString, IsNumber, IsDateString  } from 'class-validator';
+import {
+  IsOptional,
+  IsNumberString,
+  IsDateString,
+  IsString,
+} from 'class-validator';
 
 export class ShiftAssignmentQueryDto {
   @IsOptional()
@@ -10,15 +15,15 @@ export class ShiftAssignmentQueryDto {
   limit;
 
   @IsOptional()
-  @IsNumber({}, { message: 'ID nhân viên phải là số' })
+  @IsNumberString({}, { message: 'ID nhân viên phải là số' })
   employeeId;
 
   @IsOptional()
-  @IsNumber({}, { message: 'ID phòng ban phải là số' })
+  @IsNumberString({}, { message: 'ID phòng ban phải là số' })
   departmentId;
 
   @IsOptional()
-  @IsNumber({}, { message: 'ID ca làm việc phải là số' })
+  @IsNumberString({}, { message: 'ID ca làm việc phải là số' })
   shiftId;
 
   @IsOptional()
@@ -28,4 +33,12 @@ export class ShiftAssignmentQueryDto {
   @IsOptional()
   @IsDateString({}, { message: 'endDate phải là định dạng YYYY-MM-DD' })
   endDate;
+
+  @IsOptional()
+  @IsString({ message: 'search phải là chuỗi' })
+  search;
+
+  @IsOptional()
+  @IsString({ message: 'keyword phải là chuỗi' })
+  keyword;
 }

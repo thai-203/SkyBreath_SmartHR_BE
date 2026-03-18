@@ -6,6 +6,9 @@ import { DepartmentEntity } from './department.entity.js';
 
 @Entity('shift_assignments')
 export class ShiftAssignmentEntity extends BaseEntity {
+  @Column({ name: 'assignment_name', type: 'varchar', length: 255, nullable: true })
+  assignmentName;
+
   @Column({ name: 'employee_id', type: 'int', nullable: true })
   employeeId;
 
@@ -21,6 +24,9 @@ export class ShiftAssignmentEntity extends BaseEntity {
 
   @Column({ name: 'shift_id', type: 'int' })
   shiftId;
+
+  @Column({ name: 'shift_ids', type: 'simple-array', nullable: true })
+  shiftIds;
 
   @Column({ name: 'effective_from', type: 'date', nullable: true })
   effectiveFrom;

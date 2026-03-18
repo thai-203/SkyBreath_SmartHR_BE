@@ -8,6 +8,8 @@ import {
   ArrayUnique,
   Validate,
   ValidatorConstraint,
+  IsString,
+  IsNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -41,6 +43,11 @@ class WeekdayForRepeat {
 }
 
 export class UpdateShiftAssignmentDto {
+  @IsOptional()
+  @IsString({ message: 'Tên bản phân ca phải là chuỗi' })
+  @IsNotEmpty({ message: 'Tên bản phân ca không được để trống' })
+  assignmentName;
+
   @IsOptional()
   @IsArray({ message: 'employeeIds phải là mảng số' })
   @ArrayNotEmpty({ message: 'employeeIds không được rỗng' })
