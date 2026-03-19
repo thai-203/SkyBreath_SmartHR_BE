@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { TimesheetsController } from '../controllers/timesheets.controller.js';
 import { TimesheetsService } from '../services/timesheets.service.js';
 import { TimesheetsRepository } from '../repositories/timesheets.repository.js';
+import { ActionLogsService } from '../services/action-logs.service.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
@@ -9,7 +10,8 @@ const router = Router();
 
 // Dependency Injection
 const timesheetsRepository = new TimesheetsRepository();
-const timesheetsService = new TimesheetsService(timesheetsRepository);
+const actionLogsService = new ActionLogsService();
+const timesheetsService = new TimesheetsService(timesheetsRepository, actionLogsService);
 const timesheetsController = new TimesheetsController(timesheetsService);
 
 /**
