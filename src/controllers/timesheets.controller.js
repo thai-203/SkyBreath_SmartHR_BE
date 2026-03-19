@@ -17,7 +17,7 @@ export class TimesheetsController {
                 const message = Object.values(errors[0].constraints)[0];
                 return ResponseUtil.sendResponse(res, message, null, 400);
             }
-            const result = await this.timesheetsService.generate(dto);
+            const result = await this.timesheetsService.generate(dto, req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.GENERATED, result);
         } catch (error) {
             next(error);
@@ -85,6 +85,18 @@ export class TimesheetsController {
         }
     };
 
+    bulkRecalculate = async (req, res, next) => {
+        try {
+            const { month, year, departmentId } = req.body;
+            const result = await this.timesheetsService.bulkRecalculate(
+                parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : undefined, req.user
+            );
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RECALCULATED, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     update = async (req, res, next) => {
         try {
             const dto = plainToInstance(UpdateTimesheetDto, req.body);
@@ -122,7 +134,7 @@ export class TimesheetsController {
         try {
             const { month, year, departmentId } = req.body;
             const result = await this.timesheetsService.bulkLock(
-                parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : undefined
+                parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : undefined, req.user
             );
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.BULK_LOCKED, result);
         } catch (error) {

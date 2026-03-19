@@ -1,5 +1,5 @@
-import { IsInt, IsOptional, Min, Max, IsArray } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsInt, IsOptional, Min, Max, IsArray, IsBoolean } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 export class GenerateTimesheetDto {
     @IsInt()
@@ -23,4 +23,9 @@ export class GenerateTimesheetDto {
     @IsInt({ each: true })
     @Type(() => Number)
     employeeIds;
+
+    @IsBoolean()
+    @IsOptional()
+    @Transform(({ value }) => value === true || value === 'true')
+    regenerate;
 }

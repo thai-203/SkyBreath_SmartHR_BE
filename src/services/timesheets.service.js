@@ -19,8 +19,8 @@ export class TimesheetsService {
     // UC24 - Monthly Timesheet Generation
     // ──────────────────────────────────────
 
-    async generate(generateDto) {
-        const { month, year, departmentId } = generateDto;
+    async generate(generateDto, userContext) {
+        const { month, year, departmentId, regenerate = false } = generateDto;
 
         // Get month boundaries
         const startDate = new Date(year, month - 1, 1);
@@ -29,6 +29,7 @@ export class TimesheetsService {
         // 1. Get active employees
         const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
         const employeeQuery = employeeRepo.createQueryBuilder('employee')
+            .leftJoinAndSelect('employee.department', 'department')
             .where('employee.isDeleted = :isDeleted', { isDeleted: false })
             .andWhere('employee.employmentStatus IN (:...statuses)', {
                 statuses: ['ACTIVE', 'PROBATION'],
@@ -100,79 +101,101 @@ export class TimesheetsService {
         });
 
         // 5. Generate/update timesheets (per-employee shift)
+        let generatedCount = 0;
+        let updatedCount = 0;
+        let failedCount = 0;
         const results = [];
+
         for (const employee of employees) {
-            const records = attendanceMap.get(employee.id) || [];
+            try {
+                const records = attendanceMap.get(employee.id) || [];
 
-            // Get this employee's shift (or default)
-            const shift = await this._getEmployeeShift(employee.id, month, year);
-            const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
+                // Get this employee's shift (or default)
+                const shift = await this._getEmployeeShift(employee.id, month, year);
+                const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
 
-            // Group records by date, taking earliest check-in & latest check-out per day
-            const dailyMap = new Map();
-            records.forEach(record => {
-                if (record.checkInTime && record.checkOutTime) {
-                    const checkIn = new Date(record.checkInTime);
-                    const checkOut = new Date(record.checkOutTime);
-                    const dateKey = `${checkIn.getFullYear()}-${String(checkIn.getMonth() + 1).padStart(2, '0')}-${String(checkIn.getDate()).padStart(2, '0')}`;
+                // Group records by date, taking earliest check-in & latest check-out per day
+                const dailyMap = new Map();
+                records.forEach(record => {
+                    if (record.checkInTime && record.checkOutTime) {
+                        const checkIn = new Date(record.checkInTime);
+                        const checkOut = new Date(record.checkOutTime);
+                        const dateKey = `${checkIn.getFullYear()}-${String(checkIn.getMonth() + 1).padStart(2, '0')}-${String(checkIn.getDate()).padStart(2, '0')}`;
 
-                    if (!dailyMap.has(dateKey)) {
-                        dailyMap.set(dateKey, { checkIn, checkOut });
-                    } else {
-                        const existing = dailyMap.get(dateKey);
-                        if (checkIn < existing.checkIn) existing.checkIn = checkIn;
-                        if (checkOut > existing.checkOut) existing.checkOut = checkOut;
+                        if (!dailyMap.has(dateKey)) {
+                            dailyMap.set(dateKey, { checkIn, checkOut });
+                        } else {
+                            const existing = dailyMap.get(dateKey);
+                            if (checkIn < existing.checkIn) existing.checkIn = checkIn;
+                            if (checkOut > existing.checkOut) existing.checkOut = checkOut;
+                        }
+                    }
+                });
+
+                // Calculate totals with break deduction & half-day support
+                let totalWorkingDays = 0;
+                let totalWorkingHours = 0;
+                let overtimeHours = 0;
+
+                for (const [, { checkIn, checkOut }] of dailyMap) {
+                    const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+                    totalWorkingHours += actualHours;
+                    totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
+                    if (actualHours > shiftHoursPerDay) {
+                        overtimeHours += actualHours - shiftHoursPerDay;
                     }
                 }
-            });
 
-            // Calculate totals with break deduction & half-day support
-            let totalWorkingDays = 0;
-            let totalWorkingHours = 0;
-            let overtimeHours = 0;
+                // Upsert: check for existing timesheet
+                const existing = await this.timesheetsRepository.findByEmployeeAndPeriod(
+                    employee.id, month, year
+                );
 
-            for (const [, { checkIn, checkOut }] of dailyMap) {
-                const actualHours = this._calcActualHours(checkIn, checkOut, shift);
-                totalWorkingHours += actualHours;
-
-                // Half-day: >= shiftHours → 1, >= shiftHours/2 → 0.5, else → 0
-                totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
-
-                // OT = hours beyond standard shift per day
-                if (actualHours > shiftHoursPerDay) {
-                    overtimeHours += actualHours - shiftHoursPerDay;
+                let timesheet;
+                if (existing) {
+                    if (existing.isLocked && !regenerate) {
+                        // Skip locked, not in regenerate mode
+                        continue;
+                    }
+                    timesheet = await this.timesheetsRepository.update(existing.id, {
+                        totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
+                        totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
+                        overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+                        isLocked: false,
+                    });
+                    updatedCount++;
+                } else {
+                    timesheet = await this.timesheetsRepository.create({
+                        employeeId: employee.id,
+                        month,
+                        year,
+                        totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
+                        totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
+                        overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+                        isLocked: false,
+                    });
+                    generatedCount++;
                 }
+                results.push(timesheet);
+            } catch (err) {
+                console.error(`[TimesheetsService] generate failed for employee ${employee.id}:`, err.message);
+                failedCount++;
             }
+        }
 
-            // Upsert
-            const existing = await this.timesheetsRepository.findByEmployeeAndPeriod(
-                employee.id, month, year
-            );
-
-            let timesheet;
-            if (existing) {
-                timesheet = await this.timesheetsRepository.update(existing.id, {
-                    totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
-                    totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
-                    overtimeHours: parseFloat(overtimeHours.toFixed(2)),
-                    isLocked: false,
-                });
-            } else {
-                timesheet = await this.timesheetsRepository.create({
-                    employeeId: employee.id,
-                    month,
-                    year,
-                    totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
-                    totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
-                    overtimeHours: parseFloat(overtimeHours.toFixed(2)),
-                    isLocked: false,
-                });
-            }
-            results.push(timesheet);
+        if (this.actionLogsService) {
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'GENERATE',
+                targetTable: 'timesheets',
+                description: `Tạo bảng chấm công tháng ${month}/${year}: tạo mới ${generatedCount}, ghi đè ${updatedCount}, thất bại ${failedCount}`,
+            });
         }
 
         return {
-            generated: results.length,
+            generated: generatedCount,
+            updated: updatedCount,
+            failed: failedCount,
             standardWorkingDays,
             timesheets: results,
         };
@@ -283,6 +306,17 @@ export class TimesheetsService {
             throw new BadRequestException(AppMessages.Errors.Timesheet.IS_LOCKED);
         }
         await this.timesheetsRepository.softDelete(id);
+
+        if (this.actionLogsService) {
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'DELETE',
+                targetTable: 'timesheets',
+                targetRecordId: id,
+                description: `Xóa bảng chấm công tháng ${timesheet.month}/${timesheet.year} của ${timesheet.employee?.fullName || ''} - ${timesheet.employee?.employeeCode || ''}`,
+            });
+        }
+
         return { id };
     }
 
@@ -394,17 +428,32 @@ export class TimesheetsService {
             records, shift, timesheet.year, timesheet.month, holidayDates, leaveRequests
         );
 
+        // Enrich daily details with shift schedule info
+        const shiftStartTime = shift?.startTime ? shift.startTime.substring(0, 5) : null;
+        const shiftEndTime = shift?.endTime ? shift.endTime.substring(0, 5) : null;
+        const enrichedDailyDetails = dailyDetails.map(d => ({
+            ...d,
+            shiftName: shift?.shiftName || null,
+            shiftStartTime,
+            shiftEndTime,
+        }));
+
         return {
-            timesheet,
-            dailyDetails,
+            timesheet: {
+                ...timesheet,
+                shiftName: shift?.shiftName || null,
+                shiftStartTime,
+                shiftEndTime,
+            },
+            dailyDetails: enrichedDailyDetails,
             summary: {
-                totalDays: dailyDetails.length,
-                presentDays: dailyDetails.filter(d => d.status === 'PRESENT').length,
-                absentDays: dailyDetails.filter(d => d.status === 'ABSENT').length,
-                lateDays: dailyDetails.filter(d => d.lateMinutes > 0).length,
-                earlyLeaveDays: dailyDetails.filter(d => d.earlyLeaveMinutes > 0).length,
-                holidayDays: dailyDetails.filter(d => d.status === 'HOLIDAY').length,
-                weekendDays: dailyDetails.filter(d => d.status === 'WEEKEND').length,
+                totalDays: enrichedDailyDetails.length,
+                presentDays: enrichedDailyDetails.filter(d => d.status === 'PRESENT').length,
+                absentDays: enrichedDailyDetails.filter(d => d.status === 'ABSENT').length,
+                lateDays: enrichedDailyDetails.filter(d => d.lateMinutes > 0).length,
+                earlyLeaveDays: enrichedDailyDetails.filter(d => d.earlyLeaveMinutes > 0).length,
+                holidayDays: enrichedDailyDetails.filter(d => d.status === 'HOLIDAY').length,
+                weekendDays: enrichedDailyDetails.filter(d => d.status === 'WEEKEND').length,
             },
         };
     }
@@ -465,11 +514,23 @@ export class TimesheetsService {
             }
         }
 
-        return this.timesheetsRepository.update(id, {
+        const result = await this.timesheetsRepository.update(id, {
             totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
             totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
             overtimeHours: parseFloat(overtimeHours.toFixed(2)),
         });
+
+        if (this.actionLogsService) {
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'RECALCULATE',
+                targetTable: 'timesheets',
+                targetRecordId: id,
+                description: `Tính lại bảng chấm công tháng ${timesheet.month}/${timesheet.year} của ${timesheet.employee?.fullName || ''} - ${timesheet.employee?.employeeCode || ''}`,
+            });
+        }
+
+        return result;
     }
 
     async update(id, updateDto, userContext) {
@@ -477,7 +538,59 @@ export class TimesheetsService {
         if (timesheet.isLocked) {
             throw new BadRequestException(AppMessages.Errors.Timesheet.IS_LOCKED);
         }
-        return this.timesheetsRepository.update(id, updateDto);
+        const { editReason, ...dataToSave } = updateDto;
+        const result = await this.timesheetsRepository.update(id, dataToSave);
+
+        if (this.actionLogsService) {
+            const reasonNote = editReason ? ` | Lý do: ${editReason}` : '';
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'UPDATE',
+                targetTable: 'timesheets',
+                targetRecordId: id,
+                description: `Cập nhật bảng chấm công tháng ${timesheet.month}/${timesheet.year} của ${timesheet.employee?.fullName || ''} - ${timesheet.employee?.employeeCode || ''}${reasonNote}`,
+                beforeData: {
+                    totalWorkingDays: timesheet.totalWorkingDays,
+                    totalWorkingHours: timesheet.totalWorkingHours,
+                    overtimeHours: timesheet.overtimeHours,
+                },
+                afterData: dataToSave,
+                changedFields: dataToSave,
+            });
+        }
+
+        return result;
+    }
+
+    async bulkRecalculate(month, year, departmentId, userContext) {
+        const options = { month, year, take: 10000, skip: 0 };
+        if (departmentId) options.departmentId = departmentId;
+
+        const { items } = await this.timesheetsRepository.findAll(options);
+        const unlocked = items.filter(t => !t.isLocked);
+
+        let recalculated = 0;
+        let failed = 0;
+        for (const timesheet of unlocked) {
+            try {
+                await this.recalculate(timesheet.id, userContext);
+                recalculated++;
+            } catch (err) {
+                console.error(`[TimesheetsService] bulkRecalculate failed for timesheet ${timesheet.id}:`, err.message);
+                failed++;
+            }
+        }
+
+        if (this.actionLogsService) {
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'RECALCULATE',
+                targetTable: 'timesheets',
+                description: `Tính lại hàng loạt tháng ${month}/${year}: thành công ${recalculated}, thất bại ${failed}`,
+            });
+        }
+
+        return { recalculated, failed, total: unlocked.length };
     }
 
     // ──────────────────────────────────────
@@ -489,7 +602,19 @@ export class TimesheetsService {
         if (timesheet.isLocked) {
             throw new BadRequestException(AppMessages.Errors.Timesheet.ALREADY_LOCKED);
         }
-        return this.timesheetsRepository.update(id, { isLocked: true });
+        const result = await this.timesheetsRepository.update(id, { isLocked: true });
+
+        if (this.actionLogsService) {
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'LOCK',
+                targetTable: 'timesheets',
+                targetRecordId: id,
+                description: `Khóa bảng chấm công tháng ${timesheet.month}/${timesheet.year} của ${timesheet.employee?.fullName || ''} - ${timesheet.employee?.employeeCode || ''}`,
+            });
+        }
+
+        return result;
     }
 
     async unlock(id, userContext) {
@@ -497,10 +622,22 @@ export class TimesheetsService {
         if (!timesheet.isLocked) {
             throw new BadRequestException(AppMessages.Errors.Timesheet.NOT_LOCKED);
         }
-        return this.timesheetsRepository.update(id, { isLocked: false });
+        const result = await this.timesheetsRepository.update(id, { isLocked: false });
+
+        if (this.actionLogsService) {
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'UPDATE',
+                targetTable: 'timesheets',
+                targetRecordId: id,
+                description: `Mở khóa bảng chấm công tháng ${timesheet.month}/${timesheet.year} của ${timesheet.employee?.fullName || ''} - ${timesheet.employee?.employeeCode || ''}`,
+            });
+        }
+
+        return result;
     }
 
-    async bulkLock(month, year, departmentId) {
+    async bulkLock(month, year, departmentId, userContext) {
         // Find all unlocked timesheets for this month/year
         const options = {
             month,
@@ -525,6 +662,15 @@ export class TimesheetsService {
                 await this.timesheetsRepository.update(timesheet.id, { isLocked: true });
                 lockedCount++;
             }
+        }
+
+        if (this.actionLogsService && lockedCount > 0) {
+            await this.actionLogsService.log({
+                userId: userContext?.id,
+                actionType: 'LOCK',
+                targetTable: 'timesheets',
+                description: `Khóa hàng loạt ${lockedCount} bảng chấm công tháng ${month}/${year}`,
+            });
         }
 
         return { locked: lockedCount };
@@ -833,13 +979,17 @@ export class TimesheetsService {
 
     /**
      * Calculate working day value based on actual hours vs shift hours.
-     * @param {number} actualHours - hours actually worked (after break deduction)
-     * @param {number} shiftHours - standard shift hours for 1 full day
+     * - Full day  : actualHours >= 75% of shiftHours  (e.g. ≥6h for 8h shift → 1 day)
+     * - Half day  : actualHours >= 40% of shiftHours  (e.g. ≥3.2h for 8h shift → 0.5 day)
+     * - No day    : actualHours < 40% of shiftHours
+     * This avoids penalising small lateness (e.g. 18 min late out of 8h) with a 0.5-day deduction.
+     * @param {number} actualHours - hours worked (after break deduction)
+     * @param {number} shiftHours  - standard shift hours for 1 full day
      * @returns {number} 1 | 0.5 | 0
      */
     _calcWorkingDay(actualHours, shiftHours) {
-        if (actualHours >= shiftHours) return 1;
-        if (actualHours >= shiftHours / 2) return 0.5;
+        if (actualHours >= shiftHours * 0.75) return 1;
+        if (actualHours >= shiftHours * 0.4) return 0.5;
         return 0;
     }
 

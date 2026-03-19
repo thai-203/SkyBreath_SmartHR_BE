@@ -35,6 +35,7 @@ router.get('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), time
 router.get('/:id/attendance', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getAttendanceDetails);
 
 // UC25 - Recalculate & Edit
+router.post('/bulk-recalculate', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.bulkRecalculate);
 router.post('/:id/recalculate', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.recalculate);
 router.put('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.update);
 router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.remove);
