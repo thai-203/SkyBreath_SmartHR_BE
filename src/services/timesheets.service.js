@@ -99,40 +99,50 @@ export class TimesheetsService {
             attendanceMap.get(record.employeeId).push(record);
         });
 
-        // 5. Get default shift for OT calculation
-        const defaultShift = await this._getDefaultShift();
-        const shiftHoursPerDay = defaultShift
-            ? this._calcShiftHours(defaultShift)
-            : 8;
-
-        // 6. Generate/update timesheets
+        // 5. Generate/update timesheets (per-employee shift)
         const results = [];
         for (const employee of employees) {
             const records = attendanceMap.get(employee.id) || [];
 
-            // Calculate totals
-            const workedDates = new Set();
-            let totalWorkingHours = 0;
-            let overtimeHours = 0;
+            // Get this employee's shift (or default)
+            const shift = await this._getEmployeeShift(employee.id, month, year);
+            const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
 
+            // Group records by date, taking earliest check-in & latest check-out per day
+            const dailyMap = new Map();
             records.forEach(record => {
                 if (record.checkInTime && record.checkOutTime) {
                     const checkIn = new Date(record.checkInTime);
                     const checkOut = new Date(record.checkOutTime);
                     const dateKey = `${checkIn.getFullYear()}-${String(checkIn.getMonth() + 1).padStart(2, '0')}-${String(checkIn.getDate()).padStart(2, '0')}`;
-                    workedDates.add(dateKey);
 
-                    const hoursWorked = (checkOut - checkIn) / (1000 * 60 * 60);
-                    totalWorkingHours += hoursWorked;
-
-                    // OT = hours beyond standard shift per day
-                    if (hoursWorked > shiftHoursPerDay) {
-                        overtimeHours += hoursWorked - shiftHoursPerDay;
+                    if (!dailyMap.has(dateKey)) {
+                        dailyMap.set(dateKey, { checkIn, checkOut });
+                    } else {
+                        const existing = dailyMap.get(dateKey);
+                        if (checkIn < existing.checkIn) existing.checkIn = checkIn;
+                        if (checkOut > existing.checkOut) existing.checkOut = checkOut;
                     }
                 }
             });
 
-            const totalWorkingDays = workedDates.size;
+            // Calculate totals with break deduction & half-day support
+            let totalWorkingDays = 0;
+            let totalWorkingHours = 0;
+            let overtimeHours = 0;
+
+            for (const [, { checkIn, checkOut }] of dailyMap) {
+                const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+                totalWorkingHours += actualHours;
+
+                // Half-day: >= shiftHours → 1, >= shiftHours/2 → 0.5, else → 0
+                totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
+
+                // OT = hours beyond standard shift per day
+                if (actualHours > shiftHoursPerDay) {
+                    overtimeHours += actualHours - shiftHoursPerDay;
+                }
+            }
 
             // Upsert
             const existing = await this.timesheetsRepository.findByEmployeeAndPeriod(
@@ -166,6 +176,114 @@ export class TimesheetsService {
             standardWorkingDays,
             timesheets: results,
         };
+    }
+
+    async addEmployee(addDto) {
+        const { employeeId, month, year } = addDto;
+
+        // Check if employee exists and is active
+        const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+        const employee = await employeeRepo.findOne({
+            where: { id: employeeId, isDeleted: false },
+        });
+        if (!employee) {
+            throw new NotFoundException(AppMessages.Errors.Timesheet.EMPLOYEE_NOT_FOUND);
+        }
+
+        // Check if timesheet already exists
+        const existing = await this.timesheetsRepository.findByEmployeeAndPeriod(employeeId, month, year);
+        if (existing) {
+            throw new ConflictException(AppMessages.Errors.Timesheet.ALREADY_EXISTS);
+        }
+
+        // Get month boundaries
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0, 23, 59, 59);
+
+        // Get holidays
+        const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
+        const holidays = await holidayRepo.find({
+            where: [
+                { startDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
+                { endDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
+                { startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]), endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]), isDeleted: false },
+            ],
+        });
+        const holidayDates = new Set();
+        holidays.forEach(h => {
+            const current = new Date(h.startDate);
+            const stop = new Date(h.endDate || h.startDate);
+            while (current <= stop) {
+                holidayDates.add(current.toISOString().split('T')[0]);
+                current.setDate(current.getDate() + 1);
+            }
+        });
+
+        // Get attendance records for this employee
+        const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
+        const records = await attendanceRepo.createQueryBuilder('att')
+            .where('att.employeeId = :employeeId', { employeeId })
+            .andWhere('att.isDeleted = :isDeleted', { isDeleted: false })
+            .andWhere('att.checkInTime >= :start', { start: startDate })
+            .andWhere('att.checkInTime <= :end', { end: endDate })
+            .getMany();
+
+        // Calc totals with per-employee shift, break deduction & half-day
+        const shift = await this._getEmployeeShift(employeeId, month, year);
+        const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
+
+        // Group records by date
+        const dailyMap = new Map();
+        records.forEach(record => {
+            if (record.checkInTime && record.checkOutTime) {
+                const checkIn = new Date(record.checkInTime);
+                const checkOut = new Date(record.checkOutTime);
+                const dateKey = `${checkIn.getFullYear()}-${String(checkIn.getMonth() + 1).padStart(2, '0')}-${String(checkIn.getDate()).padStart(2, '0')}`;
+
+                if (!dailyMap.has(dateKey)) {
+                    dailyMap.set(dateKey, { checkIn, checkOut });
+                } else {
+                    const existing = dailyMap.get(dateKey);
+                    if (checkIn < existing.checkIn) existing.checkIn = checkIn;
+                    if (checkOut > existing.checkOut) existing.checkOut = checkOut;
+                }
+            }
+        });
+
+        let totalWorkingDays = 0;
+        let totalWorkingHours = 0;
+        let overtimeHours = 0;
+
+        for (const [, { checkIn, checkOut }] of dailyMap) {
+            const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+            totalWorkingHours += actualHours;
+            totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
+
+            if (actualHours > shiftHoursPerDay) {
+                overtimeHours += actualHours - shiftHoursPerDay;
+            }
+        }
+
+        const timesheet = await this.timesheetsRepository.create({
+            employeeId,
+            month,
+            year,
+            totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
+            totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
+            overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+            isLocked: false,
+        });
+
+        return timesheet;
+    }
+
+    async remove(id, userContext) {
+        const timesheet = await this.findById(id, userContext);
+        if (timesheet.isLocked) {
+            throw new BadRequestException(AppMessages.Errors.Timesheet.IS_LOCKED);
+        }
+        await this.timesheetsRepository.softDelete(id);
+        return { id };
     }
 
     async findAll(queryDto, userContext) {
@@ -312,31 +430,43 @@ export class TimesheetsService {
             .andWhere('att.checkInTime <= :end', { end: endDate })
             .getMany();
 
-        const defaultShift = await this._getDefaultShift();
-        const shiftHoursPerDay = defaultShift ? this._calcShiftHours(defaultShift) : 8;
+        const shift = await this._getEmployeeShift(timesheet.employeeId, timesheet.month, timesheet.year);
+        const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
 
-        const workedDates = new Set();
-        let totalWorkingHours = 0;
-        let overtimeHours = 0;
-
+        // Group records by date
+        const dailyMap = new Map();
         records.forEach(record => {
             if (record.checkInTime && record.checkOutTime) {
                 const checkIn = new Date(record.checkInTime);
                 const checkOut = new Date(record.checkOutTime);
                 const dateKey = `${checkIn.getFullYear()}-${String(checkIn.getMonth() + 1).padStart(2, '0')}-${String(checkIn.getDate()).padStart(2, '0')}`;
-                workedDates.add(dateKey);
 
-                const hoursWorked = (checkOut - checkIn) / (1000 * 60 * 60);
-                totalWorkingHours += hoursWorked;
-
-                if (hoursWorked > shiftHoursPerDay) {
-                    overtimeHours += hoursWorked - shiftHoursPerDay;
+                if (!dailyMap.has(dateKey)) {
+                    dailyMap.set(dateKey, { checkIn, checkOut });
+                } else {
+                    const existing = dailyMap.get(dateKey);
+                    if (checkIn < existing.checkIn) existing.checkIn = checkIn;
+                    if (checkOut > existing.checkOut) existing.checkOut = checkOut;
                 }
             }
         });
 
+        let totalWorkingDays = 0;
+        let totalWorkingHours = 0;
+        let overtimeHours = 0;
+
+        for (const [, { checkIn, checkOut }] of dailyMap) {
+            const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+            totalWorkingHours += actualHours;
+            totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
+
+            if (actualHours > shiftHoursPerDay) {
+                overtimeHours += actualHours - shiftHoursPerDay;
+            }
+        }
+
         return this.timesheetsRepository.update(id, {
-            totalWorkingDays: parseFloat(workedDates.size.toFixed(2)),
+            totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
             totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
             overtimeHours: parseFloat(overtimeHours.toFixed(2)),
         });
@@ -368,6 +498,36 @@ export class TimesheetsService {
             throw new BadRequestException(AppMessages.Errors.Timesheet.NOT_LOCKED);
         }
         return this.timesheetsRepository.update(id, { isLocked: false });
+    }
+
+    async bulkLock(month, year, departmentId) {
+        // Find all unlocked timesheets for this month/year
+        const options = {
+            month,
+            year,
+            status: 'unlocked',
+            take: 10000,
+            skip: 0,
+        };
+        if (departmentId) {
+            options.departmentId = departmentId;
+        }
+
+        const { items } = await this.timesheetsRepository.findAll(options);
+
+        if (items.length === 0) {
+            return { locked: 0 };
+        }
+
+        let lockedCount = 0;
+        for (const timesheet of items) {
+            if (!timesheet.isLocked) {
+                await this.timesheetsRepository.update(timesheet.id, { isLocked: true });
+                lockedCount++;
+            }
+        }
+
+        return { locked: lockedCount };
     }
 
     // ──────────────────────────────────────
@@ -642,6 +802,47 @@ export class TimesheetsService {
         return parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
     }
 
+    /**
+     * Calculate actual working hours with break time deduction.
+     * Deducts the overlapping portion of break time from the raw worked duration.
+     * @param {Date} checkIn
+     * @param {Date} checkOut
+     * @param {Object|null} shift - WorkingShiftEntity with breakStartTime/breakEndTime
+     * @returns {number} actual hours worked
+     */
+    _calcActualHours(checkIn, checkOut, shift) {
+        const rawMinutes = (checkOut - checkIn) / (1000 * 60);
+
+        if (!shift || !shift.breakStartTime || !shift.breakEndTime) {
+            return rawMinutes / 60;
+        }
+
+        // Calculate overlap between [checkIn, checkOut] and [breakStart, breakEnd]
+        const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+        const checkOutMinutes = checkOut.getHours() * 60 + checkOut.getMinutes();
+        const breakStart = this._timeToMinutes(shift.breakStartTime);
+        const breakEnd = this._timeToMinutes(shift.breakEndTime);
+
+        // Overlap = max(0, min(checkOut, breakEnd) - max(checkIn, breakStart))
+        const overlapStart = Math.max(checkInMinutes, breakStart);
+        const overlapEnd = Math.min(checkOutMinutes, breakEnd);
+        const breakOverlap = Math.max(0, overlapEnd - overlapStart);
+
+        return (rawMinutes - breakOverlap) / 60;
+    }
+
+    /**
+     * Calculate working day value based on actual hours vs shift hours.
+     * @param {number} actualHours - hours actually worked (after break deduction)
+     * @param {number} shiftHours - standard shift hours for 1 full day
+     * @returns {number} 1 | 0.5 | 0
+     */
+    _calcWorkingDay(actualHours, shiftHours) {
+        if (actualHours >= shiftHours) return 1;
+        if (actualHours >= shiftHours / 2) return 0.5;
+        return 0;
+    }
+
     _buildDailyDetails(records, shift, year, month, holidayDates, leaveRequests = []) {
         const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -722,7 +923,7 @@ export class TimesheetsService {
                 // Take earliest check-in and latest check-out
                 const checkInTimes = dayRecords.filter(r => r.checkInTime).map(r => new Date(r.checkInTime).getTime());
                 const checkOutTimes = dayRecords.filter(r => r.checkOutTime).map(r => new Date(r.checkOutTime).getTime());
-                
+
                 const checkIn = checkInTimes.length > 0 ? new Date(Math.min(...checkInTimes)) : null;
                 const checkOut = checkOutTimes.length > 0 ? new Date(Math.max(...checkOutTimes)) : null;
 
@@ -743,12 +944,16 @@ export class TimesheetsService {
                 detail.status = 'PRESENT';
 
                 if (checkOut) {
-                    const hoursWorked = (checkOut - checkIn) / (1000 * 60 * 60);
-                    detail.workingHours = parseFloat(hoursWorked.toFixed(2));
+                    const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+                    detail.workingHours = parseFloat(actualHours.toFixed(2));
                     detail.working_hours = detail.workingHours;
 
-                    if (hoursWorked > shiftHours) {
-                        detail.overtimeHours = parseFloat((hoursWorked - shiftHours).toFixed(2));
+                    // Half-day calculation
+                    detail.workingDayValue = this._calcWorkingDay(actualHours, shiftHours);
+                    detail.working_day_value = detail.workingDayValue;
+
+                    if (actualHours > shiftHours) {
+                        detail.overtimeHours = parseFloat((actualHours - shiftHours).toFixed(2));
                         detail.overtime_hours = detail.overtimeHours;
                     }
                 }

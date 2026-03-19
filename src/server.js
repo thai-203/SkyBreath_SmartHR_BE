@@ -33,6 +33,8 @@ import { shiftsRoutes } from './routes/shifts.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
 import { ContractsService } from './services/contracts.service.js';
+import { startTimesheetAutoGenerateJob } from './jobs/timesheet-auto-generate.job.js';
+import { startAttendanceSyncJob } from './jobs/attendance-sync.job.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
@@ -130,6 +132,20 @@ const startServer = async () => {
         console.log('Scheduled contract processor started (hourly)');
       } catch (e) {
         console.error('Failed to initialize scheduled contract processor', e);
+      }
+
+      // Timesheet auto-generate job (1st of every month)
+      try {
+        startTimesheetAutoGenerateJob();
+      } catch (e) {
+        console.error('Failed to initialize timesheet auto-generate job', e);
+      }
+
+      // Attendance sync job (daily at 23:30)
+      try {
+        startAttendanceSyncJob();
+      } catch (e) {
+        console.error('Failed to initialize attendance sync job', e);
       }
     });
   } catch (error) {
