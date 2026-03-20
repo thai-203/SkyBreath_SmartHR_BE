@@ -43,6 +43,5 @@ router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'),
 // UC26 - Lock / Unlock
 router.post('/bulk-lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.bulkLock);
 router.post('/:id/lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.lock);
-router.post('/:id/unlock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.unlock);
 
 export const timesheetsRoutes = router;
