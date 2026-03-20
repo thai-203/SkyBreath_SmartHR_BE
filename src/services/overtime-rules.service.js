@@ -34,7 +34,13 @@ export class OvertimeRulesService {
             await this._validateDepartmentIdsExist(data.departmentIds);
         }
         if (data.versionStatus === 'ACTIVE' && data.effectiveFrom) {
-            await this._validateNoOverlap(data.overtimeTypeId, data.effectiveFrom, data.effectiveTo, null);
+            await this._validateNoOverlap(
+                data.overtimeTypeId,
+                data.effectiveFrom,
+                data.effectiveTo,
+                data.departmentIds,
+                null
+            );
         }
         return this.overtimeRulesRepository.create(data);
     }
@@ -112,8 +118,12 @@ export class OvertimeRulesService {
             const typeId = data.overtimeTypeId || existing.overtimeTypeId;
             const newStatus = data.versionStatus || existing.versionStatus;
 
+            const departmentIds = data.departmentIds !== undefined
+                ? data.departmentIds
+                : (existing.departments || []).map(d => d.id);
+
             if (newStatus === 'ACTIVE') {
-                await this._validateNoOverlap(typeId, from, to, id);
+                await this._validateNoOverlap(typeId, from, to, departmentIds, id);
             }
         }
 
@@ -178,9 +188,9 @@ export class OvertimeRulesService {
         }
     }
 
-    async _validateNoOverlap(overtimeTypeId, effectiveFrom, effectiveTo, excludeId) {
+    async _validateNoOverlap(overtimeTypeId, effectiveFrom, effectiveTo, departmentIds, excludeId) {
         const overlapping = await this.overtimeRulesRepository.findOverlapping(
-            overtimeTypeId, effectiveFrom, effectiveTo, excludeId
+            overtimeTypeId, effectiveFrom, effectiveTo, departmentIds, excludeId
         );
         if (overlapping.length > 0) {
             const conflict = overlapping[0];
