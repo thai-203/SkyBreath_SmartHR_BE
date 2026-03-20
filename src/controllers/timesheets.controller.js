@@ -121,15 +121,6 @@ export class TimesheetsController {
         }
     };
 
-    unlock = async (req, res, next) => {
-        try {
-            const result = await this.timesheetsService.unlock(parseInt(req.params.id), req.user);
-            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.UNLOCKED, result);
-        } catch (error) {
-            next(error);
-        }
-    };
-
     bulkLock = async (req, res, next) => {
         try {
             const { month, year, departmentId } = req.body;

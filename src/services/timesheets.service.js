@@ -11,8 +11,9 @@ import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { RequestEntity } from '../models/entities/request.entity.js';
 
 export class TimesheetsService {
-    constructor(timesheetsRepository) {
+    constructor(timesheetsRepository, actionLogsService) {
         this.timesheetsRepository = timesheetsRepository;
+        this.actionLogsService = actionLogsService;
     }
 
     // ──────────────────────────────────────
@@ -611,26 +612,6 @@ export class TimesheetsService {
                 targetTable: 'timesheets',
                 targetRecordId: id,
                 description: `Khóa bảng chấm công tháng ${timesheet.month}/${timesheet.year} của ${timesheet.employee?.fullName || ''} - ${timesheet.employee?.employeeCode || ''}`,
-            });
-        }
-
-        return result;
-    }
-
-    async unlock(id, userContext) {
-        const timesheet = await this.findById(id, userContext);
-        if (!timesheet.isLocked) {
-            throw new BadRequestException(AppMessages.Errors.Timesheet.NOT_LOCKED);
-        }
-        const result = await this.timesheetsRepository.update(id, { isLocked: false });
-
-        if (this.actionLogsService) {
-            await this.actionLogsService.log({
-                userId: userContext?.id,
-                actionType: 'UPDATE',
-                targetTable: 'timesheets',
-                targetRecordId: id,
-                description: `Mở khóa bảng chấm công tháng ${timesheet.month}/${timesheet.year} của ${timesheet.employee?.fullName || ''} - ${timesheet.employee?.employeeCode || ''}`,
             });
         }
 
