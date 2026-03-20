@@ -43,6 +43,8 @@ import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { PenaltyEntity } from '../models/entities/penalty.entity.js';
 import { PayrollTypeEntity } from '../models/entities/payroll-type.entity.js';
+import { HolidayGroupEntity } from '../models/entities/holiday-group.entity.js';
+import { HolidayConfigEntity } from '../models/entities/holiday-config.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -102,6 +104,8 @@ export const databaseConfig = {
     OvertimeRuleDepartmentEntity,
     PenaltyEntity,
     PayrollTypeEntity,
+    HolidayGroupEntity,
+    HolidayConfigEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],
