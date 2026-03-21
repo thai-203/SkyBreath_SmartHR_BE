@@ -1,5 +1,7 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { RequestEntity } from '../models/entities/request.entity.js';
+import { BadRequestException, NotFoundException } from '../common/exceptions/index.js';
 
 export class RequestsService {
     constructor(requestsRepository) {
@@ -44,6 +46,33 @@ export class RequestsService {
             status: l.requestStatus,
             content: l.requestContent
         }));
+    }
+
+    async createRequest(data, userContext) {
+        let employeeId = data.employeeId;
+        const employee = await this._getEmployeeByUserId(userContext.id);
+        
+        // If user is employee, force their own employee ID
+        if (this._isEmployee(userContext)) {
+            if (!employee) throw new NotFoundException('Employee record not found for this user');
+            employeeId = employee.id;
+        }
+
+        if (!employeeId) {
+            throw new BadRequestException('employeeId is required');
+        }
+
+        const requestRepo = AppDataSource.getRepository(RequestEntity);
+        const newReq = requestRepo.create({
+            employeeId: employeeId,
+            requestType: data.requestType || 'EXCUSE',
+            requestContent: data.requestContent ? JSON.stringify(data.requestContent) : null,
+            startDate: data.startDate,
+            endDate: data.endDate || data.startDate,
+            requestStatus: 'PENDING'
+        });
+
+        return await requestRepo.save(newReq);
     }
 
     _isEmployee(userContext) {
