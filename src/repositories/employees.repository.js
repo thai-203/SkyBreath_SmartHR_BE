@@ -208,4 +208,21 @@ export class EmployeesRepository {
       },
     });
   }
+
+  async findByRoleNames(roleNames) {
+    if (!roleNames || roleNames.length === 0) return [];
+    
+    // Normalize to lower case for comparison if needed, but here we assume exact match or case-insensitive
+    const normalizedRoles = roleNames.map(r => r.toUpperCase());
+
+    return this.repository
+      .createQueryBuilder('employee')
+      .leftJoinAndSelect('employee.user', 'user')
+      .leftJoinAndSelect('user.userRoles', 'userRole')
+      .leftJoinAndSelect('userRole.role', 'role')
+      .leftJoinAndSelect('employee.department', 'department')
+      .where('role.roleName IN (:...roleNames)', { roleNames: normalizedRoles })
+      .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
+      .getMany();
+  }
 }

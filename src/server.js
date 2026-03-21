@@ -19,6 +19,8 @@ import { departmentsRoutes } from './routes/departments.routes.js';
 import { employeeSalariesRoutes } from './routes/employee-salaries.routes.js';
 import { employeesRoutes } from './routes/employees.routes.js';
 import { holidayListRoutes } from './routes/holiday-list.routes.js';
+import holidayConfigsRoutes from './routes/holiday-configs.routes.js';
+import holidayGroupsRoutes from './routes/holiday-groups.routes.js';
 import { jobGradesRoutes } from './routes/job-grades.routes.js';
 import { onboardingRoutes } from './routes/onboarding.routes.js';
 import { overtimeRulesRoutes } from './routes/overtime-rules.routes.js';
@@ -35,6 +37,7 @@ import { usersRoutes } from './routes/users.routes.js';
 import { ContractsService } from './services/contracts.service.js';
 import { startTimesheetAutoGenerateJob } from './jobs/timesheet-auto-generate.job.js';
 import { startAttendanceSyncJob } from './jobs/attendance-sync.job.js';
+import { startHolidayReminderJob } from './jobs/holiday-reminder.job.js';
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
@@ -83,6 +86,8 @@ app.use(`/${API_PREFIX}/${API_VERSION}/overtime-rules`, overtimeRulesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/penalties`, penaltiesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/shifts`, shiftsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/holiday-list`, holidayListRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/holiday-configs`, holidayConfigsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/holiday-groups`, holidayGroupsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll`, payrollRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll-types`, payrollTypeRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/requests`, requestsRoutes);
@@ -141,11 +146,17 @@ const startServer = async () => {
         console.error('Failed to initialize timesheet auto-generate job', e);
       }
 
-      // Attendance sync job (daily at 23:30)
       try {
         startAttendanceSyncJob();
       } catch (e) {
         console.error('Failed to initialize attendance sync job', e);
+      }
+
+      // Holiday reminder job (daily at 08:00)
+      try {
+        startHolidayReminderJob();
+      } catch (e) {
+        console.error('Failed to initialize holiday reminder job', e);
       }
     });
   } catch (error) {
