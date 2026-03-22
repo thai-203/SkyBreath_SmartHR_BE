@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { PenaltiesController } from '../controllers/penalties.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { CreatePenaltyDto, UpdatePenaltyDto } from '../models/dto/penalties/index.js';
 
@@ -75,6 +76,7 @@ const penaltiesController = new PenaltiesController();
 router.get(
     '/',
     authMiddleware,
+    permissionsMiddleware('PENALTY_READ'),
     penaltiesController.findAll
 );
 
@@ -99,6 +101,7 @@ router.get(
 router.get(
     '/:id',
     authMiddleware,
+    permissionsMiddleware('PENALTY_READ'),
     penaltiesController.findById
 );
 
@@ -140,6 +143,7 @@ router.get(
 router.post(
     '/',
     authMiddleware,
+    permissionsMiddleware('PENALTY_CREATE'),
     validationMiddleware(CreatePenaltyDto),
     penaltiesController.create
 );
@@ -186,6 +190,7 @@ router.post(
 router.put(
     '/:id',
     authMiddleware,
+    permissionsMiddleware('PENALTY_UPDATE'),
     validationMiddleware(UpdatePenaltyDto),
     penaltiesController.update
 );
@@ -211,6 +216,7 @@ router.put(
 router.delete(
     '/:id',
     authMiddleware,
+    permissionsMiddleware('PENALTY_DELETE'),
     penaltiesController.remove
 );
 

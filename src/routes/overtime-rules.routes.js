@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { OvertimeRulesController } from '../controllers/overtime-rules.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { CreateOvertimeRuleDto, UpdateOvertimeRuleDto } from '../models/dto/overtime-rules/index.js';
 
@@ -15,15 +16,16 @@ const overtimeRulesController = new OvertimeRulesController();
  */
 
 // GET /overtime-rules
-router.get('/', authMiddleware, overtimeRulesController.findAll);
+router.get('/', authMiddleware, permissionsMiddleware('OVERTIME_RULE_READ'), overtimeRulesController.findAll);
 
 // GET /overtime-rules/:id
-router.get('/:id', authMiddleware, overtimeRulesController.findById);
+router.get('/:id', authMiddleware, permissionsMiddleware('OVERTIME_RULE_READ'), overtimeRulesController.findById);
 
 // POST /overtime-rules
 router.post(
     '/',
     authMiddleware,
+    permissionsMiddleware('OVERTIME_RULE_CREATE'),
     validationMiddleware(CreateOvertimeRuleDto),
     overtimeRulesController.create
 );
@@ -32,6 +34,7 @@ router.post(
 router.put(
     '/:id',
     authMiddleware,
+    permissionsMiddleware('OVERTIME_RULE_UPDATE'),
     validationMiddleware(UpdateOvertimeRuleDto),
     overtimeRulesController.update
 );
@@ -40,10 +43,11 @@ router.put(
 router.patch(
     '/:id/activate',
     authMiddleware,
+    permissionsMiddleware('OVERTIME_RULE_UPDATE'),
     overtimeRulesController.activate
 );
 
 // DELETE /overtime-rules/:id
-router.delete('/:id', authMiddleware, overtimeRulesController.remove);
+router.delete('/:id', authMiddleware, permissionsMiddleware('OVERTIME_RULE_DELETE'), overtimeRulesController.remove);
 
 export const overtimeRulesRoutes = router;

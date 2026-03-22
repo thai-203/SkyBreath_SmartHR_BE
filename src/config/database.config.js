@@ -110,7 +110,6 @@ export const databaseConfig = {
     PayrollTypeEntity,
     HolidayGroupEntity,
     HolidayConfigEntity,
-    OvertimeRequestDetailEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

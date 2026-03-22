@@ -19,7 +19,7 @@ export class OvertimeRulesService {
     }
 
     async create(data) {
-        if (data.versionStatus && data.versionStatus !== 'DRAFT' && data.effectiveFrom) {
+        if (data.versionStatus === 'ACTIVE' && data.effectiveFrom) {
             await this._validateNoOverlap(data.overtimeTypeId, data.effectiveFrom, data.effectiveTo, null);
         }
         return this.overtimeRulesRepository.create(data);
@@ -32,11 +32,50 @@ export class OvertimeRulesService {
             throw new BadRequestException('Không thể chuyển quy định đã kích hoạt (ACTIVE) về bản nháp (DRAFT).');
         }
 
-        if (existing.versionStatus === 'ACTIVE') {
-            const hasRequests = await this.overtimeRulesRepository.hasLinkedRequests(id);
-            if (hasRequests) {
+        const usage = await this.overtimeRulesRepository.getUsageStatus(id);
+
+        if (usage.hasPayroll) {
+            // Nếu đã tính lương => Khóa hoàn toàn, chỉ cho phép Expire (đóng ngày)
+            const keysToChange = Object.keys(data).filter(
+                k => data[k] !== undefined && k !== 'versionStatus' && k !== 'effectiveTo'
+            );
+
+            const hasActualChanges = keysToChange.some(k => {
+                if (k === 'effectiveFrom') {
+                    const newDate = data[k] ? new Date(data[k]).toISOString().split('T')[0] : null;
+                    const oldDate = existing[k] ? new Date(existing[k]).toISOString().split('T')[0] : null;
+                    return newDate !== oldDate;
+                }
+                return String(data[k]) !== String(existing[k]);
+            });
+
+            if (hasActualChanges) {
                 throw new ForbiddenException(
-                    'Không thể sửa quy định đã có dữ liệu OT. Hãy tạo phiên bản mới (DRAFT).'
+                    "Quy định này đã được ĐƯA VÀO BẢNG LƯƠNG. Toàn bộ thông tin quan trọng bị khóa hoàn toàn. Bạn chỉ có thể sửa ngày kết thúc để ngưng áp dụng."
+                );
+            }
+        } else if (usage.hasRequests) {
+            // Nếu mới có đăng ký => Cấm sửa trường nhạy cảm
+            const criticalFields = ['salaryMultiplier', 'maxHoursPerDay', 'maxHoursPerMonth', 'overtimeTypeId', 'effectiveFrom'];
+
+            const attemptedCriticalEdits = criticalFields.filter(field => {
+                if (data[field] === undefined) return false;
+
+                if (field === 'effectiveFrom') {
+                    const newDate = data[field] ? new Date(data[field]).toISOString().split('T')[0] : null;
+                    const oldDate = existing[field] ? new Date(existing[field]).toISOString().split('T')[0] : null;
+                    return newDate !== oldDate;
+                }
+
+                if (field === 'salaryMultiplier' || field === 'maxHoursPerDay' || field === 'maxHoursPerMonth') {
+                    return Number(data[field]) !== Number(existing[field]);
+                }
+                return String(data[field]) !== String(existing[field]);
+            });
+
+            if (attemptedCriticalEdits.length > 0) {
+                throw new ForbiddenException(
+                    "Quy định này đã có nhân viên ĐĂNG KÝ OT. Không thể sửa Hệ số lương, Giờ tối đa, Loại OT hay Ngày áp dụng. Bạn chỉ có thể sửa tên hoặc ngày kết thúc."
                 );
             }
         }
@@ -47,7 +86,7 @@ export class OvertimeRulesService {
             const to = data.effectiveTo !== undefined ? data.effectiveTo : existing.effectiveTo;
             const newStatus = data.versionStatus || existing.versionStatus;
 
-            if (newStatus !== 'DRAFT') {
+            if (newStatus === 'ACTIVE') {
                 await this._validateNoOverlap(typeId, from, to, id);
             }
         }
@@ -65,8 +104,8 @@ export class OvertimeRulesService {
             throw new ConflictException('Policy này đã ở trạng thái ACTIVE.');
         }
 
-        await this._validateNoOverlap(rule.overtimeTypeId, rule.effectiveFrom, rule.effectiveTo, id);
-        return this.overtimeRulesRepository.activate(id, rule.overtimeTypeId);
+        // Thực hiện auto versioning: đóng policy cũ và activate policy mới mà không gây validation overlap 
+        return this.overtimeRulesRepository.activateWithAutoVersioning(rule);
     }
 
     async remove(id) {
