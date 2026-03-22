@@ -1,46 +1,32 @@
-import { Entity, Column, OneToOne, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity.js';
 import { RequestEntity } from './request.entity.js';
-import { OvertimeTypeEntity } from './overtime-type.entity.js';
 import { OvertimeRuleEntity } from './overtime-rule.entity.js';
-import { PayrollEntity } from './payroll.entity.js';
 
 @Entity('overtime_request_details')
 export class OvertimeRequestDetailEntity extends BaseEntity {
-    @Column({ name: 'request_id', type: 'int', unique: true })
+    @Column({ name: 'request_id', type: 'int' })
     requestId;
 
-    @OneToOne(() => RequestEntity)
-    @JoinColumn({ name: 'request_id' })
-    request;
-
-    @Column({ name: 'overtime_type_id', type: 'int' })
+    @Column({ name: 'overtime_type_id', type: 'int', nullable: true })
     overtimeTypeId;
 
-    @ManyToOne(() => OvertimeTypeEntity)
-    @JoinColumn({ name: 'overtime_type_id' })
-    overtimeType;
-
-    @Column({ name: 'overtime_rule_id', type: 'int' })
+    @Column({ name: 'overtime_rule_id', type: 'int', nullable: true })
     overtimeRuleId;
-
-    @ManyToOne(() => OvertimeRuleEntity)
-    @JoinColumn({ name: 'overtime_rule_id' })
-    overtimeRule;
 
     @Column({ name: 'work_date', type: 'date' })
     workDate;
 
-    @Column({ name: 'start_time', type: 'time' })
+    @Column({ name: 'start_time', type: 'time', nullable: true })
     startTime;
 
-    @Column({ name: 'end_time', type: 'time' })
+    @Column({ name: 'end_time', type: 'time', nullable: true })
     endTime;
 
     @Column({ name: 'total_hours', type: 'decimal', precision: 5, scale: 2 })
     totalHours;
 
-    @Column({ name: 'rate_multiplier', type: 'decimal', precision: 5, scale: 2 })
+    @Column({ name: 'rate_multiplier', type: 'decimal', precision: 5, scale: 2, nullable: true })
     rateMultiplier;
 
     @Column({ name: 'overtime_amount', type: 'decimal', precision: 15, scale: 2, nullable: true })
@@ -52,7 +38,11 @@ export class OvertimeRequestDetailEntity extends BaseEntity {
     @Column({ name: 'payroll_id', type: 'int', nullable: true })
     payrollId;
 
-    @ManyToOne(() => PayrollEntity)
-    @JoinColumn({ name: 'payroll_id' })
-    payroll;
+    @ManyToOne(() => RequestEntity, { createForeignKeyConstraints: false })
+    @JoinColumn({ name: 'request_id' })
+    request;
+
+    @ManyToOne(() => OvertimeRuleEntity, { createForeignKeyConstraints: false })
+    @JoinColumn({ name: 'overtime_rule_id' })
+    overtimeRule;
 }

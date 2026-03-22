@@ -2,7 +2,7 @@ import { ResponseUtil } from '../common/utils/response.util.js';
 import { AppMessages } from '../common/constants/index.js';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { GenerateTimesheetDto, TimesheetQueryDto, UpdateTimesheetDto } from '../models/dto/timesheets/index.js';
+import { GenerateTimesheetDto, TimesheetQueryDto, UpdateTimesheetDto, AddEmployeeTimesheetDto } from '../models/dto/timesheets/index.js';
 
 export class TimesheetsController {
     constructor(timesheetsService) {
@@ -17,8 +17,32 @@ export class TimesheetsController {
                 const message = Object.values(errors[0].constraints)[0];
                 return ResponseUtil.sendResponse(res, message, null, 400);
             }
-            const result = await this.timesheetsService.generate(dto);
+            const result = await this.timesheetsService.generate(dto, req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.GENERATED, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    addEmployee = async (req, res, next) => {
+        try {
+            const dto = plainToInstance(AddEmployeeTimesheetDto, req.body);
+            const errors = await validate(dto);
+            if (errors.length > 0) {
+                const message = Object.values(errors[0].constraints)[0];
+                return ResponseUtil.sendResponse(res, message, null, 400);
+            }
+            const result = await this.timesheetsService.addEmployee(dto);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.ADDED_EMPLOYEE, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    remove = async (req, res, next) => {
+        try {
+            const result = await this.timesheetsService.remove(parseInt(req.params.id), req.user);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.REMOVED_EMPLOYEE, result);
         } catch (error) {
             next(error);
         }
@@ -61,6 +85,18 @@ export class TimesheetsController {
         }
     };
 
+    bulkRecalculate = async (req, res, next) => {
+        try {
+            const { month, year, departmentId } = req.body;
+            const result = await this.timesheetsService.bulkRecalculate(
+                parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : undefined, req.user
+            );
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RECALCULATED, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     update = async (req, res, next) => {
         try {
             const dto = plainToInstance(UpdateTimesheetDto, req.body);
@@ -85,10 +121,13 @@ export class TimesheetsController {
         }
     };
 
-    unlock = async (req, res, next) => {
+    bulkLock = async (req, res, next) => {
         try {
-            const result = await this.timesheetsService.unlock(parseInt(req.params.id), req.user);
-            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.UNLOCKED, result);
+            const { month, year, departmentId } = req.body;
+            const result = await this.timesheetsService.bulkLock(
+                parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : undefined, req.user
+            );
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.BULK_LOCKED, result);
         } catch (error) {
             next(error);
         }

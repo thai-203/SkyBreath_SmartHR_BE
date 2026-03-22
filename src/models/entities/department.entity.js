@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity.js';
 import { EmployeeEntity } from './employee.entity.js';
+import { HolidayGroupEntity } from './holiday-group.entity.js';
 
 @Entity('departments')
 export class DepartmentEntity extends BaseEntity {
@@ -20,4 +21,11 @@ export class DepartmentEntity extends BaseEntity {
     @ManyToOne(() => EmployeeEntity, { nullable: true })
     @JoinColumn({ name: 'manager_employee_id' })
     manager;
+
+    @Column({ name: 'holiday_group_id', nullable: true, type: 'int' })
+    holidayGroupId;
+
+    @ManyToOne(() => HolidayGroupEntity, { nullable: true })
+    @JoinColumn({ name: 'holiday_group_id' })
+    holidayGroup;
 }

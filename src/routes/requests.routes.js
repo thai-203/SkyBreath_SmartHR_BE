@@ -20,4 +20,41 @@ const requestsController = new RequestsController(requestsService);
 
 router.get('/leaves/calendar', authMiddleware, requestsController.getLeaveCalendar);
 
+/**
+ * @swagger
+ * /requests:
+ *   post:
+ *     summary: Create a new request (EXCUSE, OVERTIME, LEAVE)
+ *     tags: [Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - requestType
+ *               - startDate
+ *             properties:
+ *               employeeId:
+ *                 type: integer
+ *               requestType:
+ *                 type: string
+ *               startDate:
+ *                 type: string
+ *                 format: date
+ *               endDate:
+ *                 type: string
+ *                 format: date
+ *               requestContent:
+ *                 type: object
+ *                 description: JSON data containing reason, proofImage, etc.
+ *     responses:
+ *       201:
+ *         description: Request created
+ */
+router.post('/', authMiddleware, requestsController.create);
+
 export const requestsRoutes = router;

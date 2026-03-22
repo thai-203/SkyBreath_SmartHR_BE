@@ -41,8 +41,16 @@ export class HolidayListRepository {
             isDeleted: false,
         };
 
+        if (queryDto.holidayGroupId) {
+            where.holidayGroupId = queryDto.holidayGroupId;
+        }
+
         if (search) {
             where.holidayName = Like(`%${search}%`);
+        }
+
+        if (queryDto.holidayType) {
+            where.holidayType = queryDto.holidayType;
         }
 
         if (startDate && endDate) {
@@ -101,6 +109,12 @@ export class HolidayListRepository {
     async findByNameAndRange(name, startDate, endDate) {
         return this.repository.findOne({
             where: { holidayName: name, startDate, endDate, isDeleted: false },
+        });
+    }
+
+    async findByStartDate(date) {
+        return this.repository.find({
+            where: { startDate: Like(`${date}%`), isDeleted: false }
         });
     }
 }
