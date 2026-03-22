@@ -26,6 +26,27 @@ export class RequestEntity extends BaseEntity {
     @Column({ name: 'request_status', default: 'PENDING', type: 'varchar' })
     requestStatus;
 
+    @Column({ name: 'submitted_at', type: 'datetime', nullable: true })
+    submittedAt;
+
+    @Column({ name: 'approved_by', type: 'int', nullable: true })
+    approvedBy;
+
+    @Column({ name: 'approved_at', type: 'datetime', nullable: true })
+    approvedAt;
+
+    @Column({ name: 'rejected_by', type: 'int', nullable: true })
+    rejectedBy;
+
+    @Column({ name: 'rejected_at', type: 'datetime', nullable: true })
+    rejectedAt;
+
+    @Column({ name: 'rejection_reason', type: 'text', nullable: true })
+    rejectionReason;
+
+    @Column({ name: 'cancelled_at', type: 'datetime', nullable: true })
+    cancelledAt;
+
     @ManyToOne(() => EmployeeEntity)
     @JoinColumn({ name: 'employee_id' })
     employee;
