@@ -1,6 +1,7 @@
 import { AppDataSource } from '../database/data-source.js';
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
+import { ConflictException } from '../common/exceptions/index.js';
 
 export class OvertimeRulesRepository {
     constructor() {
@@ -56,6 +57,10 @@ export class OvertimeRulesRepository {
                 relations: ['department'],
             });
             rule.departments = ruleDepts.map((rd) => rd.department).filter(Boolean);
+
+            const usage = await this.getUsageStatus(rule.id);
+            rule.hasRequests = usage.hasRequests;
+            rule.hasPayroll = usage.hasPayroll;
         }
 
         return { items: rules, total };
@@ -73,6 +78,10 @@ export class OvertimeRulesRepository {
                 relations: ['department'],
             });
             rule.departments = ruleDepts.map((rd) => rd.department).filter(Boolean);
+
+            const usage = await this.getUsageStatus(rule.id);
+            rule.hasRequests = usage.hasRequests;
+            rule.hasPayroll = usage.hasPayroll;
         }
 
         return rule;
@@ -85,7 +94,7 @@ export class OvertimeRulesRepository {
         const query = this.repository.createQueryBuilder('rule')
             .where('rule.isDeleted = false')
             .andWhere('rule.overtimeTypeId = :overtimeTypeId', { overtimeTypeId })
-            .andWhere('rule.versionStatus != :draft', { draft: 'DRAFT' });
+            .andWhere('rule.versionStatus = :active', { active: 'ACTIVE' });
 
         if (effectiveTo) {
             query.andWhere(
@@ -106,15 +115,22 @@ export class OvertimeRulesRepository {
         return query.getMany();
     }
 
-    async hasLinkedRequests(id) {
+    async getUsageStatus(id) {
         try {
-            const result = await AppDataSource.query(
-                `SELECT 1 FROM overtime_request_details WHERE policy_id = ? LIMIT 1`,
+            const requests = await AppDataSource.query(
+                `SELECT payroll_id FROM overtime_request_details WHERE overtime_rule_id = ?`,
                 [id]
             );
-            return result.length > 0;
-        } catch {
-            return false;
+
+            if (requests.length === 0) {
+                return { hasRequests: false, hasPayroll: false };
+            }
+
+            const hasPayroll = requests.some(row => row.payroll_id !== null);
+            return { hasRequests: true, hasPayroll };
+        } catch (err) {
+            console.error("Error checking usage status:", err);
+            return { hasRequests: false, hasPayroll: false };
         }
     }
 
@@ -160,26 +176,91 @@ export class OvertimeRulesRepository {
         return this.findById(id);
     }
 
-    async activate(id, overtimeTypeId) {
-        // EXPIRE các policy ACTIVE cùng type
-        await this.repository
-            .createQueryBuilder()
-            .update(OvertimeRuleEntity)
-            .set({ versionStatus: 'EXPIRED', status: 'INACTIVE' })
-            .where('overtimeTypeId = :type AND versionStatus = :active AND id != :id AND isDeleted = false', {
-                type: overtimeTypeId,
-                active: 'ACTIVE',
-                id,
-            })
-            .execute();
+    async activateWithAutoVersioning(newRule) {
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
 
-        // Activate policy mới
-        await this.repository.update(id, {
-            versionStatus: 'ACTIVE',
-            status: 'ACTIVE',
-        });
+        try {
+            const activeRulesQuery = queryRunner.manager
+                .createQueryBuilder(OvertimeRuleEntity, 'rule')
+                .where('rule.isDeleted = false')
+                .andWhere('rule.overtimeTypeId = :overtimeTypeId', { overtimeTypeId: newRule.overtimeTypeId })
+                .andWhere('rule.versionStatus = :active', { active: 'ACTIVE' })
+                .andWhere('rule.id != :newRuleId', { newRuleId: newRule.id });
 
-        return this.findById(id);
+            if (newRule.effectiveFrom) {
+                // Handle date conversion if needed
+                const effectiveFromStr = newRule.effectiveFrom instanceof Date ?
+                    newRule.effectiveFrom.toISOString().split('T')[0] : newRule.effectiveFrom;
+
+                activeRulesQuery.andWhere(
+                    '(rule.effectiveTo IS NULL OR rule.effectiveTo >= :effectiveFrom)',
+                    { effectiveFrom: effectiveFromStr }
+                );
+            }
+
+            if (newRule.effectiveTo) {
+                const effectiveToStr = newRule.effectiveTo instanceof Date ?
+                    newRule.effectiveTo.toISOString().split('T')[0] : newRule.effectiveTo;
+
+                activeRulesQuery.andWhere(
+                    '(rule.effectiveFrom <= :effectiveTo)',
+                    { effectiveTo: effectiveToStr }
+                );
+            }
+
+            const activeRules = await activeRulesQuery.getMany();
+
+            const parseDateString = (dateInput) => {
+                if (!dateInput) return new Date(0);
+                if (dateInput instanceof Date) return dateInput;
+                return new Date(dateInput);
+            };
+
+            const newEffectiveFromDate = newRule.effectiveFrom ? parseDateString(newRule.effectiveFrom) : null;
+
+            if (activeRules.length > 0) {
+                if (activeRules.length > 1) {
+                    throw new ConflictException('Quy định này đang trùng thời gian với nhiều quy định ACTIVE khác!');
+                }
+
+                const oldRule = activeRules[0];
+                const oldEffectiveFromDate = oldRule.effectiveFrom ? parseDateString(oldRule.effectiveFrom) : new Date(0);
+
+                if (oldRule.effectiveTo === null && newEffectiveFromDate && oldEffectiveFromDate < newEffectiveFromDate) {
+                    const prevDay = new Date(newEffectiveFromDate);
+                    prevDay.setDate(prevDay.getDate() - 1);
+                    const year = prevDay.getFullYear();
+                    const month = String(prevDay.getMonth() + 1).padStart(2, '0');
+                    const day = String(prevDay.getDate()).padStart(2, '0');
+                    const prevDayString = `${year}-${month}-${day}`;
+
+                    await queryRunner.manager.update(OvertimeRuleEntity, oldRule.id, {
+                        effectiveTo: prevDayString
+                    });
+                } else {
+                    const rulePeriod = `Từ ${oldRule.effectiveFrom}${oldRule.effectiveTo ? ' đến ' + oldRule.effectiveTo : ' - Vô thời hạn'}`;
+                    throw new ConflictException(
+                        `Khoảng thời gian hiệu lực bị trùng với quy định "${oldRule.name}" (${rulePeriod}). Vui lòng kiểm tra lại ngày áp dụng.`
+                    );
+                }
+            }
+
+            // Kích hoạt policy mới
+            await queryRunner.manager.update(OvertimeRuleEntity, newRule.id, {
+                versionStatus: 'ACTIVE',
+                status: 'ACTIVE'
+            });
+
+            await queryRunner.commitTransaction();
+            return this.findById(newRule.id);
+        } catch (err) {
+            await queryRunner.rollbackTransaction();
+            throw err;
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     async delete(id) {
