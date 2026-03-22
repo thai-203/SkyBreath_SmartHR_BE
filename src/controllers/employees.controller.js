@@ -2,7 +2,11 @@ import { ResponseUtil } from '../common/utils/response.util.js';
 import { AppMessages } from '../common/constants/index.js';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { CreateEmployeeDto, UpdateEmployeeDto, EmployeeQueryDto } from '../models/dto/employees/index.js';
+import {
+  CreateEmployeeDto,
+  UpdateEmployeeDto,
+  EmployeeQueryDto,
+} from '../models/dto/employees/index.js';
 
 export class EmployeesController {
   constructor(employeesService) {
@@ -89,7 +93,11 @@ export class EmployeesController {
 
   list = async (req, res, next) => {
     try {
-      const list = await this.employeesService.getDropdownList();
+      const noContract = req.query.noContract === 'true';
+      const list = await this.employeesService.getDropdownList(
+        null,
+        noContract,
+      );
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.Employee.RETRIEVED_ALL,
@@ -202,7 +210,7 @@ export class EmployeesController {
         return ResponseUtil.sendResponse(
           res,
           AppMessages.Errors.Employee?.NOT_FOUND?.message ||
-          'Employee not found',
+            'Employee not found',
           null,
           404,
         );

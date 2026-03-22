@@ -1,12 +1,12 @@
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsInt,
-    IsDateString,
-    IsNumber,
-    Min,
-    Allow
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  IsNumber,
+  Min,
+  Allow,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -21,6 +21,10 @@ import { Type } from 'class-transformer';
  *         - contractType
  *         - startDate
  *         - signedDate
+ *         - contractNumber
+ *         - departmentId
+ *         - positionId
+ *         - jobGradeId
  *       properties:
  *         employeeId:
  *           type: integer
@@ -83,103 +87,102 @@ import { Type } from 'class-transformer';
  *             format: binary
  */
 export class CreateContractDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  employeeId;
 
-    @Type(() => Number)
-    @IsInt()
-    @Min(1)
-    @IsNotEmpty()
-    employeeId;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  departmentId;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsInt()
-    @Min(1)
-    departmentId;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  positionId;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsInt()
-    @Min(1)
-    positionId;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsNotEmpty()
+  jobGradeId;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsInt()
-    @Min(1)
-    jobGradeId;
+  @IsString()
+  @IsNotEmpty()
+  contractNumber;
 
-    @IsOptional()
-    @IsString()
-    contractNumber;
+  @IsString()
+  @IsNotEmpty()
+  contractType;
 
-    @IsString()
-    @IsNotEmpty()
-    contractType;
+  @IsDateString()
+  @IsNotEmpty()
+  startDate;
 
-    @IsDateString()
-    @IsNotEmpty()
-    startDate;
+  @IsOptional()
+  @IsDateString()
+  endDate;
 
-    @IsOptional()
-    @IsDateString()
-    endDate;
+  @IsDateString()
+  @IsNotEmpty()
+  signedDate;
 
-    @IsDateString()
-    @IsNotEmpty()
-    signedDate;
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @IsNotEmpty()
+  workingHours;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    workingHours;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseSalary;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    baseSalary;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  performanceSalary;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    performanceSalary;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  phoneAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    phoneAllowance;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lunchAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    lunchAllowance;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fuelAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    fuelAllowance;
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherAllowance;
 
-    @Type(() => Number)
-    @IsOptional()
-    @IsNumber()
-    @Min(0)
-    otherAllowance;
+  @IsOptional()
+  @IsString()
+  note;
 
-    @IsOptional()
-    @IsString()
-    note;
-
-    /**
-     * FILE UPLOAD (multipart/form-data)
-     * Không validate bằng class-validator
-     * Multer sẽ xử lý
-     */
-    @IsOptional()
-    @Allow()
-    attachments;
+  /**
+   * FILE UPLOAD (multipart/form-data)
+   * Không validate bằng class-validator
+   * Multer sẽ xử lý
+   */
+  @IsOptional()
+  @Allow()
+  attachments;
 }

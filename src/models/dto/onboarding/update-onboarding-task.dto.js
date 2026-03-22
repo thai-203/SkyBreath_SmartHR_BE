@@ -3,27 +3,31 @@ import {
   IsString,
   IsBoolean,
   IsInt,
-  Min
+  Min,
+  IsNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateOnboardingTaskDto {
-
   @IsOptional()
+  @IsNotEmpty({ message: 'Mô tả không được để trống' })
   @IsString()
   description;
 
   @IsOptional()
-  @IsBoolean()
+  @IsNotEmpty({ message: 'Trường bắt buộc không được để trống' })
+  @IsBoolean({ message: 'isMandatory phải là boolean' })
   isMandatory;
 
-  @Type(() => Number)
   @IsOptional()
-  @IsInt()
-  @Min(1)
+  @IsNotEmpty({ message: 'Số ngày dự kiến không được để trống' })
+  @Type(() => Number)
+  @IsInt({ message: 'Số ngày dự kiến phải là số nguyên' })
+  @Min(1, { message: 'Số ngày dự kiến phải lớn hơn 0' })
   estimatedDays;
 
   @IsOptional()
+  @IsNotEmpty({ message: 'Danh mục không được để trống' })
   @IsString()
   category;
 }

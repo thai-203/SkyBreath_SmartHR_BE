@@ -7,7 +7,7 @@ export class TimesheetsRepository {
     }
 
     async findAll(options = {}) {
-        const { skip = 0, take = 10, month, year, departmentId, status, search } = options;
+        const { skip = 0, take = 10, month, year, departmentId, status, search, employeeId } = options;
         const query = this.repository.createQueryBuilder('timesheet')
             .leftJoinAndSelect('timesheet.employee', 'employee')
             .leftJoinAndSelect('employee.department', 'department')
@@ -30,6 +30,10 @@ export class TimesheetsRepository {
             query.andWhere('timesheet.isLocked = :isLocked', { isLocked: true });
         } else if (status === 'unlocked') {
             query.andWhere('timesheet.isLocked = :isLocked', { isLocked: false });
+        }
+
+        if (employeeId) {
+            query.andWhere('timesheet.employeeId = :employeeId', { employeeId });
         }
 
         if (search) {

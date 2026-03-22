@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { Between, DataSource } from 'typeorm';
 import { hashPassword } from '../../common/utils/index.js';
 import { databaseConfig } from '../../config/database.config.js';
 import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
@@ -6,15 +6,16 @@ import { DepartmentEntity } from '../../models/entities/department.entity.js';
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
 import { HolidayListEntity } from '../../models/entities/holiday-list.entity.js';
 import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
+import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js';
 import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
-import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
-import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
+import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
+import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -158,6 +159,63 @@ const seed = async () => {
         module: 'JobGrade',
       },
 
+      // Onboarding permissions
+      {
+        permissionCode: 'ONBOARDING_PLAN_READ',
+        description: 'View onboarding plans',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_CREATE',
+        description: 'Create onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_UPDATE',
+        description: 'Update onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_DELETE',
+        description: 'Delete onboarding plan',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PLAN_EXPORT',
+        description: 'Export onboarding plans',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PROGRESS_READ',
+        description: 'View onboarding progress',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PROGRESS_UPDATE',
+        description: 'Update onboarding progress',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_READ',
+        description: 'View onboarding tasks',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_CREATE',
+        description: 'Create onboarding task',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_UPDATE',
+        description: 'Update onboarding task',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_TASK_DELETE',
+        description: 'Delete onboarding task',
+        module: 'Onboarding',
+      },
+
       // Employee Salaries
       {
         permissionCode: 'EMPLOYEE_SALARY_READ',
@@ -251,6 +309,58 @@ const seed = async () => {
         description: 'View shift schedules',
         module: 'Shift',
       },
+      // Payroll
+      {
+        permissionCode: 'PAYROLL_READ',
+        description: 'View payroll list and details',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_CREATE',
+        description: 'Create new payroll period',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_UPDATE',
+        description: 'Update payroll details and auto-calculate',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_APPROVE',
+        description: 'Submit, Approve, or Reject payroll',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_LOCK',
+        description: 'Lock payroll and send payslips',
+        module: 'Payroll',
+      },
+      {
+        permissionCode: 'PAYROLL_EXPORT',
+        description: 'Export payroll summary or payslips',
+        module: 'Payroll',
+      },
+      // Payroll Type
+      {
+        permissionCode: 'PAYROLL_TYPE_READ',
+        description: 'View payroll type list',
+        module: 'PayrollType',
+      },
+      {
+        permissionCode: 'PAYROLL_TYPE_CREATE',
+        description: 'Create new payroll type',
+        module: 'PayrollType',
+      },
+      {
+        permissionCode: 'PAYROLL_TYPE_UPDATE',
+        description: 'Update payroll type',
+        module: 'PayrollType',
+      },
+      {
+        permissionCode: 'PAYROLL_TYPE_DELETE',
+        description: 'Delete payroll type',
+        module: 'PayrollType',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -319,6 +429,10 @@ const seed = async () => {
       'SHIFT_READ',
       'SHIFT_ASSIGN_READ',
       'SHIFT_SCHEDULE_READ',
+      // allow managers to view onboarding data
+      'ONBOARDING_PLAN_READ',
+      'ONBOARDING_PROGRESS_READ',
+      'ONBOARDING_TASK_READ',
     ];
     for (const code of managerPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -393,6 +507,30 @@ const seed = async () => {
       'SHIFT_ASSIGN_UPDATE',
       'SHIFT_ASSIGN_DELETE',
       'SHIFT_SCHEDULE_READ',
+      // Payroll
+      'PAYROLL_READ',
+      'PAYROLL_CREATE',
+      'PAYROLL_UPDATE',
+      'PAYROLL_APPROVE',
+      'PAYROLL_LOCK',
+      'PAYROLL_EXPORT',
+      // Payroll Type
+      'PAYROLL_TYPE_READ',
+      'PAYROLL_TYPE_CREATE',
+      'PAYROLL_TYPE_UPDATE',
+      'PAYROLL_TYPE_DELETE',
+      // onboarding-related for HR
+      'ONBOARDING_PLAN_READ',
+      'ONBOARDING_PLAN_CREATE',
+      'ONBOARDING_PLAN_UPDATE',
+      'ONBOARDING_PLAN_DELETE',
+      'ONBOARDING_PLAN_EXPORT',
+      'ONBOARDING_PROGRESS_READ',
+      'ONBOARDING_PROGRESS_UPDATE',
+      'ONBOARDING_TASK_READ',
+      'ONBOARDING_TASK_CREATE',
+      'ONBOARDING_TASK_UPDATE',
+      'ONBOARDING_TASK_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -413,6 +551,26 @@ const seed = async () => {
     console.log('Assigned permissions to HR');
 
     console.log('Assigned permissions to HR');
+
+    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ
+    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ'];
+    for (const code of employeePerms) {
+      const p = permissions.find((perm) => perm.permissionCode === code);
+      if (p) {
+        const exists = await rolePermissionRepo.findOne({
+          where: { roleId: roles['EMPLOYEE'].id, permissionId: p.id },
+        });
+        if (!exists) {
+          await rolePermissionRepo.save(
+            rolePermissionRepo.create({
+              roleId: roles['EMPLOYEE'].id,
+              permissionId: p.id,
+            }),
+          );
+        }
+      }
+    }
+    console.log('Assigned permissions to EMPLOYEE');
 
     // 4. Create Departments
     const departmentRepo = dataSource.getRepository(DepartmentEntity);
@@ -528,24 +686,28 @@ const seed = async () => {
         email: 'admin@example.com',
         role: 'ADMIN',
         fullName: 'System Administrator',
+        employeeCode: 'EMP001',
       },
       {
         username: 'manager',
         email: 'manager@example.com',
         role: 'MANAGER',
         fullName: 'John Manager',
+        employeeCode: 'EMP002',
       },
       {
         username: 'employee',
         email: 'employee@example.com',
         role: 'EMPLOYEE',
         fullName: 'Jane Employee',
+        employeeCode: 'EMP003',
       },
       {
         username: 'hr',
         email: 'hr@example.com',
         role: 'HR',
         fullName: 'Alice HR',
+        employeeCode: 'EMP004',
       },
     ];
 
@@ -590,6 +752,7 @@ const seed = async () => {
         employee = employeeRepo.create({
           userId: user.id,
           fullName: u.fullName,
+          employeeCode: u.employeeCode,
           companyEmail: u.email,
           departmentId:
             u.role === 'HR'
@@ -601,6 +764,13 @@ const seed = async () => {
         });
         await employeeRepo.save(employee);
         console.log(`Created employee record for: ${u.fullName}`);
+      } else {
+        // Update existing employee with code if missing or changed
+        employee.employeeCode = u.employeeCode;
+        employee.fullName = u.fullName;
+        employee.companyEmail = u.email;
+        await employeeRepo.save(employee);
+        console.log(`Updated employee record for: ${u.fullName}`);
       }
     }
 
@@ -609,8 +779,8 @@ const seed = async () => {
     // ──────────────────────────────────────
     const groupRepo = dataSource.getRepository(ShiftGroupEntity);
     const groupData = [
-      { groupName: 'Nhóm ca chính' },
-      { groupName: 'Nhóm ca phụ' },
+      { groupName: 'Nhóm ca chính', status: 'active' },
+      { groupName: 'Nhóm ca phụ', status: 'active' },
     ];
     const groups = {};
     for (const g of groupData) {
@@ -621,6 +791,10 @@ const seed = async () => {
         group = groupRepo.create(g);
         await groupRepo.save(group);
         console.log(`Created shift group: ${g.groupName}`);
+      } else if (g.status && group.status !== g.status) {
+        // ensure existing rows have status field populated
+        group.status = g.status;
+        await groupRepo.save(group);
       }
       groups[g.groupName] = group;
     }
@@ -675,6 +849,7 @@ const seed = async () => {
         await shiftAssignmentRepo.save(
           shiftAssignmentRepo.create({
             employeeId: emp.id,
+            departmentId: null,
             shiftId: shifts['Ca hành chính'].id,
             effectiveFrom: '2026-01-01',
           }),
@@ -707,86 +882,99 @@ const seed = async () => {
       }
     }
 
+    // 9. Seed Payroll Types
+    const payrollTypeRepo = dataSource.getRepository(PayrollTypeEntity);
+    const adminUser = await userRepo.findOne({ where: { username: 'admin' } });
+    const payrollTypesData = [
+      {
+        payrollTypeCode: '1',
+        name: 'Bảng lương sản xuất',
+        keyword: 'LUONG_SAN_XUAT',
+        description: 'Bảng lương dành cho công nhân sản xuất (theo sản lượng)',
+        departmentId: departments['Software Development'].id, // Placeholder
+        createdById: adminUser.id,
+      },
+      {
+        payrollTypeCode: '101',
+        name: 'Bảng lương cấp đông',
+        keyword: 'LUONG_CAP_DONG_TAG',
+        description: 'Bảng lương dành cho bộ phận cấp đông (theo công đoạn)',
+        departmentId: departments['Software Development'].id, // Placeholder
+        createdById: adminUser.id,
+      },
+      {
+        payrollTypeCode: 'OFFICE_01',
+        name: 'Bảng lương văn phòng',
+        keyword: 'LUONG_VAN_PHONG',
+        description: 'Bảng lương dành cho nhân viên văn phòng (theo tháng)',
+        departmentId: departments['Software Development'].id, // Placeholder
+        createdById: adminUser.id,
+      },
+    ];
+
+    for (const pt of payrollTypesData) {
+      const existing = await payrollTypeRepo.findOne({
+        where: { payrollTypeCode: pt.payrollTypeCode },
+      });
+      if (!existing) {
+        await payrollTypeRepo.save(payrollTypeRepo.create(pt));
+        console.log(`Created payroll type: ${pt.name}`);
+      }
+    }
+
     // ──────────────────────────────────────
-    // 9. Seed Attendance Records (Feb 2026)
+    // 10. Seed Attendance Records (Feb 2026)
     // ──────────────────────────────────────
     const attendanceRepo = dataSource.getRepository(AttendanceRecordEntity);
     const existingAttCount = await attendanceRepo.count();
     if (existingAttCount === 0) {
-      console.log('Seeding attendance records for Feb 2026...');
+      console.log('Seeding high-quality attendance records for Feb 2026...');
 
-      // Helper: build attendance for one employee
-      const buildAttendance = (employeeId, entries) => {
-        return entries.map((e) =>
-          attendanceRepo.create({
-            employeeId,
-            checkInTime: e.checkIn,
-            checkOutTime: e.checkOut,
-            attendanceStatus: e.status,
-            attendanceType: e.type,
-          }),
-        );
-      };
-
-      // Feb 2026 weekdays (skip: 1(Sun),7(Sat),8(Sun),14(Sat),15(Sun),21(Sat),22(Sun),28(Sat))
-      // Also skip Feb 2 (holiday)
-      // Weekdays: 3,4,5,6, 9,10,11,12,13, 16,17,18,19,20, 23,24,25,26,27
+      // Clear existing records for Feb 2026 to avoid duplicates
+      await attendanceRepo.delete({
+        checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59'),
+      });
 
       for (const emp of allEmployees) {
-        // Generate varied attendance per employee
         const records = [];
+        // February 2026: 28 days. Weekdays are 2-6, 9-13, 16-20, 23-27
         const weekdays = [
-          3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26, 27,
+          2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 23, 24, 25, 26,
+          27,
         ];
 
-        // Some employees skip certain days (absent)
-        const absentDays = [];
-        if (emp.id % 3 === 0) absentDays.push(6); // some miss Feb 6
-        if (emp.id % 4 === 0) absentDays.push(19, 20); // some miss Feb 19-20
-        if (emp.id % 5 === 0) absentDays.push(10, 11); // some miss Feb 10-11
-
         for (const day of weekdays) {
-          if (absentDays.includes(day)) continue;
+          // Feb 2 is holiday but some might work (OT) - let's skip it for normal behavior
+          if (day === 2) continue;
 
-          // Vary check-in time
-          let checkInHour = 8;
-          let checkInMin = 0;
+          // Default: 08:00 - 17:00
+          let cinH = 7,
+            cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
+          let coutH = 17,
+            coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
           let status = 'ON_TIME';
           let type = 'NORMAL';
 
-          // Some late arrivals
-          if ((emp.id + day) % 7 === 0) {
-            checkInMin = 15 + (day % 20);
+          // Randomize some behavior
+          const rand = Math.random();
+          if (rand < 0.1) {
+            // 10% late
+            cinM = 10 + Math.floor(Math.random() * 20); // 08:10 - 08:30
             status = 'LATE';
-          } else if ((emp.id + day) % 11 === 0) {
-            checkInMin = 5;
-          } else if (day % 5 === 0) {
-            checkInHour = 7;
-            checkInMin = 50 + (day % 10);
-          }
-
-          // Vary check-out time
-          let checkOutHour = 17;
-          let checkOutMin = 0;
-
-          // Some OT
-          if ((emp.id + day) % 9 === 0) {
-            checkOutHour = 18 + (day % 2);
-            checkOutMin = 30;
+          } else if (rand < 0.2) {
+            // 10% early leave
+            coutH = 16;
+            coutM = 30 + Math.floor(Math.random() * 20); // 16:30 - 16:50
+            status = 'EARLY_LEAVE';
+          } else if (rand < 0.3) {
+            // 10% OT
+            coutH = 18 + Math.floor(Math.random() * 2); // 18:00 - 20:00
+            coutM = Math.floor(Math.random() * 60);
             type = 'OVERTIME';
-          } else if (day % 8 === 0) {
-            checkOutMin = 15;
           }
 
-          // Some early leave
-          if ((emp.id + day) % 13 === 0) {
-            checkOutHour = 16;
-            checkOutMin = 30;
-          }
-
-          const pad = (n) => String(n).padStart(2, '0');
-          const checkIn = `2026-02-${pad(day)} ${pad(checkInHour)}:${pad(checkInMin)}:00`;
-          const checkOut = `2026-02-${pad(day)} ${pad(checkOutHour)}:${pad(checkOutMin)}:00`;
+          const checkIn = new Date(2026, 1, day, cinH, cinM, 0);
+          const checkOut = new Date(2026, 1, day, coutH, coutM, 0);
 
           records.push(
             attendanceRepo.create({
@@ -798,10 +986,9 @@ const seed = async () => {
             }),
           );
         }
-
         await attendanceRepo.save(records);
         console.log(
-          `Created ${records.length} attendance records for: ${emp.fullName}`,
+          `Created ${records.length} high-quality records for ${emp.fullName}`,
         );
       }
     } else {

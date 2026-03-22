@@ -152,7 +152,7 @@ router.get(
  *         description: Forbidden
  */
 
-router.get('/meta-data', usersController.getMetadata);
+router.get('/meta-data',authMiddleware ,usersController.getMetadata);
 
 /**
  * @swagger

@@ -17,6 +17,7 @@ import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 import { ShiftGroupEntity } from '../models/entities/shift-group.entity.js';
 import { ShiftAssignmentEntity } from '../models/entities/shift-assignment.entity.js';
+import { ShiftScheduleEntity } from '../models/entities/shift-schedule.entity.js';
 import { AttendanceRecordEntity } from '../models/entities/attendance-record.entity.js';
 import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
 import { FaceDataEntity } from '../models/entities/face-data.entity.js';
@@ -40,9 +41,13 @@ import { OnboardingProgressEntity } from '../models/entities/onboarding-progress
 import { TaskAssignmentEntity } from '../models/entities/task-assignment.entity.js';
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
+import { OvertimeTypeEntity } from '../models/entities/overtime-type.entity.js';
 import { PenaltyEntity } from '../models/entities/penalty.entity.js';
+import { PayrollTypeEntity } from '../models/entities/payroll-type.entity.js';
+import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
 
 import { config } from './env.config.js';
+import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
 
 export const databaseConfig = {
   type: 'mysql',
@@ -73,6 +78,7 @@ export const databaseConfig = {
     WorkingShiftEntity,
     ShiftGroupEntity,
     ShiftAssignmentEntity,
+    ShiftScheduleEntity,
     AttendanceRecordEntity,
     TimeSheetEntity,
     FaceDataEntity,
@@ -96,8 +102,11 @@ export const databaseConfig = {
     TaskAssignmentEntity,
     OvertimeRuleEntity,
     OvertimeRuleDepartmentEntity,
+    OvertimeTypeEntity,
+    OvertimeRequestDetailEntity,
     PenaltyEntity,
+    PayrollTypeEntity,
   ],
-  subscribers: [],
+  subscribers: [AuditSubscriber],
   migrations: [],
 };

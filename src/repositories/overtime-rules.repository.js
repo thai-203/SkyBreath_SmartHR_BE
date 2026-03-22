@@ -10,27 +10,26 @@ export class OvertimeRulesRepository {
 
     async findAll(options = {}) {
         const {
-            skip = 0, take = 5,
-            search, status, departmentId,
+            skip = 0, take = 10,
+            search, versionStatus, overtimeTypeId, departmentId,
             minMultiplier, maxMultiplier,
             minHoursPerDay, maxHoursPerDay,
             minHoursPerMonth, maxHoursPerMonth,
         } = options;
 
         const query = this.repository.createQueryBuilder('rule')
+            .leftJoinAndSelect('rule.overtimeType', 'overtimeType')
             .where('rule.isDeleted = :isDeleted', { isDeleted: false });
 
-        // Search by name
         if (search) {
             query.andWhere('rule.name LIKE :search', { search: `%${search}%` });
         }
-
-        // Filter by status
-        if (status) {
-            query.andWhere('rule.status = :status', { status });
+        if (versionStatus) {
+            query.andWhere('rule.versionStatus = :versionStatus', { versionStatus });
         }
-
-        // Filter by department (JOIN qua bảng trung gian)
+        if (overtimeTypeId) {
+            query.andWhere('rule.overtimeTypeId = :overtimeTypeId', { overtimeTypeId });
+        }
         if (departmentId) {
             query.innerJoin(
                 'overtime_rule_departments', 'ord',
@@ -38,30 +37,12 @@ export class OvertimeRulesRepository {
                 { departmentId }
             );
         }
-
-        // Filter by salary multiplier range
-        if (minMultiplier !== undefined) {
-            query.andWhere('rule.salaryMultiplier >= :minMultiplier', { minMultiplier });
-        }
-        if (maxMultiplier !== undefined) {
-            query.andWhere('rule.salaryMultiplier <= :maxMultiplier', { maxMultiplier });
-        }
-
-        // Filter by max hours per day range
-        if (minHoursPerDay !== undefined) {
-            query.andWhere('rule.maxHoursPerDay >= :minHoursPerDay', { minHoursPerDay });
-        }
-        if (maxHoursPerDay !== undefined) {
-            query.andWhere('rule.maxHoursPerDay <= :maxHoursPerDay', { maxHoursPerDay });
-        }
-
-        // Filter by max hours per month range
-        if (minHoursPerMonth !== undefined) {
-            query.andWhere('rule.maxHoursPerMonth >= :minHoursPerMonth', { minHoursPerMonth });
-        }
-        if (maxHoursPerMonth !== undefined) {
-            query.andWhere('rule.maxHoursPerMonth <= :maxHoursPerMonth', { maxHoursPerMonth });
-        }
+        if (minMultiplier !== undefined) query.andWhere('rule.salaryMultiplier >= :minMultiplier', { minMultiplier });
+        if (maxMultiplier !== undefined) query.andWhere('rule.salaryMultiplier <= :maxMultiplier', { maxMultiplier });
+        if (minHoursPerDay !== undefined) query.andWhere('rule.maxHoursPerDay >= :minHoursPerDay', { minHoursPerDay });
+        if (maxHoursPerDay !== undefined) query.andWhere('rule.maxHoursPerDay <= :maxHoursPerDay', { maxHoursPerDay });
+        if (minHoursPerMonth !== undefined) query.andWhere('rule.maxHoursPerMonth >= :minHoursPerMonth', { minHoursPerMonth });
+        if (maxHoursPerMonth !== undefined) query.andWhere('rule.maxHoursPerMonth <= :maxHoursPerMonth', { maxHoursPerMonth });
 
         const [rules, total] = await query
             .orderBy('rule.createdAt', 'DESC')
@@ -69,13 +50,12 @@ export class OvertimeRulesRepository {
             .take(take)
             .getManyAndCount();
 
-        // Lấy danh sách departments cho mỗi rule
         for (const rule of rules) {
             const ruleDepts = await this.ruleDeptRepository.find({
                 where: { overtimeRuleId: rule.id, isDeleted: false },
                 relations: ['department'],
             });
-            rule.departments = ruleDepts.map((rd) => rd.department);
+            rule.departments = ruleDepts.map((rd) => rd.department).filter(Boolean);
         }
 
         return { items: rules, total };
@@ -84,6 +64,7 @@ export class OvertimeRulesRepository {
     async findById(id) {
         const rule = await this.repository.findOne({
             where: { id, isDeleted: false },
+            relations: ['overtimeType'],
         });
 
         if (rule) {
@@ -91,20 +72,58 @@ export class OvertimeRulesRepository {
                 where: { overtimeRuleId: rule.id, isDeleted: false },
                 relations: ['department'],
             });
-            rule.departments = ruleDepts.map((rd) => rd.department);
+            rule.departments = ruleDepts.map((rd) => rd.department).filter(Boolean);
         }
 
         return rule;
     }
 
+    /**
+     * Tìm các policy cùng overtimeTypeId có overlap effective date
+     */
+    async findOverlapping(overtimeTypeId, effectiveFrom, effectiveTo, excludeId = null) {
+        const query = this.repository.createQueryBuilder('rule')
+            .where('rule.isDeleted = false')
+            .andWhere('rule.overtimeTypeId = :overtimeTypeId', { overtimeTypeId })
+            .andWhere('rule.versionStatus != :draft', { draft: 'DRAFT' });
+
+        if (effectiveTo) {
+            query.andWhere(
+                '(rule.effectiveFrom <= :effectiveTo AND (rule.effectiveTo IS NULL OR rule.effectiveTo >= :effectiveFrom))',
+                { effectiveFrom, effectiveTo }
+            );
+        } else {
+            query.andWhere(
+                '(rule.effectiveTo IS NULL OR rule.effectiveTo >= :effectiveFrom)',
+                { effectiveFrom }
+            );
+        }
+
+        if (excludeId) {
+            query.andWhere('rule.id != :excludeId', { excludeId });
+        }
+
+        return query.getMany();
+    }
+
+    async hasLinkedRequests(id) {
+        try {
+            const result = await AppDataSource.query(
+                `SELECT 1 FROM overtime_request_details WHERE policy_id = ? LIMIT 1`,
+                [id]
+            );
+            return result.length > 0;
+        } catch {
+            return false;
+        }
+    }
+
     async create(data) {
         const { departmentIds, ...ruleData } = data;
 
-        // Tạo overtime rule
         const rule = this.repository.create(ruleData);
         const savedRule = await this.repository.save(rule);
 
-        // Tạo quan hệ với departments
         if (departmentIds && departmentIds.length > 0) {
             const ruleDepts = departmentIds.map((deptId) =>
                 this.ruleDeptRepository.create({
@@ -121,17 +140,12 @@ export class OvertimeRulesRepository {
     async update(id, data) {
         const { departmentIds, ...ruleData } = data;
 
-        // Cập nhật thông tin rule
         if (Object.keys(ruleData).length > 0) {
             await this.repository.update(id, ruleData);
         }
 
-        // Cập nhật danh sách departments nếu có
         if (departmentIds) {
-            // Xóa quan hệ cũ
             await this.ruleDeptRepository.delete({ overtimeRuleId: id });
-
-            // Tạo quan hệ mới
             if (departmentIds.length > 0) {
                 const ruleDepts = departmentIds.map((deptId) =>
                     this.ruleDeptRepository.create({
@@ -146,14 +160,33 @@ export class OvertimeRulesRepository {
         return this.findById(id);
     }
 
+    async activate(id, overtimeTypeId) {
+        // EXPIRE các policy ACTIVE cùng type
+        await this.repository
+            .createQueryBuilder()
+            .update(OvertimeRuleEntity)
+            .set({ versionStatus: 'EXPIRED', status: 'INACTIVE' })
+            .where('overtimeTypeId = :type AND versionStatus = :active AND id != :id AND isDeleted = false', {
+                type: overtimeTypeId,
+                active: 'ACTIVE',
+                id,
+            })
+            .execute();
+
+        // Activate policy mới
+        await this.repository.update(id, {
+            versionStatus: 'ACTIVE',
+            status: 'ACTIVE',
+        });
+
+        return this.findById(id);
+    }
+
     async delete(id) {
-        // Xóa mềm các quan hệ departments
         await this.ruleDeptRepository.update(
             { overtimeRuleId: id },
             { isDeleted: true, deletedAt: new Date() }
         );
-
-        // Xóa mềm rule
         await this.repository.update(id, {
             isDeleted: true,
             deletedAt: new Date(),

@@ -7,10 +7,10 @@ const router = express.Router();
 const controller = new HolidayListController();
 
 // UC - Holiday List
-router.get('/', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.findAll(req, res, next));
+router.get('/', authMiddleware, (req, res, next) => controller.findAll(req, res, next));
 router.get('/inherit-preview', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.getInheritPreview(req, res, next));
 router.get('/export', authMiddleware, permissionsMiddleware('HOLIDAY_EXPORT'), (req, res, next) => controller.export(req, res, next));
-router.get('/:id', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.findById(req, res, next));
+router.get('/:id', authMiddleware, (req, res, next) => controller.findById(req, res, next));
 router.post('/', authMiddleware, permissionsMiddleware('HOLIDAY_CREATE'), (req, res, next) => controller.create(req, res, next));
 router.post('/bulk-create', authMiddleware, permissionsMiddleware('HOLIDAY_CREATE'), (req, res, next) => controller.bulkCreate(req, res, next));
 router.post('/send-notification', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.sendNotification(req, res, next));

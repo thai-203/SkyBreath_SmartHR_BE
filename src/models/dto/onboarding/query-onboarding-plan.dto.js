@@ -1,9 +1,4 @@
-import {
-  IsOptional,
-  IsInt,
-  IsBoolean,
-  IsString
-} from 'class-validator';
+import { IsOptional, IsInt, IsBoolean, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaginationDto } from '../../../common/dto/pagination.dto.js';
 
@@ -28,6 +23,9 @@ import { PaginationDto } from '../../../common/dto/pagination.dto.js';
  *             keyword:
  *               type: string
  *               description: Search keyword for plan name
+ *             employeeId:
+ *               type: number
+ *               description: Filter by employee ID (returns that employee's plan)
  */
 export class QueryOnboardingPlanDto extends PaginationDto {
   @Type(() => Number)
@@ -47,4 +45,9 @@ export class QueryOnboardingPlanDto extends PaginationDto {
   @IsOptional()
   @IsString()
   keyword;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  employeeId;
 }

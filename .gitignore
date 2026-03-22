@@ -32,6 +32,7 @@ coverage/
 # Uploads
 uploads/*
 !uploads/.gitkeep
+/arcface-service/
 
 # Temp
 tmp/

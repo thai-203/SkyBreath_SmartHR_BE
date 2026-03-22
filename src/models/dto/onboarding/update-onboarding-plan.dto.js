@@ -3,14 +3,17 @@ import {
   IsString,
   IsInt,
   IsBoolean,
-  Min
+  Min,
+  IsNotEmpty,
+  Allow,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateOnboardingPlanDto {
-
+  
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
   planName;
 
   @IsOptional()
@@ -32,4 +35,8 @@ export class UpdateOnboardingPlanDto {
   @IsOptional()
   @IsBoolean()
   isTemplate;
+
+  @IsOptional()
+  @Allow()
+  tasks;
 }

@@ -36,6 +36,12 @@ export class TimesheetQueryDto {
     @IsOptional()
     search;
 
+    @IsString()
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    employeeId;
+
     get skip() {
         return (this.page - 1) * this.limit;
     }

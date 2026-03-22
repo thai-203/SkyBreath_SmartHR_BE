@@ -4,12 +4,15 @@ import { WorkingShiftEntity } from './working-shift.entity.js';
 
 @Entity('shift_groups')
 export class ShiftGroupEntity extends BaseEntity {
-    @Column({ name: 'group_name', type: 'varchar' })
-    groupName;
+  @Column({ name: 'group_name', type: 'varchar' })
+  groupName;
 
-    @Column({ name: 'description', type: 'varchar', nullable: true })
-    description;
+  @Column({ name: 'description', type: 'varchar', nullable: true })
+  description;
 
-    @OneToMany(() => WorkingShiftEntity, shift => shift.group)
-    shifts;
+  @Column({ name: 'status', type: 'varchar', length: 20, default: 'active' })
+  status;
+
+  @OneToMany(() => WorkingShiftEntity, (shift) => shift.group)
+  shifts;
 }

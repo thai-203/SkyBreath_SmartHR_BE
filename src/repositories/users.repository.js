@@ -56,7 +56,7 @@ export class UsersRepository {
       )
       .setParameter('adminRole', 'admin')
       .orderBy('is_admin', 'DESC');
-      
+
     if (
       sortBy === 'id' ||
       sortBy === 'username' ||
@@ -87,6 +87,8 @@ export class UsersRepository {
       .addSelect('user.password')
       .leftJoinAndSelect('user.userRoles', 'userRoles')
       .leftJoinAndSelect('userRoles.role', 'role')
+      .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
+      .leftJoinAndSelect('rolePermissions.permission', 'permission')
       .where('user.id = :id', { id })
       .getOne();
   }
@@ -94,7 +96,12 @@ export class UsersRepository {
   async findByEmail(email) {
     return this.userRepository.findOne({
       where: { email: email.toLowerCase() },
-      relations: ['userRoles', 'userRoles.role'],
+      relations: [
+        'userRoles',
+        'userRoles.role',
+        'userRoles.role.rolePermissions',
+        'userRoles.role.rolePermissions.permission',
+      ],
     });
   }
 
@@ -104,6 +111,8 @@ export class UsersRepository {
       .addSelect('user.password')
       .leftJoinAndSelect('user.userRoles', 'userRoles')
       .leftJoinAndSelect('userRoles.role', 'role')
+      .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
+      .leftJoinAndSelect('rolePermissions.permission', 'permission')
       .where('user.email = :email', { email: email.toLowerCase() })
       .getOne();
   }
@@ -116,12 +125,15 @@ export class UsersRepository {
   }
 
   async update(id, data) {
-    await this.userRepository.update(id, data);
-    const updated = await this.findById(id);
-    if (!updated) {
+    const user = await this.userRepository.findOne({ where: { id } });
+
+    if (!user) {
       throw new Error('User not found');
     }
-    return updated;
+
+    Object.assign(user, data);
+
+    return await this.userRepository.save(user);
   }
 
   async delete(id) {

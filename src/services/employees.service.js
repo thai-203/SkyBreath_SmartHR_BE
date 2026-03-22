@@ -42,9 +42,7 @@ export class EmployeesService {
         createDto.employeeCode,
       );
       if (existingCode) {
-        throw new ConflictException(
-          AppMessages.Errors.Employee.CODE_DUPLICATE,
-        );
+        throw new ConflictException(AppMessages.Errors.Employee.CODE_DUPLICATE);
       }
     }
 
@@ -172,8 +170,11 @@ export class EmployeesService {
     };
   }
 
-  async getDropdownList(roleName) {
-    return this.employeesRepository.findDropdownList(roleName);
+  async getDropdownList(roleName, excludeWithContract = false) {
+    return this.employeesRepository.findDropdownList(
+      roleName,
+      excludeWithContract,
+    );
   }
 
   async findById(id) {
