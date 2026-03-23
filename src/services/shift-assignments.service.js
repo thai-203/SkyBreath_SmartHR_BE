@@ -8,6 +8,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { EmployeeStatus } from '../common/enums/status.enum.js';
@@ -180,6 +181,7 @@ export class ShiftAssignmentsService {
 
     const byId = new Map();
 
+    // Priority: if specific employees are selected, use only those (ignore departmentIds)
     if (explicitIds.length > 0) {
       const rows = await employeeRepo
         .createQueryBuilder('employee')
@@ -187,29 +189,33 @@ export class ShiftAssignmentsService {
         .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
         .getMany();
       rows.forEach((row) => byId.set(row.id, row));
-    }
-
-    if (deptIds.length > 0) {
+    } else if (deptIds.length > 0) {
+      // Only use departmentIds if no specific employees were selected
       const rows = await employeeRepo
         .createQueryBuilder('employee')
         .where('employee.departmentId IN (:...deptIds)', { deptIds })
         .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
         .getMany();
-      rows.forEach((row) => {
-        if (!byId.has(row.id)) {
-          byId.set(row.id, row);
-        }
-      });
+      rows.forEach((row) => byId.set(row.id, row));
     }
 
     const filtered = [...byId.values()].filter(
       (emp) => emp.employmentStatus !== EmployeeStatus.ON_LEAVE,
     );
 
+    // Extract unique department IDs from selected employees
+    const extractedDeptIds = [
+      ...new Set(
+        filtered
+          .filter((emp) => emp.departmentId)
+          .map((emp) => emp.departmentId),
+      ),
+    ];
+
     return {
       employeeIds: filtered.map((emp) => emp.id),
       employees: filtered,
-      departmentIds: deptIds,
+      departmentIds: extractedDeptIds,
     };
   }
 
@@ -254,8 +260,6 @@ export class ShiftAssignmentsService {
   }
 
   async _rebuildSchedulesForAssignment(assignment, payload) {
-    await this.scheduleRepo.softDeleteByAssignmentId(assignment.id);
-
     const target = await this._resolveTargetEmployees(
       payload.employeeIds,
       payload.departmentIds,
@@ -278,12 +282,26 @@ export class ShiftAssignmentsService {
       return [];
     }
 
+    const rows = this._buildScheduleRows(target.employees, shiftIds, workDates);
+
+    await this._assertNoDuplicateSchedules(rows, assignment.id);
+
+    await this.scheduleRepo.softDeleteByAssignmentId(assignment.id);
+
+    const rowsWithAssignmentId = rows.map((row) => ({
+      ...row,
+      assignmentId: assignment.id,
+    }));
+
+    return this.scheduleRepo.bulkCreate(rowsWithAssignmentId);
+  }
+
+  _buildScheduleRows(employees = [], shiftIds = [], workDates = []) {
     const rows = [];
-    for (const emp of target.employees) {
+    for (const emp of employees) {
       for (const workDate of workDates) {
         for (const shiftId of shiftIds) {
           rows.push({
-            assignmentId: assignment.id,
             employeeId: emp.id,
             departmentId: emp.departmentId || null,
             shiftId,
@@ -293,7 +311,30 @@ export class ShiftAssignmentsService {
       }
     }
 
-    return this.scheduleRepo.bulkCreate(rows);
+    return rows;
+  }
+
+  async _assertNoDuplicateSchedules(rows = [], excludeAssignmentId = null) {
+    if (!rows || rows.length === 0) {
+      return;
+    }
+
+    const conflict = await this.scheduleRepo.findFirstConflict(
+      rows,
+      excludeAssignmentId,
+    );
+
+    if (!conflict) {
+      return;
+    }
+
+    const employeeName =
+      conflict.employee?.fullName || `ID ${conflict.employeeId}`;
+    const shiftName = conflict.shift?.shiftName || `ID ${conflict.shiftId}`;
+
+    throw new ConflictException(
+      `Nhân viên ${employeeName} đã có ca ${shiftName} vào ngày ${this._dateOnly(conflict.workDate)}`,
+    );
   }
 
   async createAssignment(data) {
