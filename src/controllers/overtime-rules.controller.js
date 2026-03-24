@@ -9,11 +9,11 @@ export class OvertimeRulesController {
     findAll = async (req, res, next) => {
         try {
             const {
-                search, status, departmentId,
+                search, versionStatus, overtimeTypeId, departmentId,
                 minMultiplier, maxMultiplier,
                 minHoursPerDay, maxHoursPerDay,
                 minHoursPerMonth, maxHoursPerMonth,
-                page = 1, limit = 5,
+                page = 1, limit = 10,
             } = req.query;
 
             const pageNum = Math.max(1, parseInt(page));
@@ -23,7 +23,8 @@ export class OvertimeRulesController {
             const options = { skip, take: limitNum };
 
             if (search) options.search = search;
-            if (status) options.status = status;
+            if (versionStatus) options.versionStatus = versionStatus;
+            if (overtimeTypeId) options.overtimeTypeId = parseInt(overtimeTypeId);
             if (departmentId) options.departmentId = parseInt(departmentId);
             if (minMultiplier) options.minMultiplier = parseFloat(minMultiplier);
             if (maxMultiplier) options.maxMultiplier = parseFloat(maxMultiplier);
@@ -70,6 +71,19 @@ export class OvertimeRulesController {
         try {
             const data = await this.overtimeRulesService.update(req.params.id, req.body);
             ResponseUtil.sendResponse(res, 'Cập nhật quy định OT thành công', data);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    /**
+     * PATCH /overtime-rules/:id/activate
+     * Kích hoạt policy DRAFT → ACTIVE, tự EXPIRE policy ACTIVE cùng type
+     */
+    activate = async (req, res, next) => {
+        try {
+            const data = await this.overtimeRulesService.activate(req.params.id);
+            ResponseUtil.sendResponse(res, 'Kích hoạt quy định OT thành công', data);
         } catch (error) {
             next(error);
         }

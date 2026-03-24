@@ -146,13 +146,39 @@ export class TimesheetsService {
                     .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
                     .getMany();
 
+                // Fetch EXCUSE Requests
+                const requestRepo = AppDataSource.getRepository(RequestEntity);
+                const excuseRequests = await requestRepo.find({
+                    where: {
+                        employeeId: employee.id,
+                        requestStatus: 'APPROVED',
+                        requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+                        startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
+                        endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+                        isDeleted: false,
+                    },
+                });
+
                 // Calculate totals with break deduction & half-day support
                 let totalWorkingDays = 0;
                 let totalWorkingHours = 0;
                 let overtimeHours = 0;
 
                 for (const [dateKey, { checkIn, checkOut }] of dailyMap) {
-                    const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+                    let actualHours = this._calcActualHours(checkIn, checkOut, shift);
+                    
+                    const excuseRequest = excuseRequests.find(r => {
+                        const start = new Date(r.startDate);
+                        const end = new Date(r.endDate);
+                        const reqStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+                        const reqEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+                        return dateKey >= reqStart && dateKey <= reqEnd;
+                    });
+
+                    if (excuseRequest && actualHours < shiftHoursPerDay) {
+                        actualHours = shiftHoursPerDay;
+                    }
+
                     totalWorkingHours += actualHours;
                     totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
                     
@@ -459,9 +485,20 @@ export class TimesheetsService {
             .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
             .getMany();
 
+        // Fetch EXCUSE Requests (including pending/rejected for UI display)
+        const excuseRequests = await requestRepo.find({
+            where: {
+                employeeId: timesheet.employeeId,
+                requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+                startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
+                endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+                isDeleted: false,
+            },
+        });
+
         // Build daily detail with on-the-fly computation
         const dailyDetails = this._buildDailyDetails(
-            records, shift, timesheet.year, timesheet.month, holidayDates, leaveRequests, otDetails
+            records, shift, timesheet.year, timesheet.month, holidayDates, leaveRequests, otDetails, excuseRequests
         );
 
         // Enrich daily details with shift schedule info
@@ -548,12 +585,38 @@ export class TimesheetsService {
             .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
             .getMany();
 
+        // Fetch EXCUSE Requests
+        const requestRepo = AppDataSource.getRepository(RequestEntity);
+        const excuseRequests = await requestRepo.find({
+            where: {
+                employeeId: timesheet.employeeId,
+                requestStatus: 'APPROVED',
+                requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+                startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
+                endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+                isDeleted: false,
+            },
+        });
+
         let totalWorkingDays = 0;
         let totalWorkingHours = 0;
         let overtimeHours = 0;
 
         for (const [dateKey, { checkIn, checkOut }] of dailyMap) {
-            const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+            let actualHours = this._calcActualHours(checkIn, checkOut, shift);
+
+            const excuseRequest = excuseRequests.find(r => {
+                const start = new Date(r.startDate);
+                const end = new Date(r.endDate);
+                const reqStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+                const reqEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+                return dateKey >= reqStart && dateKey <= reqEnd;
+            });
+
+            if (excuseRequest && actualHours < shiftHoursPerDay) {
+                actualHours = shiftHoursPerDay;
+            }
+
             totalWorkingHours += actualHours;
             totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
 
@@ -1030,7 +1093,7 @@ export class TimesheetsService {
         return 0;
     }
 
-    _buildDailyDetails(records, shift, year, month, holidayDates, leaveRequests = [], otDetails = []) {
+    _buildDailyDetails(records, shift, year, month, holidayDates, leaveRequests = [], otDetails = [], excuseRequests = []) {
         const daysInMonth = new Date(year, month, 0).getDate();
 
         // Index records by date
@@ -1091,6 +1154,30 @@ export class TimesheetsService {
             if (leave) {
                 detail.status = 'LEAVE';
                 detail.leaveType = leave.leaveType?.leaveTypeName || 'Nghỉ';
+            }
+
+            // Check if there is an excuse request for this date
+            const excuseRequest = (excuseRequests || []).find(r => {
+                const start = new Date(r.startDate);
+                const end = new Date(r.endDate);
+                const reqStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+                const reqEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+                return dateKey >= reqStart && dateKey <= reqEnd;
+            });
+
+            if (excuseRequest) {
+                let parsedContent = null;
+                try {
+                    parsedContent = typeof excuseRequest.requestContent === 'string' 
+                        ? JSON.parse(excuseRequest.requestContent) 
+                        : excuseRequest.requestContent;
+                } catch(e) {}
+
+                detail.excuseRequest = {
+                    id: excuseRequest.id,
+                    status: excuseRequest.requestStatus,
+                    content: parsedContent
+                };
             }
 
             if (dayOfWeek === 0 || dayOfWeek === 6) {
@@ -1170,6 +1257,20 @@ export class TimesheetsService {
                     if (checkOutMinutes < shiftEnd) {
                         detail.earlyLeaveMinutes = shiftEnd - checkOutMinutes;
                         detail.early_leave_minutes = detail.earlyLeaveMinutes;
+                    }
+                }
+
+                // --- Waive penalties if Excuse Request is APPROVED ---
+                if (detail.excuseRequest && detail.excuseRequest.status === 'APPROVED') {
+                    detail.lateMinutes = 0;
+                    detail.late_minutes = 0;
+                    detail.earlyLeaveMinutes = 0;
+                    detail.early_leave_minutes = 0;
+                    if (detail.workingHours < shiftHours) {
+                        detail.workingHours = shiftHours;
+                        detail.working_hours = shiftHours;
+                        detail.workingDayValue = 1;
+                        detail.working_day_value = 1;
                     }
                 }
             }
