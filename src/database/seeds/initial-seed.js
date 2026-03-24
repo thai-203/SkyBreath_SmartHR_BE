@@ -941,6 +941,8 @@ const seed = async () => {
     if (!defaultGroup) {
       defaultGroup = holidayGroupRepo.create({
         groupName: 'Default Holiday Group',
+        groupCode: 'DEFAULT',
+        year: new Date().getFullYear(),
         description: 'Default group for all holidays'
       });
       await holidayGroupRepo.save(defaultGroup);

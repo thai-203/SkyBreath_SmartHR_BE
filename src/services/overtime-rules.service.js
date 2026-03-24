@@ -1,5 +1,9 @@
 import { OvertimeRulesRepository } from '../repositories/overtime-rules.repository.js';
 import { NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '../common/exceptions/index.js';
+import { AppDataSource } from '../database/data-source.js';
+import { OvertimeTypeEntity } from '../models/entities/overtime-type.entity.js';
+import { DepartmentEntity } from '../models/entities/department.entity.js';
+import { In } from 'typeorm';
 
 export class OvertimeRulesService {
     constructor() {
@@ -19,6 +23,16 @@ export class OvertimeRulesService {
     }
 
     async create(data) {
+        // Validate ngày
+        this._validateDates(data.effectiveFrom, data.effectiveTo);
+        // Validate FK overtimeTypeId
+        if (data.overtimeTypeId) {
+            await this._validateOvertimeTypeExists(data.overtimeTypeId);
+        }
+        // Validate FK departmentIds
+        if (data.departmentIds && data.departmentIds.length > 0) {
+            await this._validateDepartmentIdsExist(data.departmentIds);
+        }
         if (data.versionStatus === 'ACTIVE' && data.effectiveFrom) {
             await this._validateNoOverlap(data.overtimeTypeId, data.effectiveFrom, data.effectiveTo, null);
         }
@@ -30,6 +44,20 @@ export class OvertimeRulesService {
 
         if (existing.versionStatus === 'ACTIVE' && data.versionStatus === 'DRAFT') {
             throw new BadRequestException('Không thể chuyển quy định đã kích hoạt (ACTIVE) về bản nháp (DRAFT).');
+        }
+
+        // Validate ngày nếu có truyền effectiveFrom hoặc effectiveTo
+        const from = data.effectiveFrom ?? existing.effectiveFrom;
+        const to = data.effectiveTo !== undefined ? data.effectiveTo : existing.effectiveTo;
+        this._validateDates(from, to);
+
+        // Validate FK overtimeTypeId nếu được thay đổi
+        if (data.overtimeTypeId && data.overtimeTypeId !== existing.overtimeTypeId) {
+            await this._validateOvertimeTypeExists(data.overtimeTypeId);
+        }
+        // Validate FK departmentIds nếu được thay đổi
+        if (data.departmentIds && data.departmentIds.length > 0) {
+            await this._validateDepartmentIdsExist(data.departmentIds);
         }
 
         const usage = await this.overtimeRulesRepository.getUsageStatus(id);
@@ -82,8 +110,6 @@ export class OvertimeRulesService {
 
         if (data.effectiveFrom || data.overtimeTypeId) {
             const typeId = data.overtimeTypeId || existing.overtimeTypeId;
-            const from = data.effectiveFrom || existing.effectiveFrom;
-            const to = data.effectiveTo !== undefined ? data.effectiveTo : existing.effectiveTo;
             const newStatus = data.versionStatus || existing.versionStatus;
 
             if (newStatus === 'ACTIVE') {
@@ -110,11 +136,46 @@ export class OvertimeRulesService {
 
     async remove(id) {
         await this.findById(id);
-        const hasRequests = await this.overtimeRulesRepository.hasLinkedRequests(id);
-        if (hasRequests) {
+        const usage = await this.overtimeRulesRepository.getUsageStatus(id);
+        if (usage.hasRequests || usage.hasPayroll) {
             throw new ForbiddenException('Không thể xóa quy định đã có dữ liệu OT phát sinh.');
         }
         return this.overtimeRulesRepository.delete(id);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Private helpers
+    // ─────────────────────────────────────────────────────────────
+
+    /** Kiểm tra effectiveTo phải sau effectiveFrom */
+    _validateDates(effectiveFrom, effectiveTo) {
+        if (effectiveFrom && effectiveTo) {
+            const from = new Date(effectiveFrom);
+            const to = new Date(effectiveTo);
+            if (to <= from) {
+                throw new BadRequestException('Ngày kết thúc hiệu lực (effectiveTo) phải sau ngày bắt đầu (effectiveFrom).');
+            }
+        }
+    }
+
+    /** Kiểm tra overtimeTypeId tồn tại trong DB → 404 thay vì 500 */
+    async _validateOvertimeTypeExists(overtimeTypeId) {
+        const repo = AppDataSource.getRepository(OvertimeTypeEntity);
+        const exists = await repo.findOne({ where: { id: overtimeTypeId } });
+        if (!exists) {
+            throw new NotFoundException(`Loại OT với ID ${overtimeTypeId} không tồn tại.`);
+        }
+    }
+
+    /** Kiểm tra từng departmentId tồn tại trong DB → 400 thay vì FK 500 */
+    async _validateDepartmentIdsExist(departmentIds) {
+        const repo = AppDataSource.getRepository(DepartmentEntity);
+        const found = await repo.find({ where: { id: In(departmentIds), isDeleted: false } });
+        const foundIds = found.map(d => d.id);
+        const invalidIds = departmentIds.filter(id => !foundIds.includes(id));
+        if (invalidIds.length > 0) {
+            throw new BadRequestException(`Các phòng ban không tồn tại: ID [${invalidIds.join(', ')}].`);
+        }
     }
 
     async _validateNoOverlap(overtimeTypeId, effectiveFrom, effectiveTo, excludeId) {
