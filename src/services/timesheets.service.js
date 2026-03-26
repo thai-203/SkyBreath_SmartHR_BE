@@ -939,7 +939,6 @@ export class TimesheetsService {
                 detail.check_in = detail.checkIn;
                 detail.check_out = detail.checkOut;
 
-                detail.attendanceStatus = dayRecords[0].attendanceStatus;
                 detail.attendanceType = dayRecords[0].attendanceType;
                 detail.status = 'PRESENT';
 
@@ -972,6 +971,19 @@ export class TimesheetsService {
                         detail.earlyLeaveMinutes = shiftEnd - checkOutMinutes;
                         detail.early_leave_minutes = detail.earlyLeaveMinutes;
                     }
+                }
+
+                // Set attendanceStatus based on calculated late/early values
+                const isLate = detail.lateMinutes > 0;
+                const isEarly = detail.earlyLeaveMinutes > 0;
+                if (isLate && isEarly) {
+                    detail.attendanceStatus = 'LATE_AND_EARLY_LEAVE';
+                } else if (isLate) {
+                    detail.attendanceStatus = 'LATE';
+                } else if (isEarly) {
+                    detail.attendanceStatus = 'EARLY_LEAVE';
+                } else {
+                    detail.attendanceStatus = 'ON_TIME';
                 }
             }
 
