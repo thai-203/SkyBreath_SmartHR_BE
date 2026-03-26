@@ -57,4 +57,6 @@ router.get('/leaves/calendar', authMiddleware, requestsController.getLeaveCalend
  */
 router.post('/', authMiddleware, requestsController.create);
 
+router.patch('/:id/status', authMiddleware, requestsController.updateStatus);
+
 export const requestsRoutes = router;

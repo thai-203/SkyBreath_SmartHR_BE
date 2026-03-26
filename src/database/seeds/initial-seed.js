@@ -4,6 +4,8 @@ import { databaseConfig } from '../../config/database.config.js';
 import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
 import { DepartmentEntity } from '../../models/entities/department.entity.js';
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
+import { HolidayConfigEntity } from '../../models/entities/holiday-config.entity.js';
+import { HolidayGroupEntity } from '../../models/entities/holiday-group.entity.js';
 import { HolidayListEntity } from '../../models/entities/holiday-list.entity.js';
 import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
 import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js';
@@ -11,13 +13,11 @@ import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
+import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
+import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
-import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
-import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
-import { HolidayGroupEntity } from '../../models/entities/holiday-group.entity.js';
-import { HolidayConfigEntity } from '../../models/entities/holiday-config.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -731,7 +731,7 @@ const seed = async () => {
     const userRepo = dataSource.getRepository(UserEntity);
     const userRoleRepo = dataSource.getRepository(UserRoleEntity);
     const employeeRepo = dataSource.getRepository(EmployeeEntity);
-    const password = await hashPassword('password123');
+    const password = await hashPassword('Password@123');
 
     const usersData = [
       {
@@ -941,6 +941,8 @@ const seed = async () => {
     if (!defaultGroup) {
       defaultGroup = holidayGroupRepo.create({
         groupName: 'Default Holiday Group',
+        groupCode: 'HLD-2026-DEFAULT',
+        year: 2026,
         description: 'Default group for all holidays'
       });
       await holidayGroupRepo.save(defaultGroup);
