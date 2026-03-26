@@ -49,6 +49,28 @@ export class ShiftAssignmentsService {
     return `${y}-${m}-${d}`;
   }
 
+  _todayDateOnly() {
+    const now = new Date();
+    return this._dateOnly(
+      new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    );
+  }
+
+  _assertStartDateNotInPast(startDate, message) {
+    if (!startDate) return;
+
+    const normalizedStartDate = this._dateOnly(startDate);
+    if (!normalizedStartDate) {
+      throw new BadRequestException('Ngày bắt đầu không hợp lệ');
+    }
+
+    if (normalizedStartDate < this._todayDateOnly()) {
+      throw new BadRequestException(
+        message || 'Không thể phân ca cho ngày trong quá khứ',
+      );
+    }
+  }
+
   _resolveRange(startDate, endDate) {
     if (startDate && endDate) {
       return {
@@ -333,7 +355,7 @@ export class ShiftAssignmentsService {
     const shiftName = conflict.shift?.shiftName || `ID ${conflict.shiftId}`;
 
     throw new ConflictException(
-      `Nhân viên ${employeeName} đã có ca ${shiftName} vào ngày ${this._dateOnly(conflict.workDate)}`,
+      `Nhân viên ${employeeName} đã có ca ${shiftName} trùng thời gian vào ngày ${this._dateOnly(conflict.workDate)}`,
     );
   }
 
@@ -377,6 +399,11 @@ export class ShiftAssignmentsService {
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
     }
+
+    this._assertStartDateNotInPast(
+      startDate,
+      'Không thể tạo phân ca cho ngày trong quá khứ',
+    );
 
     const normalizedWeekdays = this._toNumberArray(weekdays);
     if (
@@ -500,6 +527,13 @@ export class ShiftAssignmentsService {
       new Date(nextStartDate) > new Date(nextEndDate)
     ) {
       throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
+    }
+
+    if (data.startDate) {
+      this._assertStartDateNotInPast(
+        data.startDate,
+        'Không thể cập nhật phân ca với ngày bắt đầu trong quá khứ',
+      );
     }
 
     if (
@@ -680,7 +714,7 @@ export class ShiftAssignmentsService {
 
         return {
           id: item.id,
-          assignmentName: item.assignmentName || `Bang phan ca #${item.id}`,
+          assignmentName: item.assignmentName || `Bảng phân ca #${item.id}`,
           effectiveFrom: this._dateOnly(item.effectiveFrom),
           effectiveTo: this._dateOnly(item.effectiveTo),
           weekdays: this._toNumberArray(item.weekdays),
@@ -694,12 +728,12 @@ export class ShiftAssignmentsService {
           appliedShifts: shiftNames.join(', '),
           appliedDepartments:
             departmentNames.length > 0
-              ? departmentNames.join(', ')
-              : 'Tat ca phong ban',
+              ? `${departmentNames.length} Phòng ban`
+              : 'Tất cả phòng ban',
           appliedTargets:
             employeeNames.length > 0
-              ? `${employeeNames.length} nhan vien`
-              : 'Theo phong ban',
+              ? `${employeeNames.length} Nhân viên`
+              : 'Theo phòng ban',
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
         };

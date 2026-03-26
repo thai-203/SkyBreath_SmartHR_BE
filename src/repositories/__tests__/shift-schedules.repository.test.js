@@ -9,8 +9,10 @@ jest.mock('../../database/data-source.js', () => ({
 
 describe('ShiftSchedulesRepository', () => {
   let repository;
-  let ormRepo;
+  let scheduleOrmRepo;
+  let shiftOrmRepo;
   let qb;
+  let shiftQb;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -24,14 +26,26 @@ describe('ShiftSchedulesRepository', () => {
       getMany: jest.fn().mockResolvedValue([{ id: 1 }]),
     };
 
-    ormRepo = {
+    shiftQb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+
+    scheduleOrmRepo = {
       create: jest.fn((x) => x),
       save: jest.fn(async (x) => x),
       update: jest.fn(async () => ({ affected: 1 })),
       createQueryBuilder: jest.fn(() => qb),
     };
 
-    AppDataSource.getRepository.mockReturnValue(ormRepo);
+    shiftOrmRepo = {
+      createQueryBuilder: jest.fn(() => shiftQb),
+    };
+
+    AppDataSource.getRepository
+      .mockReturnValueOnce(scheduleOrmRepo)
+      .mockReturnValueOnce(shiftOrmRepo);
     repository = new ShiftSchedulesRepository();
   });
 
@@ -39,8 +53,8 @@ describe('ShiftSchedulesRepository', () => {
     const result = await repository.bulkCreate([]);
 
     expect(result).toEqual([]);
-    expect(ormRepo.create).not.toHaveBeenCalled();
-    expect(ormRepo.save).not.toHaveBeenCalled();
+    expect(scheduleOrmRepo.create).not.toHaveBeenCalled();
+    expect(scheduleOrmRepo.save).not.toHaveBeenCalled();
   });
 
   it('creates and saves rows in bulkCreate', async () => {
@@ -48,15 +62,15 @@ describe('ShiftSchedulesRepository', () => {
 
     const result = await repository.bulkCreate(rows);
 
-    expect(ormRepo.create).toHaveBeenCalledWith(rows);
-    expect(ormRepo.save).toHaveBeenCalledWith(rows);
+    expect(scheduleOrmRepo.create).toHaveBeenCalledWith(rows);
+    expect(scheduleOrmRepo.save).toHaveBeenCalledWith(rows);
     expect(result).toEqual(rows);
   });
 
   it('soft deletes schedules by assignment id', async () => {
     await repository.softDeleteByAssignmentId(100);
 
-    expect(ormRepo.update).toHaveBeenCalledWith(
+    expect(scheduleOrmRepo.update).toHaveBeenCalledWith(
       { assignmentId: 100, isDeleted: false },
       expect.objectContaining({ isDeleted: true, deletedAt: expect.any(Date) }),
     );
@@ -72,7 +86,7 @@ describe('ShiftSchedulesRepository', () => {
       keyword: 'Nguyen',
     });
 
-    expect(ormRepo.createQueryBuilder).toHaveBeenCalledWith('schedule');
+    expect(scheduleOrmRepo.createQueryBuilder).toHaveBeenCalledWith('schedule');
     expect(qb.andWhere).toHaveBeenCalledWith(
       'schedule.workDate >= :startDate',
       {
@@ -102,5 +116,77 @@ describe('ShiftSchedulesRepository', () => {
     expect(qb.orderBy).toHaveBeenCalledWith('schedule.workDate', 'ASC');
     expect(qb.addOrderBy).toHaveBeenCalledWith('employee.fullName', 'ASC');
     expect(qb.getMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns conflict when a planned shift overlaps existing shift on same day', async () => {
+    shiftQb.getMany.mockResolvedValue([
+      {
+        id: 11,
+        shiftName: 'Ca 1',
+        startTime: '08:00:00',
+        endTime: '12:00:00',
+      },
+    ]);
+
+    qb.getMany.mockResolvedValue([
+      {
+        employeeId: 7,
+        workDate: '2026-03-26',
+        shiftId: 22,
+        shift: {
+          id: 22,
+          shiftName: 'Ca 2',
+          startTime: '10:00:00',
+          endTime: '14:00:00',
+        },
+      },
+    ]);
+
+    const result = await repository.findFirstConflict([
+      {
+        employeeId: 7,
+        shiftId: 11,
+        workDate: '2026-03-26',
+      },
+    ]);
+
+    expect(result).toEqual(
+      expect.objectContaining({ employeeId: 7, shiftId: 22 }),
+    );
+  });
+
+  it('allows same day assignment when shift times do not overlap', async () => {
+    shiftQb.getMany.mockResolvedValue([
+      {
+        id: 11,
+        shiftName: 'Ca sáng',
+        startTime: '08:00:00',
+        endTime: '12:00:00',
+      },
+    ]);
+
+    qb.getMany.mockResolvedValue([
+      {
+        employeeId: 7,
+        workDate: '2026-03-26',
+        shiftId: 22,
+        shift: {
+          id: 22,
+          shiftName: 'Ca chiều',
+          startTime: '13:00:00',
+          endTime: '17:00:00',
+        },
+      },
+    ]);
+
+    const result = await repository.findFirstConflict([
+      {
+        employeeId: 7,
+        shiftId: 11,
+        workDate: '2026-03-26',
+      },
+    ]);
+
+    expect(result).toBeNull();
   });
 });

@@ -62,6 +62,28 @@ describe('ShiftAssignmentsService', () => {
     );
   });
 
+  it('rejects createAssignment when startDate is in the past', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const y = yesterday.getFullYear();
+    const m = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const d = String(yesterday.getDate()).padStart(2, '0');
+    const pastDate = `${y}-${m}-${d}`;
+
+    await expectRejectWithStatus(
+      service.createAssignment({
+        assignmentName: 'Ca sáng',
+        employeeIds: [1],
+        shiftIds: [2],
+        startDate: pastDate,
+        endDate: pastDate,
+        weekdays: [1],
+        repeatType: 'weekly',
+      }),
+      400,
+    );
+  });
+
   it('creates assignment and rebuilds schedules with normalized payload', async () => {
     jest.spyOn(service, '_resolveTargetEmployees').mockResolvedValue({
       employeeIds: [1, 2],
@@ -160,6 +182,36 @@ describe('ShiftAssignmentsService', () => {
     );
     expect(rebuildSpy).toHaveBeenCalled();
     expect(result).toEqual({ id: 5, assignmentName: 'New Name' });
+  });
+
+  it('rejects updateAssignment when provided startDate is in the past', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const y = yesterday.getFullYear();
+    const m = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const d = String(yesterday.getDate()).padStart(2, '0');
+    const pastDate = `${y}-${m}-${d}`;
+
+    assignRepo.findById.mockResolvedValue({
+      id: 5,
+      assignmentName: 'Old',
+      employeeId: 11,
+      employeeIds: '11',
+      departmentIds: '20',
+      shiftId: 7,
+      shiftIds: '7',
+      weekdays: '1,3',
+      repeatType: 'weekly',
+      effectiveFrom: '2026-03-01',
+      effectiveTo: '2026-03-31',
+    });
+
+    await expectRejectWithStatus(
+      service.updateAssignment(5, { startDate: pastDate }),
+      400,
+    );
+
+    expect(assignRepo.update).not.toHaveBeenCalled();
   });
 
   it('cancels assignment and soft deletes generated schedules', async () => {

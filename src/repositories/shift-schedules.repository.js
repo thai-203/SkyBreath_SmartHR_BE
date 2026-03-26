@@ -1,9 +1,11 @@
 import { AppDataSource } from '../database/data-source.js';
 import { ShiftScheduleEntity } from '../models/entities/shift-schedule.entity.js';
+import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 
 export class ShiftSchedulesRepository {
   constructor() {
     this.repository = AppDataSource.getRepository(ShiftScheduleEntity);
+    this.shiftRepository = AppDataSource.getRepository(WorkingShiftEntity);
   }
 
   _dateOnly(value) {
@@ -19,6 +21,61 @@ export class ShiftSchedulesRepository {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  }
+
+  _timeToMinutes(value) {
+    if (!value || typeof value !== 'string') return null;
+
+    const parts = value.split(':');
+    if (parts.length < 2) return null;
+
+    const hour = Number(parts[0]);
+    const minute = Number(parts[1]);
+
+    if (
+      !Number.isFinite(hour) ||
+      !Number.isFinite(minute) ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59
+    ) {
+      return null;
+    }
+
+    return hour * 60 + minute;
+  }
+
+  _buildShiftIntervals(shift) {
+    const start = this._timeToMinutes(shift?.startTime);
+    const end = this._timeToMinutes(shift?.endTime);
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) {
+      return [];
+    }
+
+    if (end > start) {
+      return [{ start, end }];
+    }
+
+    // Overnight shift: split into two ranges.
+    return [
+      { start, end: 24 * 60 },
+      { start: 0, end },
+    ];
+  }
+
+  _shiftsOverlap(shiftA, shiftB) {
+    const intervalsA = this._buildShiftIntervals(shiftA);
+    const intervalsB = this._buildShiftIntervals(shiftB);
+
+    if (intervalsA.length === 0 || intervalsB.length === 0) {
+      return false;
+    }
+
+    return intervalsA.some((a) =>
+      intervalsB.some((b) => a.start < b.end && b.start < a.end),
+    );
   }
 
   async bulkCreate(dataArray) {
@@ -93,25 +150,26 @@ export class ShiftSchedulesRepository {
       return null;
     }
 
+    const normalizedRows = scheduleRows
+      .map((row) => ({
+        employeeId: Number(row.employeeId),
+        shiftId: Number(row.shiftId),
+        workDate: this._dateOnly(row.workDate),
+      }))
+      .filter(
+        (row) =>
+          Number.isFinite(row.employeeId) &&
+          row.employeeId > 0 &&
+          Number.isFinite(row.shiftId) &&
+          row.shiftId > 0 &&
+          !!row.workDate,
+      );
+
     const employeeIds = [
-      ...new Set(
-        scheduleRows
-          .map((row) => Number(row.employeeId))
-          .filter((id) => Number.isFinite(id) && id > 0),
-      ),
+      ...new Set(normalizedRows.map((row) => row.employeeId)),
     ];
-    const shiftIds = [
-      ...new Set(
-        scheduleRows
-          .map((row) => Number(row.shiftId))
-          .filter((id) => Number.isFinite(id) && id > 0),
-      ),
-    ];
-    const workDates = [
-      ...new Set(
-        scheduleRows.map((row) => this._dateOnly(row.workDate)).filter(Boolean),
-      ),
-    ];
+    const shiftIds = [...new Set(normalizedRows.map((row) => row.shiftId))];
+    const workDates = [...new Set(normalizedRows.map((row) => row.workDate))];
 
     if (
       employeeIds.length === 0 ||
@@ -121,28 +179,43 @@ export class ShiftSchedulesRepository {
       return null;
     }
 
-    const plannedKeys = new Set(
-      scheduleRows
-        .map((row) => {
-          const employeeId = Number(row.employeeId);
-          const shiftId = Number(row.shiftId);
-          const workDate = this._dateOnly(row.workDate);
-          if (
-            !Number.isFinite(employeeId) ||
-            employeeId <= 0 ||
-            !Number.isFinite(shiftId) ||
-            shiftId <= 0 ||
-            !workDate
-          ) {
-            return null;
-          }
-          return `${employeeId}|${shiftId}|${workDate}`;
-        })
-        .filter(Boolean),
+    const plannedShifts = await this.shiftRepository
+      .createQueryBuilder('shift')
+      .where('shift.id IN (:...shiftIds)', { shiftIds })
+      .andWhere('shift.isDeleted = :isDeleted', { isDeleted: false })
+      .getMany();
+
+    const plannedShiftMap = new Map(
+      plannedShifts.map((shift) => [shift.id, shift]),
     );
 
-    if (plannedKeys.size === 0) {
-      return null;
+    const plannedRowsByEmployeeDate = new Map();
+    for (const row of normalizedRows) {
+      const key = `${row.employeeId}|${row.workDate}`;
+      if (!plannedRowsByEmployeeDate.has(key)) {
+        plannedRowsByEmployeeDate.set(key, []);
+      }
+      plannedRowsByEmployeeDate.get(key).push(row);
+    }
+
+    for (const [key, rows] of plannedRowsByEmployeeDate.entries()) {
+      if (rows.length < 2) continue;
+
+      for (let i = 0; i < rows.length; i++) {
+        for (let j = i + 1; j < rows.length; j++) {
+          const shiftA = plannedShiftMap.get(rows[i].shiftId);
+          const shiftB = plannedShiftMap.get(rows[j].shiftId);
+          if (this._shiftsOverlap(shiftA, shiftB)) {
+            const [employeeId, workDate] = key.split('|');
+            return {
+              employeeId: Number(employeeId),
+              workDate,
+              shiftId: rows[j].shiftId,
+              shift: shiftB,
+            };
+          }
+        }
+      }
     }
 
     const query = this.repository
@@ -155,7 +228,6 @@ export class ShiftSchedulesRepository {
         assignmentDeleted: false,
       })
       .andWhere('schedule.employeeId IN (:...employeeIds)', { employeeIds })
-      .andWhere('schedule.shiftId IN (:...shiftIds)', { shiftIds })
       .andWhere('schedule.workDate IN (:...workDates)', { workDates });
 
     if (excludeAssignmentId) {
@@ -165,11 +237,38 @@ export class ShiftSchedulesRepository {
     }
 
     const existingRows = await query.getMany();
-    return (
-      existingRows.find((row) => {
-        const key = `${Number(row.employeeId)}|${Number(row.shiftId)}|${this._dateOnly(row.workDate)}`;
-        return plannedKeys.has(key);
-      }) || null
-    );
+    const existingRowsByEmployeeDate = new Map();
+
+    for (const row of existingRows) {
+      const employeeId = Number(row.employeeId);
+      const workDate = this._dateOnly(row.workDate);
+      if (!Number.isFinite(employeeId) || !workDate) continue;
+
+      const key = `${employeeId}|${workDate}`;
+      if (!existingRowsByEmployeeDate.has(key)) {
+        existingRowsByEmployeeDate.set(key, []);
+      }
+      existingRowsByEmployeeDate.get(key).push(row);
+    }
+
+    for (const [key, plannedRows] of plannedRowsByEmployeeDate.entries()) {
+      const existingForDay = existingRowsByEmployeeDate.get(key) || [];
+      if (existingForDay.length === 0) continue;
+
+      for (const plannedRow of plannedRows) {
+        const plannedShift = plannedShiftMap.get(plannedRow.shiftId);
+        if (!plannedShift) continue;
+
+        const overlapRow = existingForDay.find((existingRow) =>
+          this._shiftsOverlap(plannedShift, existingRow.shift),
+        );
+
+        if (overlapRow) {
+          return overlapRow;
+        }
+      }
+    }
+
+    return null;
   }
 }
