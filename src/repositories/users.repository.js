@@ -77,7 +77,12 @@ export class UsersRepository {
   async findById(id) {
     return this.userRepository.findOne({
       where: { id },
-      relations: ['userRoles', 'userRoles.role'],
+      relations: [
+        'userRoles',
+        'userRoles.role',
+        'userRoles.role.rolePermissions',
+        'userRoles.role.rolePermissions.permission',
+      ],
     });
   }
 
