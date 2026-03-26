@@ -363,6 +363,48 @@ const seed = async () => {
         description: 'Delete payroll type',
         module: 'PayrollType',
       },
+      // Overtime Rules
+      {
+        permissionCode: 'OVERTIME_RULE_READ',
+        description: 'View overtime rules',
+        module: 'Overtime',
+      },
+      {
+        permissionCode: 'OVERTIME_RULE_CREATE',
+        description: 'Create overtime rule',
+        module: 'Overtime',
+      },
+      {
+        permissionCode: 'OVERTIME_RULE_UPDATE',
+        description: 'Update overtime rule',
+        module: 'Overtime',
+      },
+      {
+        permissionCode: 'OVERTIME_RULE_DELETE',
+        description: 'Delete overtime rule',
+        module: 'Overtime',
+      },
+      // Penalties
+      {
+        permissionCode: 'PENALTY_READ',
+        description: 'View penalties',
+        module: 'Penalty',
+      },
+      {
+        permissionCode: 'PENALTY_CREATE',
+        description: 'Create penalty',
+        module: 'Penalty',
+      },
+      {
+        permissionCode: 'PENALTY_UPDATE',
+        description: 'Update penalty',
+        module: 'Penalty',
+      },
+      {
+        permissionCode: 'PENALTY_DELETE',
+        description: 'Delete penalty',
+        module: 'Penalty',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -533,6 +575,15 @@ const seed = async () => {
       'ONBOARDING_TASK_CREATE',
       'ONBOARDING_TASK_UPDATE',
       'ONBOARDING_TASK_DELETE',
+      // Overtime Rules & Penalties
+      'OVERTIME_RULE_READ',
+      'OVERTIME_RULE_CREATE',
+      'OVERTIME_RULE_UPDATE',
+      'OVERTIME_RULE_DELETE',
+      'PENALTY_READ',
+      'PENALTY_CREATE',
+      'PENALTY_UPDATE',
+      'PENALTY_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -554,8 +605,8 @@ const seed = async () => {
 
     console.log('Assigned permissions to HR');
 
-    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ
-    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ', 'SHIFT_SCHEDULE_READ'];
+    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ, OVERTIME_RULE_READ, PENALTY_READ
+    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ', 'OVERTIME_RULE_READ', 'PENALTY_READ'];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
       if (p) {

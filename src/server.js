@@ -24,6 +24,7 @@ import holidayGroupsRoutes from './routes/holiday-groups.routes.js';
 import { jobGradesRoutes } from './routes/job-grades.routes.js';
 import { onboardingRoutes } from './routes/onboarding.routes.js';
 import { overtimeRulesRoutes } from './routes/overtime-rules.routes.js';
+import { overtimeTypesRoutes } from './routes/overtime-types.routes.js';
 import { payrollTypeRoutes } from './routes/payroll-type.routes.js';
 import { payrollRoutes } from './routes/payroll.routes.js';
 import { penaltiesRoutes } from './routes/penalties.routes.js';
@@ -34,6 +35,7 @@ import { rolesRoutes } from './routes/roles.routes.js';
 import { shiftsRoutes } from './routes/shifts.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
+import { uploadRoutes } from './routes/upload.routes.js';
 import { ContractsService } from './services/contracts.service.js';
 import { startTimesheetAutoGenerateJob } from './jobs/timesheet-auto-generate.job.js';
 import { startAttendanceSyncJob } from './jobs/attendance-sync.job.js';
@@ -83,6 +85,7 @@ app.use(
 app.use(`/${API_PREFIX}/${API_VERSION}/onboarding`, onboardingRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/timesheets`, timesheetsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/overtime-rules`, overtimeRulesRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/overtime-types`, overtimeTypesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/penalties`, penaltiesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/shifts`, shiftsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/holiday-list`, holidayListRoutes);
@@ -91,6 +94,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/holiday-groups`, holidayGroupsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll`, payrollRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll-types`, payrollTypeRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/requests`, requestsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/upload`, uploadRoutes);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');
@@ -111,6 +115,26 @@ const startServer = async () => {
   try {
     await AppDataSource.initialize();
     console.log('Data Source has been initialized!');
+
+    // Seed overtime_types nếu chưa có
+    try {
+      const { OvertimeTypeEntity } = await import('./models/entities/overtime-type.entity.js');
+      const typeRepo = AppDataSource.getRepository(OvertimeTypeEntity);
+      const overtimeTypes = [
+        { code: 'WEEKDAY', name: 'OT ngày thường', description: 'Làm thêm giờ vào ngày làm việc bình thường' },
+        { code: 'WEEKEND', name: 'OT cuối tuần', description: 'Làm thêm giờ vào thứ 7 hoặc chủ nhật' },
+        { code: 'HOLIDAY', name: 'OT ngày lễ', description: 'Làm thêm giờ vào ngày lễ, tết' },
+      ];
+      for (const ot of overtimeTypes) {
+        const exists = await typeRepo.findOne({ where: { code: ot.code } });
+        if (!exists) {
+          await typeRepo.save(typeRepo.create(ot));
+          console.log(`Seeded overtime_type: ${ot.code}`);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to seed overtime_types:', e);
+    }
 
     app.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
