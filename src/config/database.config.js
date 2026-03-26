@@ -41,8 +41,12 @@ import { OnboardingProgressEntity } from '../models/entities/onboarding-progress
 import { TaskAssignmentEntity } from '../models/entities/task-assignment.entity.js';
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
+import { OvertimeTypeEntity } from '../models/entities/overtime-type.entity.js';
 import { PenaltyEntity } from '../models/entities/penalty.entity.js';
 import { PayrollTypeEntity } from '../models/entities/payroll-type.entity.js';
+import { HolidayGroupEntity } from '../models/entities/holiday-group.entity.js';
+import { HolidayConfigEntity } from '../models/entities/holiday-config.entity.js';
+import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -100,8 +104,12 @@ export const databaseConfig = {
     TaskAssignmentEntity,
     OvertimeRuleEntity,
     OvertimeRuleDepartmentEntity,
+    OvertimeTypeEntity,
+    OvertimeRequestDetailEntity,
     PenaltyEntity,
     PayrollTypeEntity,
+    HolidayGroupEntity,
+    HolidayConfigEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

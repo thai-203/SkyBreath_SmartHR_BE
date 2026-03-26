@@ -15,6 +15,7 @@ export function startTimesheetAutoGenerateJob() {
     const timesheetsService = new TimesheetsService(timesheetsRepository);
 
     // Cron: "5 0 1 * *" = minute 5, hour 0, day 1, every month, every weekday
+    /*
     cron.schedule('5 0 1 * *', async () => {
         const now = new Date();
         const month = now.getMonth() + 1; // current month (1-12)
@@ -32,6 +33,7 @@ export function startTimesheetAutoGenerateJob() {
     }, {
         timezone: 'Asia/Ho_Chi_Minh'
     });
+    */
 
-    console.log('[TimesheetJob] Scheduled: auto-generate timesheets on 1st of every month at 00:05 (Asia/Ho_Chi_Minh)');
+    // console.log('[TimesheetJob] Scheduled: auto-generate timesheets on 1st of every month at 00:05 (Asia/Ho_Chi_Minh)');
 }

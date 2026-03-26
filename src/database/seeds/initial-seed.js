@@ -4,6 +4,8 @@ import { databaseConfig } from '../../config/database.config.js';
 import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
 import { DepartmentEntity } from '../../models/entities/department.entity.js';
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
+import { HolidayConfigEntity } from '../../models/entities/holiday-config.entity.js';
+import { HolidayGroupEntity } from '../../models/entities/holiday-group.entity.js';
 import { HolidayListEntity } from '../../models/entities/holiday-list.entity.js';
 import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
 import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js';
@@ -11,11 +13,11 @@ import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
+import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
+import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
-import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
-import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -361,6 +363,48 @@ const seed = async () => {
         description: 'Delete payroll type',
         module: 'PayrollType',
       },
+      // Overtime Rules
+      {
+        permissionCode: 'OVERTIME_RULE_READ',
+        description: 'View overtime rules',
+        module: 'Overtime',
+      },
+      {
+        permissionCode: 'OVERTIME_RULE_CREATE',
+        description: 'Create overtime rule',
+        module: 'Overtime',
+      },
+      {
+        permissionCode: 'OVERTIME_RULE_UPDATE',
+        description: 'Update overtime rule',
+        module: 'Overtime',
+      },
+      {
+        permissionCode: 'OVERTIME_RULE_DELETE',
+        description: 'Delete overtime rule',
+        module: 'Overtime',
+      },
+      // Penalties
+      {
+        permissionCode: 'PENALTY_READ',
+        description: 'View penalties',
+        module: 'Penalty',
+      },
+      {
+        permissionCode: 'PENALTY_CREATE',
+        description: 'Create penalty',
+        module: 'Penalty',
+      },
+      {
+        permissionCode: 'PENALTY_UPDATE',
+        description: 'Update penalty',
+        module: 'Penalty',
+      },
+      {
+        permissionCode: 'PENALTY_DELETE',
+        description: 'Delete penalty',
+        module: 'Penalty',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -531,6 +575,15 @@ const seed = async () => {
       'ONBOARDING_TASK_CREATE',
       'ONBOARDING_TASK_UPDATE',
       'ONBOARDING_TASK_DELETE',
+      // Overtime Rules & Penalties
+      'OVERTIME_RULE_READ',
+      'OVERTIME_RULE_CREATE',
+      'OVERTIME_RULE_UPDATE',
+      'OVERTIME_RULE_DELETE',
+      'PENALTY_READ',
+      'PENALTY_CREATE',
+      'PENALTY_UPDATE',
+      'PENALTY_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -552,8 +605,8 @@ const seed = async () => {
 
     console.log('Assigned permissions to HR');
 
-    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ
-    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ'];
+    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ, OVERTIME_RULE_READ, PENALTY_READ
+    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ', 'OVERTIME_RULE_READ', 'PENALTY_READ'];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
       if (p) {
@@ -678,7 +731,7 @@ const seed = async () => {
     const userRepo = dataSource.getRepository(UserEntity);
     const userRoleRepo = dataSource.getRepository(UserRoleEntity);
     const employeeRepo = dataSource.getRepository(EmployeeEntity);
-    const password = await hashPassword('password123');
+    const password = await hashPassword('Password@123');
 
     const usersData = [
       {
@@ -879,6 +932,47 @@ const seed = async () => {
       if (!existing) {
         await holidayRepo.save(holidayRepo.create(h));
         console.log(`Created holiday: ${h.holidayName}`);
+      }
+    }
+
+    // 8.1 Seed Holiday Groups and Configuration
+    const holidayGroupRepo = dataSource.getRepository(HolidayGroupEntity);
+    let defaultGroup = await holidayGroupRepo.findOne({ where: { groupName: 'Default Holiday Group' } });
+    if (!defaultGroup) {
+      defaultGroup = holidayGroupRepo.create({
+        groupName: 'Default Holiday Group',
+        groupCode: 'HLD-2026-DEFAULT',
+        year: 2026,
+        description: 'Default group for all holidays'
+      });
+      await holidayGroupRepo.save(defaultGroup);
+      console.log('Created default holiday group');
+    }
+
+    const holidayConfigRepo = dataSource.getRepository(HolidayConfigEntity);
+    let holidayConfig = await holidayConfigRepo.findOne({ where: { isDeleted: false } });
+    if (!holidayConfig) {
+      holidayConfig = holidayConfigRepo.create({
+        isPaidByDefault: true,
+        compensatoryWorkingDaysEnabled: true,
+        holidayReminderPolicy: 'Send reminder 1 day before',
+        defaultHolidayGroupId: defaultGroup.id,
+        remindersEnabled: true,
+        reminderLeadTime: 1,
+        reminderChannels: ['IN_APP', 'EMAIL'],
+        reminderRecipients: ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'],
+        reminderHolidayTypes: ['Nghỉ lễ, tết']
+      });
+      await holidayConfigRepo.save(holidayConfig);
+      console.log('Created initial holiday configuration');
+    }
+
+    // Update existing holidays to point to default group if they don't have one
+    const allHolidays = await holidayRepo.find();
+    for (const h of allHolidays) {
+      if (!h.holidayGroupId) {
+        h.holidayGroupId = defaultGroup.id;
+        await holidayRepo.save(h);
       }
     }
 

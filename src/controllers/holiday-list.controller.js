@@ -16,6 +16,8 @@ export class HolidayListController {
                 search: req.query.search,
                 startDate: req.query.startDate,
                 endDate: req.query.endDate,
+                holidayGroupId: req.query.holidayGroupId ? parseInt(req.query.holidayGroupId) : undefined,
+                holidayType: req.query.holidayType,
             };
             const result = await this.service.findAll(queryDto);
             res.status(200).json({
@@ -71,6 +73,8 @@ export class HolidayListController {
                 search: req.query.search,
                 startDate: req.query.startDate,
                 endDate: req.query.endDate,
+                holidayGroupId: req.query.holidayGroupId ? parseInt(req.query.holidayGroupId) : undefined,
+                holidayType: req.query.holidayType,
             };
             const buffer = await this.service.export(queryDto);
 

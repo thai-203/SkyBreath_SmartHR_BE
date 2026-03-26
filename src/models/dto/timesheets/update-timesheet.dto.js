@@ -1,4 +1,4 @@
-import { IsOptional, IsNumber } from 'class-validator';
+import { IsOptional, IsNumber, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateTimesheetDto {
@@ -16,4 +16,8 @@ export class UpdateTimesheetDto {
     @IsOptional()
     @Type(() => Number)
     overtimeHours;
+
+    @IsString()
+    @IsOptional()
+    editReason;
 }

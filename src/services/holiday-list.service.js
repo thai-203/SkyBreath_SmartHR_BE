@@ -3,12 +3,16 @@ import { BadRequestException, NotFoundException } from '../common/exceptions/ind
 import { ExcelUtil } from '../common/utils/excel.util.js';
 import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { HolidayListRepository } from '../repositories/holiday-list.repository.js';
+import { HolidayConfigRepository } from '../repositories/holiday-configs.repository.js';
 import { mailService } from './mail.service.js';
+import { NotificationsService } from './notifications.service.js';
 
 export class HolidayListService {
     constructor() {
         this.repository = new HolidayListRepository();
         this.employeesRepository = new EmployeesRepository();
+        this.configRepository = new HolidayConfigRepository();
+        this.notificationsService = new NotificationsService();
     }
 
     async findAll(queryDto) {
@@ -52,6 +56,35 @@ export class HolidayListService {
 
     async delete(id) {
         const holiday = await this.findById(id);
+        
+        // Extract month and year
+        const startDate = new Date(holiday.startDate);
+        const month = startDate.getMonth() + 1;
+        const year = startDate.getFullYear();
+
+        // Check Payroll Dependency
+        const payrollRepo = new (await import('../repositories/payroll.repository.js')).PayrollRepository();
+        const lockedPayroll = await payrollRepo.repository.findOne({
+            where: [
+                { payrollMonth: month, payrollYear: year, payrollStatus: 'LOCKED', isDeleted: false },
+                { payrollMonth: month, payrollYear: year, payrollStatus: 'APPROVED', isDeleted: false }
+            ]
+        });
+
+        if (lockedPayroll) {
+            throw new BadRequestException(`Không thể xóa ngày nghỉ lễ vì bảng lương tháng ${month}/${year} đã được phê duyệt hoặc chốt.`);
+        }
+
+        // Check TimeSheet Dependency
+        const timeSheetRepo = new (await import('../repositories/time-sheet.repository.js')).TimeSheetRepository();
+        const lockedTimeSheet = await timeSheetRepo.repository.findOne({
+            where: { month: month, year: year, isLocked: true, isDeleted: false }
+        });
+
+        if (lockedTimeSheet) {
+            throw new BadRequestException(`Không thể xóa ngày nghỉ lễ vì bảng công tháng ${month}/${year} đã bị chốt.`);
+        }
+
         await this.repository.delete(holiday.id);
         return { message: 'Holiday deleted successfully' };
     }
@@ -177,5 +210,97 @@ export class HolidayListService {
             message: `Sent notifications to ${employees.length} employees`,
             count: results.filter(Boolean).length
         };
+    }
+
+    async processScheduledReminders() {
+        console.log('[HolidayReminder] Starting automated reminder process...');
+        
+        const config = await this.configRepository.getConfig();
+        if (!config.remindersEnabled) {
+            console.log('[HolidayReminder] Reminders are disabled by configuration.');
+            return;
+        }
+
+        const leadTime = config.reminderLeadTime || 0;
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + leadTime);
+        const dateString = targetDate.toISOString().split('T')[0];
+
+        console.log(`[HolidayReminder] Checking for holidays on ${dateString} (Lead time: ${leadTime} days)`);
+
+        const holidays = await this.repository.findByStartDate(dateString);
+        if (holidays.length === 0) {
+            console.log('[HolidayReminder] No upcoming holidays found for reminder.');
+            return;
+        }
+
+        const recipients = await this.employeesRepository.findByRoleNames(config.reminderRecipients || []);
+        if (recipients.length === 0) {
+            console.log('[HolidayReminder] No recipients found for the configured roles.');
+            return;
+        }
+
+        const stats = {
+            holidaysProcessed: holidays.length,
+            recipientsTargeted: recipients.length,
+            channels: config.reminderChannels || [],
+            outcomes: []
+        };
+
+        for (const holiday of holidays) {
+            // Check if holiday type is in filter
+            if (config.reminderHolidayTypes && config.reminderHolidayTypes.length > 0) {
+                if (!config.reminderHolidayTypes.includes(holiday.holidayType)) {
+                    console.log(`[HolidayReminder] Skipping holiday "${holiday.holidayName}" as type "${holiday.holidayType}" is not in filter.`);
+                    continue;
+                }
+            }
+
+            const subject = `Nhắc nhở ngày nghỉ lễ sắp tới: ${holiday.holidayName}`;
+            const startDate = new Date(holiday.startDate).toLocaleDateString('vi-VN');
+            const endDate = new Date(holiday.endDate).toLocaleDateString('vi-VN');
+
+            const content = `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <h2 style="color: #4f46e5; text-align: center;">Nhắc nhở Nghỉ lễ</h2>
+                    <p>Kính gửi anh/chị,</p>
+                    <p>Hệ thống xin nhắc nhở về ngày nghỉ lễ <strong>${holiday.holidayName}</strong> sắp tới:</p>
+                    <div style="background-color: #f9fafb; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                        <p style="margin: 5px 0;"><strong>Ngày bắt đầu:</strong> ${startDate}</p>
+                        <p style="margin: 5px 0;"><strong>Ngày kết thúc:</strong> ${endDate}</p>
+                        ${holiday.description ? `<p style="margin: 5px 0;"><strong>Ghi chú:</strong> ${holiday.description}</p>` : ''}
+                    </div>
+                    ${config.holidayReminderPolicy ? `<p><strong>Lưu ý:</strong> ${config.holidayReminderPolicy}</p>` : ''}
+                    <p>Chúc quý anh/chị một kỳ nghỉ lễ vui vẻ!</p>
+                </div>
+            `;
+
+            // Send via IN_APP if enabled
+            if (config.reminderChannels?.includes('IN_APP')) {
+                await this.notificationsService.createNotification({
+                    title: subject,
+                    message: holiday.description || `Chào mừng kỳ nghỉ ${holiday.holidayName}`,
+                    notificationType: 'HOLIDAY_REMINDER',
+                    recipientIds: recipients.map(emp => emp.userId).filter(Boolean)
+                });
+            }
+
+            // Send via EMAIL if enabled
+            if (config.reminderChannels?.includes('EMAIL')) {
+                await Promise.all(
+                    recipients.map(async (emp) => {
+                        const email = emp.companyEmail || emp.user?.email;
+                        if (email) {
+                            return mailService.sendHolidayNotification(email, subject, content);
+                        }
+                    })
+                );
+            }
+
+            stats.outcomes.push({ holiday: holiday.holidayName, status: 'Sent' });
+        }
+
+        console.log('[HolidayReminder] Automated reminder process completed.', stats);
+        return stats;
     }
 }
