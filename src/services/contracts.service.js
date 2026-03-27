@@ -20,6 +20,33 @@ export class ContractsService {
     this.employeesRepository = new EmployeesRepository();
   }
 
+  _isBlockingContractForCreate(contract) {
+    if (!contract || contract.isDeleted) return false;
+
+    const now = new Date();
+    const normalizedStatus = String(contract.contractStatus || '')
+      .trim()
+      .toUpperCase();
+    const nonBlockingStatuses = new Set([
+      'EXPIRED',
+      'TERMINATED',
+      'CANCELLED',
+      'CANCELED',
+    ]);
+
+    // Treat contracts that are logically inactive as non-blocking,
+    // even if scheduler/status sync hasn't run yet.
+    if (nonBlockingStatuses.has(normalizedStatus)) return false;
+
+    if (contract.endDate && new Date(contract.endDate) <= now) return false;
+
+    if (contract.terminationDate && new Date(contract.terminationDate) <= now) {
+      return false;
+    }
+
+    return true;
+  }
+
   async create(dto) {
     // validate employee
     const employee = await this.employeesRepository.findById(dto.employeeId);
@@ -27,11 +54,11 @@ export class ContractsService {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
     }
 
-    // prevent duplicates: employee cannot have another active contract
+    // prevent duplicates: employee cannot have another currently effective contract
     const existing = await this.contractsRepository.findByEmployeeId(
       dto.employeeId,
     );
-    if (existing.some((c) => c.contractStatus === 'ACTIVE' && !c.isDeleted)) {
+    if (existing.some((c) => this._isBlockingContractForCreate(c))) {
       throw new ConflictException('Nhân viên đã có hợp đồng đang hoạt động');
     }
 
@@ -237,7 +264,7 @@ export class ContractsService {
   async terminate(id, terminationData, userId) {
     const contract = await this.findById(id);
 
-    if (contract.contractStatus === 'terminated') {
+    if (String(contract.contractStatus || '').toUpperCase() === 'TERMINATED') {
       throw new BadRequestException('Hợp đồng đã được chấm dứt');
     }
 
@@ -380,13 +407,15 @@ export class ContractsService {
       .createQueryBuilder()
       .update(ContractEntity)
       .set({
-        contractStatus: 'terminated',
+        contractStatus: 'TERMINATED',
         terminatedAt: now,
         terminatedBy: userId,
       })
       .where('terminationDate <= :now', { now })
       .andWhere('terminationDate IS NOT NULL')
-      .andWhere('contractStatus != :terminated', { terminated: 'terminated' })
+      .andWhere('UPPER(contractStatus) != :terminated', {
+        terminated: 'TERMINATED',
+      })
       .execute();
 
     // expire contracts that have passed their end date and are still active
@@ -396,8 +425,8 @@ export class ContractsService {
       .set({ contractStatus: 'EXPIRED' })
       .where('endDate <= :now', { now })
       .andWhere('endDate IS NOT NULL')
-      .andWhere('contractStatus NOT IN (:...statuses)', {
-        statuses: ['EXPIRED', 'terminated'],
+      .andWhere('UPPER(contractStatus) NOT IN (:...statuses)', {
+        statuses: ['EXPIRED', 'TERMINATED'],
       })
       .execute();
   }
