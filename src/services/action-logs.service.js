@@ -1,11 +1,10 @@
 import { ActionLogsRepository } from '../repositories/action-logs.repository.js';
-import { NotFoundException } from '../common/exceptions/index.js';
+import { NotFoundException, BadRequestException } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
 import { parseUserAgent } from '../common/utils/user-agent.util.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
-import { parse } from 'dotenv';
-import { isAfter } from 'date-fns';
+import { parse, isAfter } from 'date-fns';
 
 export class ActionLogsService {
   constructor(actionLogsRepository = new ActionLogsRepository()) {

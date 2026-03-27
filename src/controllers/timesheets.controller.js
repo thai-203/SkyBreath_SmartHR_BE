@@ -76,6 +76,15 @@ export class TimesheetsController {
         }
     };
 
+    getLateEarlyRecords = async (req, res, next) => {
+        try {
+            const result = await this.timesheetsService.getLateEarlyRecords(req.query, req.user);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     recalculate = async (req, res, next) => {
         try {
             const result = await this.timesheetsService.recalculate(parseInt(req.params.id), req.user);

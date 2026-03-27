@@ -1,25 +1,25 @@
+import crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
-import { UsersService } from './users.service.js';
-import { AppDataSource } from '../database/data-source.js';
-import { EmployeeEntity } from '../models/entities/employee.entity.js';
-import { EmployeesRepository } from '../repositories/employees.repository.js';
-import { ActionLogsRepository } from '../repositories/action-logs.repository.js';
-import {
-  hashPassword,
-  comparePassword,
-  hashResetPasswordToken,
-  compareRefreshToken,
-} from '../common/utils/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import {
-  UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  UnauthorizedException,
 } from '../common/exceptions/index.js';
-import crypto from 'crypto';
-import { RedisService } from './redis.service.js';
-import { MailService } from './mail.service.js';
+import {
+  comparePassword,
+  compareRefreshToken,
+  hashPassword,
+  hashResetPasswordToken,
+} from '../common/utils/index.js';
 import { config } from '../config/env.config.js';
+import { AppDataSource } from '../database/data-source.js';
+import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { ActionLogsRepository } from '../repositories/action-logs.repository.js';
+import { EmployeesRepository } from '../repositories/employees.repository.js';
+import { MailService } from './mail.service.js';
+import { RedisService } from './redis.service.js';
+import { UsersService } from './users.service.js';
 export class AuthService {
   constructor(
     usersService = new UsersService(),
@@ -53,7 +53,6 @@ export class AuthService {
 
   async login(user) {
     const tokens = await this.generateTokens(user);
-
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.usersService.updateLastLogin(user.id);
     const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
@@ -180,28 +179,28 @@ export class AuthService {
       // Organization info
       department: employee?.department
         ? {
-            id: employee.department.id,
-            name: employee.department.departmentName,
-          }
+          id: employee.department.id,
+          name: employee.department.departmentName,
+        }
         : null,
       position: employee?.position
         ? {
-            id: employee.position.id,
-            name: employee.position.positionName,
-          }
+          id: employee.position.id,
+          name: employee.position.positionName,
+        }
         : null,
       jobGrade: employee?.jobGrade
         ? {
-            id: employee.jobGradeId,
-            name: employee.jobGrade.gradeName,
-          }
+          id: employee.jobGradeId,
+          name: employee.jobGrade.gradeName,
+        }
         : null,
       manager: employee?.directManager?.fullName || null,
       directManager: employee?.directManager
         ? {
-            id: employee.directManager.id,
-            name: employee.directManager.fullName,
-          }
+          id: employee.directManager.id,
+          name: employee.directManager.fullName,
+        }
         : null,
       hrMentor: employee?.hrMentor?.fullName || null,
       employmentStatus: employee?.employmentStatus || null,
@@ -212,6 +211,13 @@ export class AuthService {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       lastLoginTime: user.lastLoginTime,
+      permissions: [
+        ...new Set(
+          user.userRoles?.flatMap((ur) =>
+            ur.role.rolePermissions?.map((rp) => rp.permission.permissionCode),
+          ) || [],
+        ),
+      ],
     };
   }
 
@@ -295,21 +301,21 @@ export class AuthService {
       permanentAddress: updated.permanentAddress,
       department: updated.department
         ? {
-            id: updated.department.id,
-            name: updated.department.departmentName,
-          }
+          id: updated.department.id,
+          name: updated.department.departmentName,
+        }
         : null,
       position: updated.position
         ? {
-            id: updated.position.id,
-            name: updated.position.positionName,
-          }
+          id: updated.position.id,
+          name: updated.position.positionName,
+        }
         : null,
       jobGrade: updated.jobGrade
         ? {
-            id: updated.jobGrade.id,
-            name: updated.jobGrade.name,
-          }
+          id: updated.jobGrade.id,
+          name: updated.jobGrade.name,
+        }
         : null,
       manager: updated.directManager?.fullName || null,
       hrMentor: updated.hrMentor?.fullName || null,
