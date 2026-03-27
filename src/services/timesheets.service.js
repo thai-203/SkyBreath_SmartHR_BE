@@ -630,6 +630,103 @@ export class TimesheetsService {
     };
   }
 
+  /**
+   * UC-Excuse - Get filtered late/early records for the Excuse Request page
+   */
+  async getLateEarlyRecords(query, userContext) {
+    const { month, year, departmentId } = query;
+    const isHR = userContext.roles.includes('HR') || userContext.roles.includes('ADMIN');
+    
+    // 1. Get employees to process
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const empQuery = employeeRepo.createQueryBuilder('employee')
+      .where('employee.isDeleted = :isDeleted', { isDeleted: false });
+
+    if (!isHR) {
+      // For normal employee, only get their own record
+      const me = await this._getEmployeeByUserId(userContext.id);
+      if (!me) return [];
+      empQuery.andWhere('employee.id = :id', { id: me.id });
+    } else if (departmentId) {
+      empQuery.andWhere('employee.departmentId = :deptId', { deptId: departmentId });
+    }
+
+    const employees = await empQuery.getMany();
+    if (employees.length === 0) return [];
+
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
+    const requestRepo = AppDataSource.getRepository(RequestEntity);
+
+    let allResults = [];
+
+    for (const employee of employees) {
+      // Get attendance records
+      const records = await attendanceRepo.find({
+        where: {
+          employeeId: employee.id,
+          checkInTime: Between(startDate, endDate),
+          isDeleted: false
+        },
+        orderBy: { checkInTime: 'ASC' }
+      });
+
+      if (records.length === 0 && !isHR) continue;
+
+      // Get shift
+      const shift = await this._getEmployeeShift(employee.id, month, year);
+
+      // Get excuse requests
+      const excuseRequests = await requestRepo.find({
+        where: {
+          employeeId: employee.id,
+          requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+          startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
+          endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+          isDeleted: false,
+        },
+      });
+
+      // Calculate daily details (minimal computed set)
+      const dailyDetails = this._buildDailyDetails(
+        records,
+        shift,
+        parseInt(year),
+        parseInt(month),
+        new Set(), // No holidays needed for this view
+        [],        // No leaves
+        [],        // No OT
+        excuseRequests,
+      );
+
+      // Filter based on role
+      let filtered = [];
+      // For HR, only show if has excuseRequest (pending or approved) or specifically filtered by status
+      // For Employee, show if late/early OR if has excuseRequest
+      if (isHR) {
+          filtered = dailyDetails.filter(d => d.excuseRequest);
+      } else {
+          filtered = dailyDetails.filter(d => (d.lateMinutes > 0 || d.earlyLeaveMinutes > 0) || d.excuseRequest);
+      }
+
+      // Add employee info to each record
+      const enriched = filtered.map(d => ({
+        ...d,
+        employee: {
+          id: employee.id,
+          fullName: employee.fullName,
+          employeeCode: employee.employeeCode
+        }
+      }));
+
+      allResults = allResults.concat(enriched);
+    }
+
+    return allResults;
+  }
+
   // ──────────────────────────────────────
   // UC25 - Timesheet Data Management
   // ──────────────────────────────────────
@@ -776,6 +873,15 @@ export class TimesheetsService {
       throw new BadRequestException(AppMessages.Errors.Timesheet.IS_LOCKED);
     }
     const { editReason, ...dataToSave } = updateDto;
+
+    // Validate non-negative numeric fields
+    const numericFields = ['totalWorkingDays', 'totalWorkingHours', 'overtimeHours'];
+    for (const field of numericFields) {
+      if (dataToSave[field] !== undefined && dataToSave[field] < 0) {
+        throw new BadRequestException(`${field} không được là số âm`);
+      }
+    }
+
     const result = await this.timesheetsRepository.update(id, dataToSave);
 
     if (this.actionLogsService) {

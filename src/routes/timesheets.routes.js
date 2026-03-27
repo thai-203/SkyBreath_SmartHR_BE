@@ -215,6 +215,9 @@ router.get('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), time
  */
 router.get('/:id/attendance', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getAttendanceDetails);
 
+// UC-Excuse Page
+router.get('/attendance/late-early', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getLateEarlyRecords);
+
 // UC25 - Recalculate & Edit
 /**
  * @swagger

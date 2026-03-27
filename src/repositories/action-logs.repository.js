@@ -43,13 +43,15 @@ export class ActionLogsRepository {
       baseQuery.andWhere('actionLog.status = :status', { status });
     }
     if (fromDate) {
+      const [d, m, y] = fromDate.split('/');
       baseQuery.andWhere('actionLog.createdAt >= :fromDate', {
-        fromDate: `${fromDate} 00:00:00`,
+        fromDate: `${y}-${m}-${d} 00:00:00`,
       });
     }
     if (toDate) {
+      const [d, m, y] = toDate.split('/');
       baseQuery.andWhere('actionLog.createdAt <= :toDate', {
-        toDate: `${toDate} 23:59:59`,
+        toDate: `${y}-${m}-${d} 23:59:59`,
       });
     }
     baseQuery
