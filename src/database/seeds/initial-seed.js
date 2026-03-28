@@ -47,12 +47,9 @@ import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
 import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
-import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
 import { ShiftScheduleEntity } from '../../models/entities/shift-schedule.entity.js';
 import { TaskAssignmentEntity } from '../../models/entities/task-assignment.entity.js';
 import { TimeSheetEntity } from '../../models/entities/time-sheet.entity.js';
-import { HolidayGroupEntity } from '../../models/entities/holiday-group.entity.js';
-import { HolidayConfigEntity } from '../../models/entities/holiday-config.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);

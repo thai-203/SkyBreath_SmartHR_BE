@@ -3,23 +3,26 @@ import { BaseEntity } from '../../common/entities/base.entity.js';
 
 @Entity('penalties')
 export class PenaltyEntity extends BaseEntity {
-    @Column({ name: 'name', type: 'varchar' })
-    name;
+    @Column({ name: 'violation_type', type: 'varchar' })
+    violationType;
 
-    @Column({ name: 'penalty_type', type: 'varchar' })
-    penaltyType;
+    @Column({ name: 'effective_from', type: 'date' })
+    effectiveFrom;
 
-    @Column({ name: 'severity_level', type: 'varchar' })
-    severityLevel;
+    @Column({ name: 'effective_to', type: 'date', nullable: true })
+    effectiveTo;
 
-    @Column({ name: 'deduction_amount', type: 'decimal', precision: 15, scale: 2, nullable: true })
-    deductionAmount;
+    @Column({ name: 'from_minute', type: 'int' })
+    fromMinute;
 
-    @Column({ name: 'deduction_percentage', type: 'decimal', precision: 5, scale: 2, nullable: true })
-    deductionPercentage;
+    @Column({ name: 'to_minute', type: 'int' })
+    toMinute;
 
-    @Column({ name: 'description', type: 'text', nullable: true })
-    description;
+    @Column({ name: 'converted_hours', type: 'decimal', precision: 10, scale: 2 })
+    convertedHours;
+
+    @Column({ name: 'note', type: 'text', nullable: true })
+    note;
 
     @Column({ name: 'status', type: 'varchar', default: 'ACTIVE' })
     status;
