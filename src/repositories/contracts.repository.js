@@ -288,7 +288,9 @@ export class ContractsRepository {
 
       // if the contract already has a termination date in the past and status
       // is already terminated we simply disallow
-      if (contract.contractStatus === 'terminated') {
+      if (
+        String(contract.contractStatus || '').toUpperCase() === 'TERMINATED'
+      ) {
         throw new Error('Contract already terminated');
       }
 
@@ -308,7 +310,7 @@ export class ContractsRepository {
       };
 
       if (termDate <= now) {
-        updateData.contractStatus = 'terminated';
+        updateData.contractStatus = 'TERMINATED';
         updateData.terminatedAt = now;
         updateData.terminatedBy = userId;
       }
