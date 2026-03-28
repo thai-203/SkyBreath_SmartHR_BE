@@ -12,14 +12,14 @@ const penaltiesController = new PenaltiesController();
  * @swagger
  * tags:
  *   - name: Penalties
- *     description: Quản lý quy định hình phạt
+ *     description: Quản lý quy định vi phạm (Penalty Rules)
  */
 
 /**
  * @swagger
  * /penalties:
  *   get:
- *     summary: Lấy danh sách hình phạt (có lọc & phân trang)
+ *     summary: Lấy danh sách quy định vi phạm (có lọc & phân trang)
  *     tags: [Penalties]
  *     security:
  *       - bearerAuth: []
@@ -28,19 +28,13 @@ const penaltiesController = new PenaltiesController();
  *         name: search
  *         schema:
  *           type: string
- *         description: Tìm theo tên hoặc số tiền trừ
+ *         description: Tìm theo ghi chú
  *       - in: query
- *         name: penaltyType
+ *         name: violationType
  *         schema:
  *           type: string
- *           enum: [WARNING, SALARY_DEDUCTION, SUSPENSION, TERMINATION]
- *         description: Lọc theo loại hình phạt
- *       - in: query
- *         name: severityLevel
- *         schema:
- *           type: string
- *           enum: [LOW, MEDIUM, HIGH, CRITICAL]
- *         description: Lọc theo mức độ
+ *           enum: [LATE, EARLY]
+ *         description: Lọc theo trường hợp vi phạm
  *       - in: query
  *         name: status
  *         schema:
@@ -48,27 +42,15 @@ const penaltiesController = new PenaltiesController();
  *           enum: [ACTIVE, INACTIVE]
  *         description: Lọc theo trạng thái
  *       - in: query
- *         name: minDeductionAmount
- *         schema:
- *           type: number
- *         description: Số tiền trừ tối thiểu
- *       - in: query
- *         name: maxDeductionAmount
- *         schema:
- *           type: number
- *         description: Số tiền trừ tối đa
- *       - in: query
  *         name: page
  *         schema:
  *           type: integer
  *           default: 1
- *         description: Trang hiện tại
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           default: 10
- *         description: Số bản ghi mỗi trang
  *     responses:
  *       200:
  *         description: Thành công
@@ -84,7 +66,7 @@ router.get(
  * @swagger
  * /penalties/{id}:
  *   get:
- *     summary: Lấy chi tiết hình phạt theo ID
+ *     summary: Lấy chi tiết quy định vi phạm theo ID
  *     tags: [Penalties]
  *     security:
  *       - bearerAuth: []
@@ -109,7 +91,7 @@ router.get(
  * @swagger
  * /penalties:
  *   post:
- *     summary: Tạo hình phạt mới
+ *     summary: Tạo quy định vi phạm mới
  *     tags: [Penalties]
  *     security:
  *       - bearerAuth: []
@@ -119,23 +101,37 @@ router.get(
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - violationType
+ *               - effectiveFrom
+ *               - fromMinute
+ *               - toMinute
+ *               - convertedHours
  *             properties:
- *               name:
+ *               violationType:
  *                 type: string
- *               penaltyType:
+ *                 enum: [LATE, EARLY]
+ *               effectiveFrom:
  *                 type: string
- *                 enum: [WARNING, SALARY_DEDUCTION, SUSPENSION, TERMINATION]
- *               severityLevel:
+ *                 format: date
+ *               effectiveTo:
  *                 type: string
- *                 enum: [LOW, MEDIUM, HIGH, CRITICAL]
- *               deductionAmount:
+ *                 format: date
+ *               fromMinute:
+ *                 type: integer
+ *                 minimum: 0
+ *               toMinute:
+ *                 type: integer
+ *                 minimum: 1
+ *               convertedHours:
  *                 type: number
- *               deductionPercentage:
- *                 type: number
- *               description:
+ *                 minimum: 0
+ *               note:
  *                 type: string
  *               status:
  *                 type: string
+ *                 enum: [ACTIVE, INACTIVE]
+ *                 default: ACTIVE
  *     responses:
  *       201:
  *         description: Tạo thành công
@@ -152,7 +148,7 @@ router.post(
  * @swagger
  * /penalties/{id}:
  *   put:
- *     summary: Cập nhật hình phạt
+ *     summary: Cập nhật quy định vi phạm
  *     tags: [Penalties]
  *     security:
  *       - bearerAuth: []
@@ -169,20 +165,26 @@ router.post(
  *           schema:
  *             type: object
  *             properties:
- *               name:
+ *               violationType:
  *                 type: string
- *               penaltyType:
+ *                 enum: [LATE, EARLY]
+ *               effectiveFrom:
  *                 type: string
- *               severityLevel:
+ *                 format: date
+ *               effectiveTo:
  *                 type: string
- *               deductionAmount:
+ *                 format: date
+ *               fromMinute:
+ *                 type: integer
+ *               toMinute:
+ *                 type: integer
+ *               convertedHours:
  *                 type: number
- *               deductionPercentage:
- *                 type: number
- *               description:
+ *               note:
  *                 type: string
  *               status:
  *                 type: string
+ *                 enum: [ACTIVE, INACTIVE]
  *     responses:
  *       200:
  *         description: Cập nhật thành công
@@ -199,7 +201,7 @@ router.put(
  * @swagger
  * /penalties/{id}:
  *   delete:
- *     summary: Xóa hình phạt (soft delete)
+ *     summary: Xóa quy định vi phạm (soft delete)
  *     tags: [Penalties]
  *     security:
  *       - bearerAuth: []
