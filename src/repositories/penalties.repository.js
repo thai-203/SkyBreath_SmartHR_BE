@@ -9,59 +9,25 @@ export class PenaltiesRepository {
     async findAll(options = {}) {
         const {
             skip = 0, take = 10,
-            search, penaltyType, severityLevel, status,
-            minDeductionAmount, maxDeductionAmount,
+            search, violationType, status,
         } = options;
 
         const query = this.repository.createQueryBuilder('penalty')
-            .select([
-                'penalty.id',
-                'penalty.name',
-                'penalty.penaltyType',
-                'penalty.severityLevel',
-                'penalty.deductionAmount',
-                'penalty.deductionPercentage',
-                'penalty.description',
-                'penalty.status',
-                'penalty.createdAt',
-                'penalty.updatedAt',
-            ])
             .where('penalty.isDeleted = :isDeleted', { isDeleted: false });
 
-        // Search by name or deductionAmount
+        // Search by note
         if (search) {
-            const searchNum = parseFloat(search);
-            if (!isNaN(searchNum)) {
-                query.andWhere(
-                    '(penalty.name LIKE :search OR penalty.deductionAmount = :searchNum)',
-                    { search: `%${search}%`, searchNum }
-                );
-            } else {
-                query.andWhere('penalty.name LIKE :search', { search: `%${search}%` });
-            }
+            query.andWhere('penalty.note LIKE :search', { search: `%${search}%` });
         }
 
-        // Filter by penaltyType
-        if (penaltyType) {
-            query.andWhere('penalty.penaltyType = :penaltyType', { penaltyType });
-        }
-
-        // Filter by severityLevel
-        if (severityLevel) {
-            query.andWhere('penalty.severityLevel = :severityLevel', { severityLevel });
+        // Filter by violationType
+        if (violationType) {
+            query.andWhere('penalty.violationType = :violationType', { violationType });
         }
 
         // Filter by status
         if (status) {
             query.andWhere('penalty.status = :status', { status });
-        }
-
-        // Filter by deductionAmount range
-        if (minDeductionAmount !== undefined) {
-            query.andWhere('penalty.deductionAmount >= :minDeductionAmount', { minDeductionAmount });
-        }
-        if (maxDeductionAmount !== undefined) {
-            query.andWhere('penalty.deductionAmount <= :maxDeductionAmount', { maxDeductionAmount });
         }
 
         const [items, total] = await query
@@ -94,5 +60,41 @@ export class PenaltiesRepository {
             isDeleted: true,
             deletedAt: new Date(),
         });
+    }
+
+    /**
+     * Tìm các penalty có cùng violationType, effective date chồng chéo, và khoảng phút chồng chéo.
+     * Xung đột = Cùng ViolationType + Ngày overlap + Khoảng phút overlap
+     */
+    async findOverlapping(violationType, effectiveFrom, effectiveTo, fromMinute, toMinute, excludeId = null) {
+        const query = this.repository.createQueryBuilder('penalty')
+            .where('penalty.isDeleted = false')
+            .andWhere('penalty.violationType = :violationType', { violationType })
+            .andWhere('penalty.status = :status', { status: 'ACTIVE' });
+
+        // Check ngày overlap
+        if (effectiveTo) {
+            query.andWhere(
+                '(penalty.effectiveFrom <= :effectiveTo AND (penalty.effectiveTo IS NULL OR penalty.effectiveTo >= :effectiveFrom))',
+                { effectiveFrom, effectiveTo }
+            );
+        } else {
+            query.andWhere(
+                '(penalty.effectiveTo IS NULL OR penalty.effectiveTo >= :effectiveFrom)',
+                { effectiveFrom }
+            );
+        }
+
+        // Check khoảng phút overlap: newFrom < existTo AND existFrom < newTo
+        query.andWhere(
+            '(penalty.fromMinute < :toMinute AND penalty.toMinute > :fromMinute)',
+            { fromMinute, toMinute }
+        );
+
+        if (excludeId) {
+            query.andWhere('penalty.id != :excludeId', { excludeId });
+        }
+
+        return query.getMany();
     }
 }
