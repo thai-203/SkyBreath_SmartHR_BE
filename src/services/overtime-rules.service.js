@@ -114,17 +114,17 @@ export class OvertimeRulesService {
             }
         }
 
-        if (data.effectiveFrom || data.overtimeTypeId) {
-            const typeId = data.overtimeTypeId || existing.overtimeTypeId;
-            const newStatus = data.versionStatus || existing.versionStatus;
+        const effectiveStatus = data.versionStatus || existing.versionStatus;
+        const datesChanged = data.effectiveFrom !== undefined || data.effectiveTo !== undefined;
+        const typeChanged = data.overtimeTypeId !== undefined;
+        const deptsChanged = data.departmentIds !== undefined;
 
+        if (effectiveStatus === 'ACTIVE' && (datesChanged || typeChanged || deptsChanged)) {
+            const typeId = data.overtimeTypeId || existing.overtimeTypeId;
             const departmentIds = data.departmentIds !== undefined
                 ? data.departmentIds
                 : (existing.departments || []).map(d => d.id);
-
-            if (newStatus === 'ACTIVE') {
-                await this._validateNoOverlap(typeId, from, to, departmentIds, id);
-            }
+            await this._validateNoOverlap(typeId, from, to, departmentIds, id);
         }
 
         return this.overtimeRulesRepository.update(id, data);
@@ -194,8 +194,15 @@ export class OvertimeRulesService {
         );
         if (overlapping.length > 0) {
             const conflict = overlapping[0];
+            const period = `${conflict.effectiveFrom} → ${conflict.effectiveTo || 'Vô thời hạn'}`;
+
+            let deptMsg = '';
+            if (conflict.overlappingDepartments?.length) {
+                deptMsg = ` (Phòng ban: ${conflict.overlappingDepartments.join(', ')})`;
+            }
+
             throw new ConflictException(
-                `Khoảng thời gian hiệu lực bị trùng với quy định "${conflict.name}" (${conflict.effectiveFrom} → ${conflict.effectiveTo || 'nay'}).`
+                `Đã có quy định "${conflict.name}"${deptMsg} áp dụng trong khoảng thời gian này (${period}). Vui lòng kiểm tra lại.`
             );
         }
     }

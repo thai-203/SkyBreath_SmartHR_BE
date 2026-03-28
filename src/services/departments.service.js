@@ -10,6 +10,9 @@ export class DepartmentsService {
     }
 
     async create(createDto) {
+        if (createDto.departmentName) {
+            createDto.departmentName = this.normalizeName(createDto.departmentName);
+        }
         const existing = await this.departmentsRepository.findByName(createDto.departmentName);
         if (existing) {
             throw new ConflictException(AppMessages.Errors.Department.ALREADY_EXISTS);
@@ -34,6 +37,7 @@ export class DepartmentsService {
         await this.findById(id);
 
         if (updateDto.departmentName) {
+            updateDto.departmentName = this.normalizeName(updateDto.departmentName);
             const existing = await this.departmentsRepository.findByName(updateDto.departmentName);
             if (existing && existing.id !== id) {
                 throw new ConflictException(AppMessages.Errors.Department.ALREADY_EXISTS);
@@ -122,4 +126,11 @@ export class DepartmentsService {
                 };
             });
     }
+
+    normalizeName = (name) => {
+        return name
+            .trim()
+            .replace(/\s+/g, ' ');
+    }
+
 }
