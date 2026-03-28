@@ -27,7 +27,7 @@ export class MailService {
     await sendMail(to, subject, text, html);
   }
 
-  async sendAccountInfo(to, fullName, username, password) {
+  async sendAccountInfo(to, fullName, email, password) {
     console.log(`[MailService] Preparing account info email for ${fullName} (${to})`);
     const subject = 'Thông tin tài khoản đăng nhập hệ thống SmartHR';
     const html = `
@@ -35,7 +35,7 @@ export class MailService {
                     <h2 style="color: #4f46e5; text-align: center;">Chào mừng ${fullName} gia nhập SmartHR!</h2>
                     <p>Hồ sơ nhân viên của bạn đã được tạo thành công trên hệ thống. Dưới đây là thông tin tài khoản đăng nhập của bạn:</p>
                     <div style="background-color: #f9fafb; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                        <p style="margin: 5px 0;"><strong>Username:</strong> ${username}</p>
+                        <p style="margin: 5px 0;"><strong>Email đăng nhập:</strong> ${email}</p>
                         <p style="margin: 5px 0;"><strong>Mật khẩu mặc định:</strong> ${password}</p>
                     </div>
                     <p>Vui lòng đăng nhập và đổi mật khẩu ngay trong lần đầu tiên sử dụng để đảm bảo tính bảo mật.</p>
