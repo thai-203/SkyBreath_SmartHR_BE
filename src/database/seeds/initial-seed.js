@@ -2,15 +2,44 @@ import { Between, DataSource } from 'typeorm';
 import { hashPassword } from '../../common/utils/index.js';
 import { databaseConfig } from '../../config/database.config.js';
 import { AttendanceRecordEntity } from '../../models/entities/attendance-record.entity.js';
+import { ActionLogEntity } from '../../models/entities/action-log.entity.js';
+import { AICriteriaEntity } from '../../models/entities/ai-criteria.entity.js';
+import { AIEvaluationResultEntity } from '../../models/entities/ai-evaluation-result.entity.js';
+import { ContractEntity } from '../../models/entities/contract.entity.js';
 import { DepartmentEntity } from '../../models/entities/department.entity.js';
+import { EmployeeBankAccountEntity } from '../../models/entities/employee-bank-account.entity.js';
+import { EmployeeDependentEntity } from '../../models/entities/employee-dependent.entity.js';
+import { EmployeeEducationEntity } from '../../models/entities/employee-education.entity.js';
+import { EmployeeEmergencyContactEntity } from '../../models/entities/employee-emergency-contact.entity.js';
+import { EmployeeSalaryEntity } from '../../models/entities/employee-salary.entity.js';
+import { EmployeeWorkHistoryEntity } from '../../models/entities/employee-work-history.entity.js';
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
+import { FaceDataEntity } from '../../models/entities/face-data.entity.js';
+import { FaceRecognitionConfigEntity } from '../../models/entities/face-recognition-config.entity.js';
+import { LeaveBalanceEntity } from '../../models/entities/leave-balance.entity.js';
+import { LeavePolicyEntity } from '../../models/entities/leave-policy.entity.js';
+import { LeaveTypeEntity } from '../../models/entities/leave-type.entity.js';
+import { NotificationRecipientEntity } from '../../models/entities/notification-recipient.entity.js';
+import { NotificationEntity } from '../../models/entities/notification.entity.js';
+import { OnboardingPlanEntity } from '../../models/entities/onboarding-plan.entity.js';
+import { OnboardingProgressEntity } from '../../models/entities/onboarding-progress.entity.js';
+import { OnboardingTaskEntity } from '../../models/entities/onboarding-task.entity.js';
 import { HolidayConfigEntity } from '../../models/entities/holiday-config.entity.js';
 import { HolidayGroupEntity } from '../../models/entities/holiday-group.entity.js';
 import { HolidayListEntity } from '../../models/entities/holiday-list.entity.js';
 import { JobGradeEntity } from '../../models/entities/job-grade.entity.js';
+import { OvertimeRequestDetailEntity } from '../../models/entities/overtime-request-detail.entity.js';
+import { OvertimeRuleDepartmentEntity } from '../../models/entities/overtime-rule-department.entity.js';
+import { OvertimeRuleEntity } from '../../models/entities/overtime-rule.entity.js';
+import { OvertimeTypeEntity } from '../../models/entities/overtime-type.entity.js';
+import { PayrollDetailEntity } from '../../models/entities/payroll-detail.entity.js';
+import { PayrollEntity } from '../../models/entities/payroll.entity.js';
 import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js';
+import { PenaltyEntity } from '../../models/entities/penalty.entity.js';
 import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
+import { RequestApproveEntity } from '../../models/entities/request-approve.entity.js';
+import { RequestEntity } from '../../models/entities/request.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
 import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
@@ -18,6 +47,9 @@ import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
 import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
+import { ShiftScheduleEntity } from '../../models/entities/shift-schedule.entity.js';
+import { TaskAssignmentEntity } from '../../models/entities/task-assignment.entity.js';
+import { TimeSheetEntity } from '../../models/entities/time-sheet.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -603,10 +635,14 @@ const seed = async () => {
     }
     console.log('Assigned permissions to HR');
 
-    console.log('Assigned permissions to HR');
-
     // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ, OVERTIME_RULE_READ, PENALTY_READ
-    const employeePerms = ['TIMESHEET_READ', 'DEPT_READ', 'HOLIDAY_READ', 'OVERTIME_RULE_READ', 'PENALTY_READ'];
+    const employeePerms = [
+      'TIMESHEET_READ',
+      'DEPT_READ',
+      'HOLIDAY_READ',
+      'OVERTIME_RULE_READ',
+      'PENALTY_READ',
+    ];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
       if (p) {
@@ -937,20 +973,59 @@ const seed = async () => {
 
     // 8.1 Seed Holiday Groups and Configuration
     const holidayGroupRepo = dataSource.getRepository(HolidayGroupEntity);
-    let defaultGroup = await holidayGroupRepo.findOne({ where: { groupName: 'Default Holiday Group' } });
+    let defaultGroup = await holidayGroupRepo.findOne({
+      where: { groupCode: 'DEFAULT_2026' },
+    });
+    if (!defaultGroup) {
+      defaultGroup = await holidayGroupRepo.findOne({
+        where: { groupName: 'Default Holiday Group' },
+      });
+    }
     if (!defaultGroup) {
       defaultGroup = holidayGroupRepo.create({
         groupName: 'Default Holiday Group',
-        groupCode: 'HLD-2026-DEFAULT',
+        groupCode: 'DEFAULT_2026',
         year: 2026,
-        description: 'Default group for all holidays'
+        applicableScope: 'GLOBAL',
+        status: 'ACTIVE',
+        description: 'Default group for all holidays',
       });
       await holidayGroupRepo.save(defaultGroup);
       console.log('Created default holiday group');
+    } else {
+      let changed = false;
+      if (!defaultGroup.groupCode) {
+        defaultGroup.groupCode = 'DEFAULT_2026';
+        changed = true;
+      }
+      if (!defaultGroup.year) {
+        defaultGroup.year = 2026;
+        changed = true;
+      }
+      if (!defaultGroup.applicableScope) {
+        defaultGroup.applicableScope = 'GLOBAL';
+        changed = true;
+      }
+      if (!defaultGroup.status) {
+        defaultGroup.status = 'ACTIVE';
+        changed = true;
+      }
+      if (changed) {
+        await holidayGroupRepo.save(defaultGroup);
+      }
+    }
+
+    for (const d of Object.values(departments)) {
+      if (!d.holidayGroupId) {
+        d.holidayGroupId = defaultGroup.id;
+        await departmentRepo.save(d);
+      }
     }
 
     const holidayConfigRepo = dataSource.getRepository(HolidayConfigEntity);
-    let holidayConfig = await holidayConfigRepo.findOne({ where: { isDeleted: false } });
+    let holidayConfig = await holidayConfigRepo.findOne({
+      where: { isDeleted: false },
+    });
     if (!holidayConfig) {
       holidayConfig = holidayConfigRepo.create({
         isPaidByDefault: true,
@@ -961,7 +1036,7 @@ const seed = async () => {
         reminderLeadTime: 1,
         reminderChannels: ['IN_APP', 'EMAIL'],
         reminderRecipients: ['ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'],
-        reminderHolidayTypes: ['Nghỉ lễ, tết']
+        reminderHolidayTypes: ['Nghỉ lễ, tết'],
       });
       await holidayConfigRepo.save(holidayConfig);
       console.log('Created initial holiday configuration');
@@ -1013,6 +1088,924 @@ const seed = async () => {
       if (!existing) {
         await payrollTypeRepo.save(payrollTypeRepo.create(pt));
         console.log(`Created payroll type: ${pt.name}`);
+      }
+    }
+
+    // 9.1 Seed Missing Business Tables
+    const activeUsers = await userRepo.find({ where: { isDeleted: false } });
+    const activeEmployees = await employeeRepo.find({
+      where: { isDeleted: false },
+    });
+    const usersByUsername = Object.fromEntries(
+      activeUsers.map((u) => [u.username, u]),
+    );
+    const employeesByCode = Object.fromEntries(
+      activeEmployees.map((e) => [e.employeeCode, e]),
+    );
+
+    const adminEmployee = employeesByCode['EMP001'] || activeEmployees[0];
+    const managerEmployee = employeesByCode['EMP002'] || activeEmployees[0];
+    const staffEmployee = employeesByCode['EMP003'] || activeEmployees[0];
+    const hrEmployee = employeesByCode['EMP004'] || activeEmployees[0];
+
+    const positions = await positionRepo.find({ where: { isDeleted: false } });
+    const positionByName = Object.fromEntries(
+      positions.map((p) => [p.positionName, p]),
+    );
+    const jobGrades = await jobGradeRepo.find({ where: { isDeleted: false } });
+
+    const employeeMasterProfiles = [
+      {
+        code: 'EMP001',
+        positionName: 'Backend Developer',
+        departmentName: 'Software Development',
+        managerCode: null,
+        joinDate: '2024-01-01',
+      },
+      {
+        code: 'EMP002',
+        positionName: 'Backend Developer',
+        departmentName: 'Software Development',
+        managerCode: 'EMP001',
+        joinDate: '2024-03-01',
+      },
+      {
+        code: 'EMP003',
+        positionName: 'Frontend Developer',
+        departmentName: 'Software Development',
+        managerCode: 'EMP002',
+        joinDate: '2025-01-10',
+      },
+      {
+        code: 'EMP004',
+        positionName: 'HR Specialist',
+        departmentName: 'Human Resources',
+        managerCode: 'EMP001',
+        joinDate: '2024-05-05',
+      },
+    ];
+
+    for (const profile of employeeMasterProfiles) {
+      const emp = employeesByCode[profile.code];
+      if (!emp) continue;
+
+      const dept = departments[profile.departmentName];
+      const position = positionByName[profile.positionName];
+      const manager =
+        profile.managerCode && employeesByCode[profile.managerCode]
+          ? employeesByCode[profile.managerCode]
+          : null;
+
+      const deptGrades = jobGrades.filter((g) => g.departmentId === dept?.id);
+      const fallbackGrade =
+        deptGrades.find((g) => g.gradeName === 'Junior') ||
+        deptGrades[0] ||
+        null;
+
+      emp.departmentId = dept?.id || emp.departmentId;
+      emp.positionId = position?.id || emp.positionId;
+      emp.jobGradeId = emp.jobGradeId || fallbackGrade?.id || null;
+      emp.directManagerId = manager?.id || null;
+      emp.hrMentorId = hrEmployee?.id || null;
+      emp.joinDate = emp.joinDate || profile.joinDate;
+      emp.officialStartDate = emp.officialStartDate || profile.joinDate;
+      await employeeRepo.save(emp);
+    }
+
+    if (managerEmployee && departments['Software Development']) {
+      const dept = departments['Software Development'];
+      dept.managerEmployeeId = managerEmployee.id;
+      await departmentRepo.save(dept);
+      departments['Software Development'] = dept;
+    }
+    if (hrEmployee && departments['Human Resources']) {
+      const dept = departments['Human Resources'];
+      dept.managerEmployeeId = hrEmployee.id;
+      await departmentRepo.save(dept);
+      departments['Human Resources'] = dept;
+    }
+
+    // Contracts
+    const contractRepo = dataSource.getRepository(ContractEntity);
+    for (const emp of activeEmployees) {
+      const contractNumber = `CTR-${emp.employeeCode || emp.id}-2026`;
+      const existing = await contractRepo.findOne({
+        where: { employeeId: emp.id, contractNumber },
+      });
+      if (!existing) {
+        await contractRepo.save(
+          contractRepo.create({
+            employeeId: emp.id,
+            contractNumber,
+            contractType: 'permanent',
+            startDate: '2026-01-01',
+            workingHours: 8,
+            contractStatus: 'ACTIVE',
+            signedDate: '2025-12-20',
+            note: 'Initial seed contract',
+          }),
+        );
+      }
+    }
+
+    // Employee salaries
+    const employeeSalaryRepo = dataSource.getRepository(EmployeeSalaryEntity);
+    const refreshedEmployees = await employeeRepo.find({
+      where: { isDeleted: false },
+    });
+    for (const emp of refreshedEmployees) {
+      const existing = await employeeSalaryRepo.findOne({
+        where: {
+          employeeId: emp.id,
+          salaryType: 1,
+          effectiveFrom: '2026-01-01',
+        },
+      });
+      if (existing) continue;
+
+      const grade = jobGrades.find((g) => g.id === emp.jobGradeId);
+      const baseSalary = grade ? Number(grade.minSalary) : 1000;
+      await employeeSalaryRepo.save(
+        employeeSalaryRepo.create({
+          employeeId: emp.id,
+          jobGradeId: emp.jobGradeId,
+          baseSalary,
+          performanceSalary: Math.round(baseSalary * 0.15),
+          lunchAllowance: 50,
+          fuelAllowance: 30,
+          phoneAllowance: 20,
+          otherAllowance: 0,
+          salaryType: 1,
+          effectiveFrom: '2026-01-01',
+          salaryStatus: 'ACTIVE',
+        }),
+      );
+    }
+
+    // Employee profile sub tables
+    const bankRepo = dataSource.getRepository(EmployeeBankAccountEntity);
+    const dependentRepo = dataSource.getRepository(EmployeeDependentEntity);
+    const educationRepo = dataSource.getRepository(EmployeeEducationEntity);
+    const emergencyRepo = dataSource.getRepository(
+      EmployeeEmergencyContactEntity,
+    );
+    const workHistoryRepo = dataSource.getRepository(EmployeeWorkHistoryEntity);
+
+    if (staffEmployee) {
+      const bankExists = await bankRepo.findOne({
+        where: { employeeId: staffEmployee.id, accountNumber: '001234567890' },
+      });
+      if (!bankExists) {
+        await bankRepo.save(
+          bankRepo.create({
+            employeeId: staffEmployee.id,
+            accountNumber: '001234567890',
+            accountHolderName: staffEmployee.fullName,
+            bankName: 'Vietcombank',
+            bankBranch: 'Ha Noi',
+            status: 'ACTIVE',
+          }),
+        );
+      }
+
+      const depExists = await dependentRepo.findOne({
+        where: { employeeId: staffEmployee.id, fullName: 'Nguyen Thi A' },
+      });
+      if (!depExists) {
+        await dependentRepo.save(
+          dependentRepo.create({
+            employeeId: staffEmployee.id,
+            relationship: 'SPOUSE',
+            fullName: 'Nguyen Thi A',
+            dateOfBirth: '1999-06-12',
+            gender: 'FEMALE',
+            phoneNumber: '0900000001',
+            isDependent: true,
+            dependentFrom: '2026-01-01',
+          }),
+        );
+      }
+
+      const eduExists = await educationRepo.findOne({
+        where: {
+          employeeId: staffEmployee.id,
+          institutionName: 'University of Engineering and Technology',
+        },
+      });
+      if (!eduExists) {
+        await educationRepo.save(
+          educationRepo.create({
+            employeeId: staffEmployee.id,
+            startDate: '2018-09-01',
+            endDate: '2022-06-30',
+            educationType: 'UNIVERSITY',
+            major: 'Software Engineering',
+            degree: 'Bachelor',
+            institutionName: 'University of Engineering and Technology',
+          }),
+        );
+      }
+
+      const emergencyExists = await emergencyRepo.findOne({
+        where: {
+          employeeId: staffEmployee.id,
+          contactName: 'Nguyen Van B',
+        },
+      });
+      if (!emergencyExists) {
+        await emergencyRepo.save(
+          emergencyRepo.create({
+            employeeId: staffEmployee.id,
+            contactName: 'Nguyen Van B',
+            relationship: 'FATHER',
+            phoneNumber: '0900000002',
+            email: 'father@example.com',
+            address: 'Ha Noi',
+          }),
+        );
+      }
+
+      const workHisExists = await workHistoryRepo.findOne({
+        where: {
+          employeeId: staffEmployee.id,
+          companyName: 'ABC Tech',
+        },
+      });
+      if (!workHisExists) {
+        await workHistoryRepo.save(
+          workHistoryRepo.create({
+            employeeId: staffEmployee.id,
+            startDate: '2022-07-01',
+            endDate: '2024-12-31',
+            companyName: 'ABC Tech',
+            departmentName: 'Engineering',
+            positionName: 'Junior Developer',
+            referencePerson: 'Tran Van C',
+            referencePhone: '0900000003',
+            jobDescription: 'Frontend development',
+          }),
+        );
+      }
+    }
+
+    // Leave types, policies, balances
+    const leaveTypeRepo = dataSource.getRepository(LeaveTypeEntity);
+    const leavePolicyRepo = dataSource.getRepository(LeavePolicyEntity);
+    const leaveBalanceRepo = dataSource.getRepository(LeaveBalanceEntity);
+
+    const leaveTypesData = [
+      { leaveTypeName: 'Annual Leave', isPaid: true },
+      { leaveTypeName: 'Sick Leave', isPaid: true },
+      { leaveTypeName: 'Unpaid Leave', isPaid: false },
+    ];
+    const leaveTypes = {};
+    for (const lt of leaveTypesData) {
+      let row = await leaveTypeRepo.findOne({
+        where: { leaveTypeName: lt.leaveTypeName },
+      });
+      if (!row) {
+        row = await leaveTypeRepo.save(leaveTypeRepo.create(lt));
+      }
+      leaveTypes[lt.leaveTypeName] = row;
+    }
+
+    const leavePoliciesData = [
+      {
+        leaveTypeName: 'Annual Leave',
+        policyName: 'Annual Standard',
+        daysPerYear: 12,
+      },
+      {
+        leaveTypeName: 'Sick Leave',
+        policyName: 'Sick Standard',
+        daysPerYear: 6,
+      },
+      {
+        leaveTypeName: 'Unpaid Leave',
+        policyName: 'Unpaid Standard',
+        daysPerYear: 30,
+      },
+    ];
+    for (const lp of leavePoliciesData) {
+      const leaveType = leaveTypes[lp.leaveTypeName];
+      const exists = await leavePolicyRepo.findOne({
+        where: { leaveTypeId: leaveType.id, policyName: lp.policyName },
+      });
+      if (!exists) {
+        await leavePolicyRepo.save(
+          leavePolicyRepo.create({
+            leaveTypeId: leaveType.id,
+            policyName: lp.policyName,
+            daysPerYear: lp.daysPerYear,
+          }),
+        );
+      }
+    }
+
+    for (const emp of refreshedEmployees) {
+      for (const leaveType of Object.values(leaveTypes)) {
+        const exists = await leaveBalanceRepo.findOne({
+          where: {
+            employeeId: emp.id,
+            leaveTypeId: leaveType.id,
+            year: 2026,
+          },
+        });
+        if (!exists) {
+          await leaveBalanceRepo.save(
+            leaveBalanceRepo.create({
+              employeeId: emp.id,
+              leaveTypeId: leaveType.id,
+              year: 2026,
+              usedDays: 0,
+            }),
+          );
+        }
+      }
+    }
+
+    // Overtime and penalty setup
+    const overtimeTypeRepo = dataSource.getRepository(OvertimeTypeEntity);
+    const overtimeRuleRepo = dataSource.getRepository(OvertimeRuleEntity);
+    const overtimeRuleDepartmentRepo = dataSource.getRepository(
+      OvertimeRuleDepartmentEntity,
+    );
+    const penaltyRepo = dataSource.getRepository(PenaltyEntity);
+
+    const overtimeTypesData = [
+      {
+        code: 'WEEKDAY',
+        name: 'OT ngày thường',
+        description: 'OT ngày làm việc',
+      },
+      {
+        code: 'WEEKEND',
+        name: 'OT cuối tuần',
+        description: 'OT thứ bảy/chủ nhật',
+      },
+      { code: 'HOLIDAY', name: 'OT ngày lễ', description: 'OT ngày nghỉ lễ' },
+    ];
+    const overtimeTypes = {};
+    for (const t of overtimeTypesData) {
+      let row = await overtimeTypeRepo.findOne({ where: { code: t.code } });
+      if (!row) {
+        row = await overtimeTypeRepo.save(overtimeTypeRepo.create(t));
+      }
+      overtimeTypes[t.code] = row;
+    }
+
+    const overtimeRulesData = [
+      {
+        name: 'Rule Weekday 150%',
+        overtimeTypeId: overtimeTypes['WEEKDAY'].id,
+        salaryMultiplier: 1.5,
+        maxHoursPerDay: 4,
+        maxHoursPerMonth: 40,
+      },
+      {
+        name: 'Rule Weekend 200%',
+        overtimeTypeId: overtimeTypes['WEEKEND'].id,
+        salaryMultiplier: 2.0,
+        maxHoursPerDay: 8,
+        maxHoursPerMonth: 48,
+      },
+      {
+        name: 'Rule Holiday 300%',
+        overtimeTypeId: overtimeTypes['HOLIDAY'].id,
+        salaryMultiplier: 3.0,
+        maxHoursPerDay: 8,
+        maxHoursPerMonth: 48,
+      },
+    ];
+    const overtimeRules = {};
+    for (const rule of overtimeRulesData) {
+      let row = await overtimeRuleRepo.findOne({ where: { name: rule.name } });
+      if (!row) {
+        row = await overtimeRuleRepo.save(
+          overtimeRuleRepo.create({
+            ...rule,
+            effectiveFrom: '2026-01-01',
+            versionStatus: 'ACTIVE',
+            status: 'ACTIVE',
+          }),
+        );
+      }
+      overtimeRules[rule.name] = row;
+    }
+
+    for (const rule of Object.values(overtimeRules)) {
+      for (const d of Object.values(departments)) {
+        const exists = await overtimeRuleDepartmentRepo.findOne({
+          where: { overtimeRuleId: rule.id, departmentId: d.id },
+        });
+        if (!exists) {
+          await overtimeRuleDepartmentRepo.save(
+            overtimeRuleDepartmentRepo.create({
+              overtimeRuleId: rule.id,
+              departmentId: d.id,
+              isDeleted: false,
+            }),
+          );
+        }
+      }
+    }
+
+    const penaltiesData = [
+      {
+        name: 'Đi muộn quá 30 phút',
+        penaltyType: 'ATTENDANCE',
+        severityLevel: 'MEDIUM',
+        deductionAmount: 100000,
+        description: 'Áp dụng cho nhân viên đi muộn trên 30 phút',
+      },
+      {
+        name: 'Vắng mặt không phép',
+        penaltyType: 'ATTENDANCE',
+        severityLevel: 'HIGH',
+        deductionPercentage: 100,
+        description: 'Khấu trừ 1 ngày lương cho nghỉ không phép',
+      },
+    ];
+    for (const p of penaltiesData) {
+      const exists = await penaltyRepo.findOne({ where: { name: p.name } });
+      if (!exists) {
+        await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
+      }
+    }
+
+    // Onboarding flow
+    const onboardingPlanRepo = dataSource.getRepository(OnboardingPlanEntity);
+    const onboardingTaskRepo = dataSource.getRepository(OnboardingTaskEntity);
+    const onboardingProgressRepo = dataSource.getRepository(
+      OnboardingProgressEntity,
+    );
+    const taskAssignmentRepo = dataSource.getRepository(TaskAssignmentEntity);
+
+    let onboardingPlan = await onboardingPlanRepo.findOne({
+      where: { planName: 'Kế hoạch onboarding nhân viên kỹ thuật' },
+    });
+    if (!onboardingPlan) {
+      onboardingPlan = await onboardingPlanRepo.save(
+        onboardingPlanRepo.create({
+          planName: 'Kế hoạch onboarding nhân viên kỹ thuật',
+          description: 'Áp dụng cho nhân viên kỹ thuật mới',
+          durationDays: 30,
+          departmentId: departments['Software Development']?.id,
+          positionId: positionByName['Frontend Developer']?.id,
+          status: 'ACTIVE',
+          createdBy: adminEmployee?.id,
+          isTemplate: true,
+        }),
+      );
+    }
+
+    const onboardingTasksData = [
+      {
+        taskOrder: 1,
+        description: 'Nhận tài khoản hệ thống và email công ty',
+        responsibleDepartmentId: departments['Human Resources']?.id,
+        estimatedDays: 1,
+        category: 'ADMIN',
+      },
+      {
+        taskOrder: 2,
+        description: 'Setup môi trường phát triển',
+        responsibleDepartmentId: departments['Software Development']?.id,
+        estimatedDays: 2,
+        category: 'TECHNICAL',
+      },
+      {
+        taskOrder: 3,
+        description: 'Hoàn thành tài liệu coding convention',
+        responsibleDepartmentId: departments['Software Development']?.id,
+        estimatedDays: 3,
+        category: 'TRAINING',
+      },
+    ];
+
+    const onboardingTasks = [];
+    for (const t of onboardingTasksData) {
+      let task = await onboardingTaskRepo.findOne({
+        where: { planId: onboardingPlan.id, taskOrder: t.taskOrder },
+      });
+      if (!task) {
+        task = await onboardingTaskRepo.save(
+          onboardingTaskRepo.create({
+            planId: onboardingPlan.id,
+            ...t,
+            isMandatory: true,
+          }),
+        );
+      }
+      onboardingTasks.push(task);
+    }
+
+    if (staffEmployee) {
+      let progress = await onboardingProgressRepo.findOne({
+        where: { employeeId: staffEmployee.id, planId: onboardingPlan.id },
+      });
+      if (!progress) {
+        progress = await onboardingProgressRepo.save(
+          onboardingProgressRepo.create({
+            employeeId: staffEmployee.id,
+            planId: onboardingPlan.id,
+            overallStatus: 'IN_PROGRESS',
+            startDate: '2026-02-01',
+            expectedEndDate: '2026-03-02',
+            progressPercentage: 33.33,
+            completedTasksCount: 1,
+            totalTasksCount: onboardingTasks.length,
+            assignedMentorId: managerEmployee?.id,
+          }),
+        );
+      }
+
+      for (const task of onboardingTasks) {
+        const exists = await taskAssignmentRepo.findOne({
+          where: { progressId: progress.id, taskId: task.id },
+        });
+        if (!exists) {
+          await taskAssignmentRepo.save(
+            taskAssignmentRepo.create({
+              progressId: progress.id,
+              taskId: task.id,
+              assignedToEmployeeId: staffEmployee.id,
+              assignedByUserId: usersByUsername['admin']?.id,
+              status: task.taskOrder === 1 ? 'COMPLETED' : 'PENDING',
+              assignedDate: new Date('2026-02-01T09:00:00'),
+              dueDate:
+                task.taskOrder === 1
+                  ? '2026-02-02'
+                  : task.taskOrder === 2
+                    ? '2026-02-04'
+                    : '2026-02-07',
+              completionDate:
+                task.taskOrder === 1 ? new Date('2026-02-02T16:00:00') : null,
+              notes: 'Seeded onboarding task assignment',
+              priority: task.taskOrder === 1 ? 'HIGH' : 'NORMAL',
+            }),
+          );
+        }
+      }
+
+      if (!staffEmployee.planId) {
+        staffEmployee.planId = onboardingPlan.id;
+        await employeeRepo.save(staffEmployee);
+      }
+    }
+
+    // Requests and approval flow
+    const requestRepo = dataSource.getRepository(RequestEntity);
+    const requestApproveRepo = dataSource.getRepository(RequestApproveEntity);
+    const overtimeRequestDetailRepo = dataSource.getRepository(
+      OvertimeRequestDetailEntity,
+    );
+
+    let annualLeaveRequest = null;
+    if (staffEmployee && managerEmployee && leaveTypes['Annual Leave']) {
+      annualLeaveRequest = await requestRepo.findOne({
+        where: {
+          employeeId: staffEmployee.id,
+          requestType: 'LEAVE',
+          startDate: '2026-02-20',
+        },
+      });
+      if (!annualLeaveRequest) {
+        annualLeaveRequest = await requestRepo.save(
+          requestRepo.create({
+            employeeId: staffEmployee.id,
+            requestType: 'LEAVE',
+            leaveTypeId: leaveTypes['Annual Leave'].id,
+            requestContent: 'Nghỉ phép cá nhân',
+            startDate: '2026-02-20',
+            endDate: '2026-02-21',
+            requestStatus: 'APPROVED',
+            submittedAt: new Date('2026-02-10T08:00:00'),
+            approvedBy: managerEmployee.id,
+            approvedAt: new Date('2026-02-11T10:00:00'),
+          }),
+        );
+      }
+
+      const approveExists = await requestApproveRepo.findOne({
+        where: {
+          requestId: annualLeaveRequest.id,
+          approverEmployeeId: managerEmployee.id,
+        },
+      });
+      if (!approveExists) {
+        await requestApproveRepo.save(
+          requestApproveRepo.create({
+            requestId: annualLeaveRequest.id,
+            approverEmployeeId: managerEmployee.id,
+            approvalLevel: 1,
+            approvalStatus: 'APPROVED',
+            comment: 'Approved by direct manager',
+          }),
+        );
+      }
+    }
+
+    let overtimeRequest = null;
+    if (staffEmployee && managerEmployee) {
+      overtimeRequest = await requestRepo.findOne({
+        where: {
+          employeeId: staffEmployee.id,
+          requestType: 'OVERTIME',
+          startDate: '2026-02-18',
+        },
+      });
+      if (!overtimeRequest) {
+        overtimeRequest = await requestRepo.save(
+          requestRepo.create({
+            employeeId: staffEmployee.id,
+            requestType: 'OVERTIME',
+            requestContent: 'OT để hoàn thành sprint',
+            startDate: '2026-02-18',
+            endDate: '2026-02-18',
+            requestStatus: 'APPROVED',
+            submittedAt: new Date('2026-02-17T18:00:00'),
+            approvedBy: managerEmployee.id,
+            approvedAt: new Date('2026-02-18T09:00:00'),
+          }),
+        );
+      }
+    }
+
+    // Timesheets
+    const timeSheetRepo = dataSource.getRepository(TimeSheetEntity);
+    for (const emp of refreshedEmployees) {
+      const exists = await timeSheetRepo.findOne({
+        where: { employeeId: emp.id, month: 2, year: 2026 },
+      });
+      if (!exists) {
+        await timeSheetRepo.save(
+          timeSheetRepo.create({
+            employeeId: emp.id,
+            month: 2,
+            year: 2026,
+            totalWorkingDays: 19,
+            totalWorkingHours: 152,
+            overtimeHours: emp.id === staffEmployee?.id ? 4 : 2,
+            isLocked: false,
+          }),
+        );
+      }
+    }
+
+    // Payroll and payroll details
+    const payrollRepo = dataSource.getRepository(PayrollEntity);
+    const payrollDetailRepo = dataSource.getRepository(PayrollDetailEntity);
+
+    let febPayroll = await payrollRepo.findOne({
+      where: { payrollMonth: 2, payrollYear: 2026 },
+    });
+    if (!febPayroll) {
+      febPayroll = await payrollRepo.save(
+        payrollRepo.create({
+          payrollMonth: 2,
+          payrollYear: 2026,
+          payrollStatus: 'DRAFT',
+          submittedBy: hrEmployee?.id,
+        }),
+      );
+    }
+
+    const salaryRows = await employeeSalaryRepo.find({
+      where: { isDeleted: false },
+    });
+    const salaryByEmployeeId = Object.fromEntries(
+      salaryRows.map((s) => [s.employeeId, s]),
+    );
+
+    for (const emp of refreshedEmployees) {
+      const exists = await payrollDetailRepo.findOne({
+        where: { payrollId: febPayroll.id, employeeId: emp.id },
+      });
+      if (exists) continue;
+
+      const salary = salaryByEmployeeId[emp.id];
+      const baseSalary = salary ? Number(salary.baseSalary) : 1000;
+      const overtimePay = emp.id === staffEmployee?.id ? 150 : 80;
+      const gross = baseSalary + overtimePay;
+      const insuranceDeduction = Math.round(gross * 0.08);
+      const taxDeduction = Math.round(gross * 0.02);
+      const netSalary = gross - insuranceDeduction - taxDeduction;
+
+      await payrollDetailRepo.save(
+        payrollDetailRepo.create({
+          payrollId: febPayroll.id,
+          employeeId: emp.id,
+          workingDays: 19,
+          baseSalary,
+          overtimePay,
+          bonus: 0,
+          penalty: 0,
+          deduction: 0,
+          insuranceDeduction,
+          taxDeduction,
+          netSalary,
+          note: 'Seed payroll detail',
+        }),
+      );
+    }
+
+    if (overtimeRequest) {
+      const overtimeRule = overtimeRules['Rule Weekday 150%'];
+      const otExists = await overtimeRequestDetailRepo.findOne({
+        where: { requestId: overtimeRequest.id, workDate: '2026-02-18' },
+      });
+      if (!otExists) {
+        await overtimeRequestDetailRepo.save(
+          overtimeRequestDetailRepo.create({
+            requestId: overtimeRequest.id,
+            overtimeTypeId: overtimeTypes['WEEKDAY']?.id,
+            overtimeRuleId: overtimeRule?.id,
+            workDate: '2026-02-18',
+            startTime: '18:00:00',
+            endTime: '20:00:00',
+            totalHours: 2,
+            rateMultiplier: 1.5,
+            overtimeAmount: 150,
+            reason: 'Sprint release support',
+            payrollId: febPayroll.id,
+          }),
+        );
+      }
+    }
+
+    // Shift schedules from shift assignments
+    const shiftScheduleRepo = dataSource.getRepository(ShiftScheduleEntity);
+    const shiftAssignments = await shiftAssignmentRepo.find({
+      where: { isDeleted: false },
+    });
+    for (const assignment of shiftAssignments) {
+      if (!assignment.employeeId || !assignment.shiftId) continue;
+      const exists = await shiftScheduleRepo.findOne({
+        where: { assignmentId: assignment.id, workDate: '2026-02-03' },
+      });
+      if (!exists) {
+        await shiftScheduleRepo.save(
+          shiftScheduleRepo.create({
+            assignmentId: assignment.id,
+            employeeId: assignment.employeeId,
+            departmentId: assignment.departmentId,
+            shiftId: assignment.shiftId,
+            workDate: '2026-02-03',
+          }),
+        );
+      }
+    }
+
+    // Notifications and action logs
+    const notificationRepo = dataSource.getRepository(NotificationEntity);
+    const notificationRecipientRepo = dataSource.getRepository(
+      NotificationRecipientEntity,
+    );
+    const actionLogRepo = dataSource.getRepository(ActionLogEntity);
+
+    let initNotification = await notificationRepo.findOne({
+      where: { title: 'Thông báo khởi tạo hệ thống' },
+    });
+    if (!initNotification) {
+      initNotification = await notificationRepo.save(
+        notificationRepo.create({
+          title: 'Thông báo khởi tạo hệ thống',
+          message: 'Dữ liệu mẫu ban đầu đã được tạo thành công.',
+          notificationType: 'SYSTEM',
+        }),
+      );
+    }
+
+    for (const user of activeUsers) {
+      const exists = await notificationRecipientRepo.findOne({
+        where: { notificationId: initNotification.id, userId: user.id },
+      });
+      if (!exists) {
+        await notificationRecipientRepo.save(
+          notificationRecipientRepo.create({
+            notificationId: initNotification.id,
+            userId: user.id,
+            isRead: false,
+          }),
+        );
+      }
+    }
+
+    const seedActionExists = await actionLogRepo.findOne({
+      where: { actionType: 'SEED_INIT', targetTable: 'system' },
+    });
+    if (!seedActionExists) {
+      await actionLogRepo.save(
+        actionLogRepo.create({
+          userId: usersByUsername['admin']?.id,
+          actionType: 'SEED_INIT',
+          targetTable: 'system',
+          description: 'Initial seed data completed',
+          requestIp: '127.0.0.1',
+          userAgent: 'seed-script',
+          status: 'SUCCESS',
+        }),
+      );
+    }
+
+    // Face recognition setup
+    const faceConfigRepo = dataSource.getRepository(
+      FaceRecognitionConfigEntity,
+    );
+    const faceDataRepo = dataSource.getRepository(FaceDataEntity);
+
+    let faceConfig = await faceConfigRepo.findOne({
+      where: { modelVersion: 'v1.0-seed' },
+    });
+    if (!faceConfig) {
+      faceConfig = await faceConfigRepo.save(
+        faceConfigRepo.create({
+          confidenceThreshold: 85,
+          modelVersion: 'v1.0-seed',
+        }),
+      );
+    }
+
+    for (const emp of refreshedEmployees.slice(0, 2)) {
+      const exists = await faceDataRepo.findOne({
+        where: { employeeId: emp.id },
+      });
+      if (!exists) {
+        await faceDataRepo.save(
+          faceDataRepo.create({
+            employeeId: emp.id,
+            faceVector: JSON.stringify([0.1, 0.2, 0.3, 0.4]),
+            registeredAt: new Date('2026-01-15T09:00:00'),
+          }),
+        );
+      }
+    }
+
+    // AI criteria and evaluation results
+    const aiCriteriaRepo = dataSource.getRepository(AICriteriaEntity);
+    const aiResultRepo = dataSource.getRepository(AIEvaluationResultEntity);
+
+    const aiCriteriaData = [
+      {
+        criteriaName: 'Productivity',
+        weight: 40,
+        description: 'Output per sprint',
+      },
+      {
+        criteriaName: 'Quality',
+        weight: 35,
+        description: 'Code quality and defects',
+      },
+      {
+        criteriaName: 'Collaboration',
+        weight: 25,
+        description: 'Team collaboration',
+      },
+    ];
+    const aiCriteriaRows = {};
+    for (const c of aiCriteriaData) {
+      let row = await aiCriteriaRepo.findOne({
+        where: { criteriaName: c.criteriaName },
+      });
+      if (!row) {
+        row = await aiCriteriaRepo.save(aiCriteriaRepo.create(c));
+      }
+      aiCriteriaRows[c.criteriaName] = row;
+    }
+
+    if (staffEmployee) {
+      const aiScores = [
+        {
+          criteriaName: 'Productivity',
+          score: 82.5,
+          feedback: 'Good delivery pace',
+        },
+        { criteriaName: 'Quality', score: 88.0, feedback: 'Low bug rate' },
+        {
+          criteriaName: 'Collaboration',
+          score: 90.0,
+          feedback: 'Supports team effectively',
+        },
+      ];
+      for (const s of aiScores) {
+        const criteria = aiCriteriaRows[s.criteriaName];
+        const exists = await aiResultRepo.findOne({
+          where: {
+            employeeId: staffEmployee.id,
+            criteriaId: criteria.id,
+          },
+        });
+        if (!exists) {
+          await aiResultRepo.save(
+            aiResultRepo.create({
+              employeeId: staffEmployee.id,
+              criteriaId: criteria.id,
+              score: s.score,
+              feedback: s.feedback,
+            }),
+          );
+        }
       }
     }
 

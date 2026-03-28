@@ -88,31 +88,76 @@ export class OvertimeRulesRepository {
     }
 
     /**
-     * Tìm các policy cùng overtimeTypeId có overlap effective date
+     * Tìm các quy định (policy) bị trùng lặp về thời gian và phòng ban
      */
-    async findOverlapping(overtimeTypeId, effectiveFrom, effectiveTo, excludeId = null) {
+    async findOverlapping(overtimeTypeId, effectiveFrom, effectiveTo, departmentIds = null, excludeId = null) {
+        // 1. Tạo query cơ bản: Tìm các quy định cùng loại (overtimeTypeId), đang hoạt động (ACTIVE) và chưa bị xóa
         const query = this.repository.createQueryBuilder('rule')
             .where('rule.isDeleted = false')
             .andWhere('rule.overtimeTypeId = :overtimeTypeId', { overtimeTypeId })
             .andWhere('rule.versionStatus = :active', { active: 'ACTIVE' });
 
+        // 2. Kiểm tra trùng lặp về thời gian (Date Overlap logic)
         if (effectiveTo) {
+            // Trường hợp quy định mới có ngày kết thúc
             query.andWhere(
                 '(rule.effectiveFrom <= :effectiveTo AND (rule.effectiveTo IS NULL OR rule.effectiveTo >= :effectiveFrom))',
                 { effectiveFrom, effectiveTo }
             );
         } else {
+            // Trường hợp quy định mới áp dụng vô thời hạn (effectiveTo = null)
             query.andWhere(
                 '(rule.effectiveTo IS NULL OR rule.effectiveTo >= :effectiveFrom)',
                 { effectiveFrom }
             );
         }
 
+        // 3. Nếu là đang cập nhật (update), ta phải loại trừ chính quy định đang sửa (excludeId) ra khỏi danh sách kiểm tra
         if (excludeId) {
             query.andWhere('rule.id != :excludeId', { excludeId });
         }
 
-        return query.getMany();
+        // Lấy danh sách các quy định thỏa mãn điều kiện thời gian ở trên (ứng viên có thể gây trùng)
+        const candidates = await query.getMany();
+
+        const incomingDeptIds = Array.isArray(departmentIds) ? departmentIds : [];
+        const incomingIsGlobal = incomingDeptIds.length === 0;
+
+        const overlaps = [];
+        
+        // 4. Duyệt qua từng quy định ứng viên để kiểm tra trùng lặp về PHÒNG BAN
+        for (const rule of candidates) {
+            // Lấy danh sách phòng ban của quy định đang xét
+            const ruleDepts = await this.ruleDeptRepository.find({
+                where: { overtimeRuleId: rule.id, isDeleted: false },
+                relations: ['department'],
+            });
+
+            const ruleDeptIds = ruleDepts.map(rd => rd.departmentId);
+            const ruleIsGlobal = ruleDeptIds.length === 0; // Nếu không chọn phòng ban nào => Áp dụng cho "tất cả"
+
+            // TH1: Quy định mới hoặc quy định cũ áp dụng cho "TẤT CẢ" phòng ban
+            if (incomingIsGlobal || ruleIsGlobal) {
+                rule.overlappingDepartments = ruleIsGlobal
+                    ? ['tất cả phòng ban']
+                    : ruleDepts.map(rd => rd.department?.departmentName).filter(Boolean);
+                overlaps.push(rule);
+                continue;
+            }
+
+            // TH2: Cả 2 đều áp dụng cho các phòng ban cụ thể => Kiểm tra xem có phòng ban nào chung không (intersection)
+            const intersectingDepts = ruleDepts.filter(rd => incomingDeptIds.includes(rd.departmentId));
+            if (intersectingDepts.length > 0) {
+                // Lưu lại danh sách tên các phòng ban đang bị trùng để hiển thị lên thông báo lỗi cho người dùng
+                rule.overlappingDepartments = intersectingDepts
+                    .map(rd => rd.department?.departmentName)
+                    .filter(Boolean);
+                overlaps.push(rule);
+            }
+        }
+
+        // Trả về danh sách các quy định thực sự bị trùng lặp (nếu rỗng nghĩa là an toàn)
+        return overlaps;
     }
 
     async getUsageStatus(id) {
@@ -212,6 +257,31 @@ export class OvertimeRulesRepository {
 
             const activeRules = await activeRulesQuery.getMany();
 
+            const newRuleDepts = await queryRunner.manager.find(OvertimeRuleDepartmentEntity, {
+                where: { overtimeRuleId: newRule.id, isDeleted: false },
+            });
+            const newRuleDeptIds = newRuleDepts.map(rd => rd.departmentId);
+            const newRuleIsGlobal = newRuleDeptIds.length === 0;
+
+            const filteredActiveRules = [];
+            for (const r of activeRules) {
+                const rDepts = await queryRunner.manager.find(OvertimeRuleDepartmentEntity, {
+                    where: { overtimeRuleId: r.id, isDeleted: false },
+                });
+                const rDeptIds = rDepts.map(rd => rd.departmentId);
+                const rIsGlobal = rDeptIds.length === 0;
+
+                if (newRuleIsGlobal || rIsGlobal) {
+                    filteredActiveRules.push(r);
+                    continue;
+                }
+
+                const intersects = newRuleDeptIds.some(id => rDeptIds.includes(id));
+                if (intersects) {
+                    filteredActiveRules.push(r);
+                }
+            }
+
             const parseDateString = (dateInput) => {
                 if (!dateInput) return new Date(0);
                 if (dateInput instanceof Date) return dateInput;
@@ -220,12 +290,12 @@ export class OvertimeRulesRepository {
 
             const newEffectiveFromDate = newRule.effectiveFrom ? parseDateString(newRule.effectiveFrom) : null;
 
-            if (activeRules.length > 0) {
-                if (activeRules.length > 1) {
+            if (filteredActiveRules.length > 0) {
+                if (filteredActiveRules.length > 1) {
                     throw new ConflictException('Quy định này đang trùng thời gian với nhiều quy định ACTIVE khác!');
                 }
 
-                const oldRule = activeRules[0];
+                const oldRule = filteredActiveRules[0];
                 const oldEffectiveFromDate = oldRule.effectiveFrom ? parseDateString(oldRule.effectiveFrom) : new Date(0);
 
                 if (oldRule.effectiveTo === null && newEffectiveFromDate && oldEffectiveFromDate < newEffectiveFromDate) {

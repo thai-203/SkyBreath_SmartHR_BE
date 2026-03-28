@@ -8,6 +8,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { EmployeeStatus } from '../common/enums/status.enum.js';
@@ -46,6 +47,28 @@ export class ShiftAssignmentsService {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  }
+
+  _todayDateOnly() {
+    const now = new Date();
+    return this._dateOnly(
+      new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    );
+  }
+
+  _assertStartDateNotInPast(startDate, message) {
+    if (!startDate) return;
+
+    const normalizedStartDate = this._dateOnly(startDate);
+    if (!normalizedStartDate) {
+      throw new BadRequestException('Ngày bắt đầu không hợp lệ');
+    }
+
+    if (normalizedStartDate < this._todayDateOnly()) {
+      throw new BadRequestException(
+        message || 'Không thể phân ca cho ngày trong quá khứ',
+      );
+    }
   }
 
   _resolveRange(startDate, endDate) {
@@ -180,6 +203,7 @@ export class ShiftAssignmentsService {
 
     const byId = new Map();
 
+    // Priority: if specific employees are selected, use only those (ignore departmentIds)
     if (explicitIds.length > 0) {
       const rows = await employeeRepo
         .createQueryBuilder('employee')
@@ -187,29 +211,33 @@ export class ShiftAssignmentsService {
         .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
         .getMany();
       rows.forEach((row) => byId.set(row.id, row));
-    }
-
-    if (deptIds.length > 0) {
+    } else if (deptIds.length > 0) {
+      // Only use departmentIds if no specific employees were selected
       const rows = await employeeRepo
         .createQueryBuilder('employee')
         .where('employee.departmentId IN (:...deptIds)', { deptIds })
         .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
         .getMany();
-      rows.forEach((row) => {
-        if (!byId.has(row.id)) {
-          byId.set(row.id, row);
-        }
-      });
+      rows.forEach((row) => byId.set(row.id, row));
     }
 
     const filtered = [...byId.values()].filter(
       (emp) => emp.employmentStatus !== EmployeeStatus.ON_LEAVE,
     );
 
+    // Extract unique department IDs from selected employees
+    const extractedDeptIds = [
+      ...new Set(
+        filtered
+          .filter((emp) => emp.departmentId)
+          .map((emp) => emp.departmentId),
+      ),
+    ];
+
     return {
       employeeIds: filtered.map((emp) => emp.id),
       employees: filtered,
-      departmentIds: deptIds,
+      departmentIds: extractedDeptIds,
     };
   }
 
@@ -254,8 +282,6 @@ export class ShiftAssignmentsService {
   }
 
   async _rebuildSchedulesForAssignment(assignment, payload) {
-    await this.scheduleRepo.softDeleteByAssignmentId(assignment.id);
-
     const target = await this._resolveTargetEmployees(
       payload.employeeIds,
       payload.departmentIds,
@@ -278,12 +304,26 @@ export class ShiftAssignmentsService {
       return [];
     }
 
+    const rows = this._buildScheduleRows(target.employees, shiftIds, workDates);
+
+    await this._assertNoDuplicateSchedules(rows, assignment.id);
+
+    await this.scheduleRepo.softDeleteByAssignmentId(assignment.id);
+
+    const rowsWithAssignmentId = rows.map((row) => ({
+      ...row,
+      assignmentId: assignment.id,
+    }));
+
+    return this.scheduleRepo.bulkCreate(rowsWithAssignmentId);
+  }
+
+  _buildScheduleRows(employees = [], shiftIds = [], workDates = []) {
     const rows = [];
-    for (const emp of target.employees) {
+    for (const emp of employees) {
       for (const workDate of workDates) {
         for (const shiftId of shiftIds) {
           rows.push({
-            assignmentId: assignment.id,
             employeeId: emp.id,
             departmentId: emp.departmentId || null,
             shiftId,
@@ -293,7 +333,30 @@ export class ShiftAssignmentsService {
       }
     }
 
-    return this.scheduleRepo.bulkCreate(rows);
+    return rows;
+  }
+
+  async _assertNoDuplicateSchedules(rows = [], excludeAssignmentId = null) {
+    if (!rows || rows.length === 0) {
+      return;
+    }
+
+    const conflict = await this.scheduleRepo.findFirstConflict(
+      rows,
+      excludeAssignmentId,
+    );
+
+    if (!conflict) {
+      return;
+    }
+
+    const employeeName =
+      conflict.employee?.fullName || `ID ${conflict.employeeId}`;
+    const shiftName = conflict.shift?.shiftName || `ID ${conflict.shiftId}`;
+
+    throw new ConflictException(
+      `Nhân viên ${employeeName} đã có ca ${shiftName} trùng thời gian vào ngày ${this._dateOnly(conflict.workDate)}`,
+    );
   }
 
   async createAssignment(data) {
@@ -336,6 +399,11 @@ export class ShiftAssignmentsService {
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
     }
+
+    this._assertStartDateNotInPast(
+      startDate,
+      'Không thể tạo phân ca cho ngày trong quá khứ',
+    );
 
     const normalizedWeekdays = this._toNumberArray(weekdays);
     if (
@@ -459,6 +527,13 @@ export class ShiftAssignmentsService {
       new Date(nextStartDate) > new Date(nextEndDate)
     ) {
       throw new BadRequestException('startDate phải nhỏ hơn hoặc bằng endDate');
+    }
+
+    if (data.startDate) {
+      this._assertStartDateNotInPast(
+        data.startDate,
+        'Không thể cập nhật phân ca với ngày bắt đầu trong quá khứ',
+      );
     }
 
     if (
@@ -639,7 +714,7 @@ export class ShiftAssignmentsService {
 
         return {
           id: item.id,
-          assignmentName: item.assignmentName || `Bang phan ca #${item.id}`,
+          assignmentName: item.assignmentName || `Bảng phân ca #${item.id}`,
           effectiveFrom: this._dateOnly(item.effectiveFrom),
           effectiveTo: this._dateOnly(item.effectiveTo),
           weekdays: this._toNumberArray(item.weekdays),
@@ -653,12 +728,12 @@ export class ShiftAssignmentsService {
           appliedShifts: shiftNames.join(', '),
           appliedDepartments:
             departmentNames.length > 0
-              ? departmentNames.join(', ')
-              : 'Tat ca phong ban',
+              ? `${departmentNames.length} Phòng ban`
+              : 'Tất cả phòng ban',
           appliedTargets:
             employeeNames.length > 0
-              ? `${employeeNames.length} nhan vien`
-              : 'Theo phong ban',
+              ? `${employeeNames.length} Nhân viên`
+              : 'Theo phòng ban',
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
         };

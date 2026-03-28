@@ -1,35 +1,45 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, MaxLength, Min, Max } from 'class-validator';
+import {
+    IsString,
+    IsNotEmpty,
+    IsOptional,
+    IsDateString,
+    IsIn,
+    IsInt,
+    Min,
+    IsNumber,
+} from 'class-validator';
 
 export class CreatePenaltyDto {
-    @IsString({ message: 'Tên hình phạt phải là chuỗi ký tự' })
-    @IsNotEmpty({ message: 'Tên hình phạt không được để trống' })
-    @MaxLength(100, { message: 'Tên hình phạt không được vượt quá 100 ký tự' })
-    name;
+    @IsString({ message: 'Trường hợp phải là chuỗi ký tự' })
+    @IsNotEmpty({ message: 'Trường hợp không được để trống' })
+    @IsIn(['LATE', 'EARLY'], { message: 'Trường hợp chỉ được là LATE hoặc EARLY' })
+    violationType;
 
-    @IsString({ message: 'Loại hình phạt phải là chuỗi ký tự' })
-    @IsNotEmpty({ message: 'Loại hình phạt không được để trống' })
-    penaltyType;
-
-    @IsString({ message: 'Mức độ phải là chuỗi ký tự' })
-    @IsNotEmpty({ message: 'Mức độ không được để trống' })
-    severityLevel;
+    @IsDateString({}, { message: 'Ngày hiệu lực không hợp lệ' })
+    effectiveFrom;
 
     @IsOptional()
-    @IsNumber({}, { message: 'Số tiền trừ phải là số' })
-    @Min(0, { message: 'Số tiền trừ phải lớn hơn hoặc bằng 0' })
-    deductionAmount;
+    @IsDateString({}, { message: 'Ngày hết hiệu lực không hợp lệ' })
+    effectiveTo;
+
+    @IsInt({ message: 'Thời gian từ (phút) phải là số nguyên' })
+    @Min(0, { message: 'Thời gian từ (phút) phải lớn hơn hoặc bằng 0' })
+    fromMinute;
+
+    @IsInt({ message: 'Thời gian đến (phút) phải là số nguyên' })
+    @Min(1, { message: 'Thời gian đến (phút) phải lớn hơn 0' })
+    toMinute;
+
+    @IsNumber({}, { message: 'Số giờ quy đổi phải là số' })
+    @Min(0, { message: 'Số giờ quy đổi phải lớn hơn hoặc bằng 0' })
+    convertedHours;
 
     @IsOptional()
-    @IsNumber({}, { message: 'Phần trăm trừ phải là số' })
-    @Min(0, { message: 'Phần trăm trừ phải lớn hơn hoặc bằng 0' })
-    @Max(100, { message: 'Phần trăm trừ không được vượt quá 100' })
-    deductionPercentage;
-
-    @IsOptional()
-    @IsString({ message: 'Mô tả phải là chuỗi ký tự' })
-    description;
+    @IsString({ message: 'Ghi chú phải là chuỗi ký tự' })
+    note;
 
     @IsOptional()
     @IsString({ message: 'Trạng thái phải là chuỗi ký tự' })
+    @IsIn(['ACTIVE', 'INACTIVE'], { message: 'Trạng thái chỉ được là ACTIVE hoặc INACTIVE' })
     status;
 }
