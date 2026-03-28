@@ -139,9 +139,17 @@ export class DepartmentsRepository {
     }
 
     async findByName(name) {
+        const normalized = this.normalizeName(name);
         return this.repository.findOne({
-            where: { departmentName: name, isDeleted: false },
+            where: { departmentName: normalized, isDeleted: false },
         });
+    }
+
+    normalizeName(name) {
+        if (!name) return name;
+        return name
+            .trim()
+            .replace(/\s+/g, ' '); // gộp nhiều space liên tiếp thành 1 space
     }
 
     async hasChildren(id) {
