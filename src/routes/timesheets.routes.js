@@ -119,6 +119,60 @@ router.post('/add-employee', authMiddleware, permissionsMiddleware('TIMESHEET_CR
  */
 router.get('/', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.findAll);
 
+/**
+ * @swagger
+ * /timesheets/periods:
+ *   get:
+ *     summary: Get generated timesheet periods
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of periods
+ */
+router.get('/periods', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getPeriods);
+
+/**
+ * @swagger
+ * /timesheets/matrix:
+ *   get:
+ *     summary: Get timesheet matrix for generated month
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of matrix rows
+ */
+router.get('/matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getMatrix);
+
 // UC27 - Export (must be before /:id routes)
 /**
  * @swagger

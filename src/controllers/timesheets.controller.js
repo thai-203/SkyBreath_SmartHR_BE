@@ -58,6 +58,33 @@ export class TimesheetsController {
         }
     };
 
+    getPeriods = async (req, res, next) => {
+        try {
+            const { month, year } = req.query;
+            const queryDto = {};
+            if (month && !isNaN(parseInt(month))) queryDto.month = parseInt(month, 10);
+            if (year && !isNaN(parseInt(year))) queryDto.year = parseInt(year, 10);
+            const result = await this.timesheetsService.getPeriods(queryDto);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED_ALL, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    getMatrix = async (req, res, next) => {
+        try {
+            const queryDto = plainToInstance(TimesheetQueryDto, req.query);
+            const { month, year } = req.query;
+            if (month && !isNaN(parseInt(month, 10))) queryDto.month = parseInt(month, 10);
+            if (year && !isNaN(parseInt(year, 10))) queryDto.year = parseInt(year, 10);
+            
+            const result = await this.timesheetsService.getMatrix(queryDto, req.user);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED_ALL, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     findById = async (req, res, next) => {
         try {
             const result = await this.timesheetsService.findById(parseInt(req.params.id), req.user);

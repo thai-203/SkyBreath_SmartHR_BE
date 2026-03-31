@@ -14,15 +14,15 @@ export class TimesheetsRepository {
             .leftJoinAndSelect('employee.position', 'position')
             .where('timesheet.isDeleted = :isDeleted', { isDeleted: false });
 
-        if (month) {
+        if (month && !isNaN(month)) {
             query.andWhere('timesheet.month = :month', { month });
         }
 
-        if (year) {
+        if (year && !isNaN(year)) {
             query.andWhere('timesheet.year = :year', { year });
         }
 
-        if (departmentId) {
+        if (departmentId && !isNaN(departmentId)) {
             query.andWhere('employee.departmentId = :departmentId', { departmentId });
         }
 
@@ -32,7 +32,7 @@ export class TimesheetsRepository {
             query.andWhere('timesheet.isLocked = :isLocked', { isLocked: false });
         }
 
-        if (employeeId) {
+        if (employeeId && !isNaN(employeeId)) {
             query.andWhere('timesheet.employeeId = :employeeId', { employeeId });
         }
 
@@ -57,6 +57,34 @@ export class TimesheetsRepository {
             where: { id, isDeleted: false },
             relations: ['employee', 'employee.department', 'employee.position'],
         });
+    }
+
+    async getPeriods(options = {}) {
+        const query = this.repository.createQueryBuilder('timesheet')
+            .select('timesheet.month', 'month')
+            .addSelect('timesheet.year', 'year')
+            .addSelect('COUNT(timesheet.id)', 'totalEmployees')
+            .addSelect('SUM(CASE WHEN timesheet.isLocked = 1 THEN 1 ELSE 0 END)', 'lockedEmployees')
+            .where('timesheet.isDeleted = :isDeleted', { isDeleted: false });
+
+        if (options.year && !isNaN(options.year)) {
+            query.andWhere('timesheet.year = :year', { year: options.year });
+        }
+        if (options.month && !isNaN(options.month)) {
+            query.andWhere('timesheet.month = :month', { month: options.month });
+        }
+
+        query.groupBy('timesheet.year, timesheet.month')
+             .orderBy('timesheet.year', 'DESC')
+             .addOrderBy('timesheet.month', 'DESC');
+
+        const rawData = await query.getRawMany();
+        return rawData.map(item => ({
+            month: parseInt(item.month),
+            year: parseInt(item.year),
+            totalEmployees: parseInt(item.totalEmployees),
+            lockedEmployees: parseInt(item.lockedEmployees),
+        }));
     }
 
     async findByEmployeeAndPeriod(employeeId, month, year) {
