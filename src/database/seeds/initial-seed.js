@@ -47,12 +47,9 @@ import { ShiftGroupEntity } from '../../models/entities/shift-group.entity.js';
 import { UserRoleEntity } from '../../models/entities/user-role.entity.js';
 import { UserEntity } from '../../models/entities/user.entity.js';
 import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.js';
-import { ShiftAssignmentEntity } from '../../models/entities/shift-assignment.entity.js';
 import { ShiftScheduleEntity } from '../../models/entities/shift-schedule.entity.js';
 import { TaskAssignmentEntity } from '../../models/entities/task-assignment.entity.js';
 import { TimeSheetEntity } from '../../models/entities/time-sheet.entity.js';
-import { HolidayGroupEntity } from '../../models/entities/holiday-group.entity.js';
-import { HolidayConfigEntity } from '../../models/entities/holiday-config.entity.js';
 
 const seed = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -440,6 +437,47 @@ const seed = async () => {
         description: 'Delete penalty',
         module: 'Penalty',
       },
+      // Request Configuration
+      {
+        permissionCode: 'REQUEST_GROUP_READ',
+        description: 'View request groups',
+        module: 'RequestConfig',
+      },
+      {
+        permissionCode: 'REQUEST_GROUP_CREATE',
+        description: 'Create request group',
+        module: 'RequestConfig',
+      },
+      {
+        permissionCode: 'REQUEST_GROUP_UPDATE',
+        description: 'Update request group',
+        module: 'RequestConfig',
+      },
+      {
+        permissionCode: 'REQUEST_GROUP_DELETE',
+        description: 'Delete request group',
+        module: 'RequestConfig',
+      },
+      {
+        permissionCode: 'REQUEST_TYPE_READ',
+        description: 'View request types',
+        module: 'RequestConfig',
+      },
+      {
+        permissionCode: 'REQUEST_TYPE_CREATE',
+        description: 'Create request type',
+        module: 'RequestConfig',
+      },
+      {
+        permissionCode: 'REQUEST_TYPE_UPDATE',
+        description: 'Update request type',
+        module: 'RequestConfig',
+      },
+      {
+        permissionCode: 'REQUEST_TYPE_DELETE',
+        description: 'Delete request type',
+        module: 'RequestConfig',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -508,6 +546,8 @@ const seed = async () => {
       'SHIFT_READ',
       'SHIFT_ASSIGN_READ',
       'SHIFT_SCHEDULE_READ',
+      'REQUEST_GROUP_READ',
+      'REQUEST_TYPE_READ',
       // allow managers to view onboarding data
       'ONBOARDING_PLAN_READ',
       'ONBOARDING_PROGRESS_READ',
@@ -619,6 +659,15 @@ const seed = async () => {
       'PENALTY_CREATE',
       'PENALTY_UPDATE',
       'PENALTY_DELETE',
+      // Request Config
+      'REQUEST_GROUP_READ',
+      'REQUEST_GROUP_CREATE',
+      'REQUEST_GROUP_UPDATE',
+      'REQUEST_GROUP_DELETE',
+      'REQUEST_TYPE_READ',
+      'REQUEST_TYPE_CREATE',
+      'REQUEST_TYPE_UPDATE',
+      'REQUEST_TYPE_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -645,6 +694,8 @@ const seed = async () => {
       'HOLIDAY_READ',
       'OVERTIME_RULE_READ',
       'PENALTY_READ',
+      'REQUEST_GROUP_READ',
+      'REQUEST_TYPE_READ',
     ];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -1515,22 +1566,39 @@ const seed = async () => {
 
     const penaltiesData = [
       {
-        name: 'Đi muộn quá 30 phút',
-        penaltyType: 'ATTENDANCE',
-        severityLevel: 'MEDIUM',
-        deductionAmount: 100000,
-        description: 'Áp dụng cho nhân viên đi muộn trên 30 phút',
+        violationType: 'LATE',
+        effectiveFrom: '2024-01-01',
+        fromMinute: 15,
+        toMinute: 30,
+        convertedHours: 0.25,
+        note: 'Đi muộn 15-30 phút trừ 0.25h công',
       },
       {
-        name: 'Vắng mặt không phép',
-        penaltyType: 'ATTENDANCE',
-        severityLevel: 'HIGH',
-        deductionPercentage: 100,
-        description: 'Khấu trừ 1 ngày lương cho nghỉ không phép',
+        violationType: 'LATE',
+        effectiveFrom: '2024-01-01',
+        fromMinute: 31,
+        toMinute: 60,
+        convertedHours: 0.5,
+        note: 'Đi muộn 31-60 phút trừ 0.5h công',
+      },
+      {
+        violationType: 'EARLY',
+        effectiveFrom: '2024-01-01',
+        fromMinute: 15,
+        toMinute: 60,
+        convertedHours: 0.5,
+        note: 'Về sớm 15-60 phút trừ 0.5h công',
       },
     ];
     for (const p of penaltiesData) {
-      const exists = await penaltyRepo.findOne({ where: { name: p.name } });
+      const exists = await penaltyRepo.findOne({ 
+        where: { 
+          violationType: p.violationType,
+          fromMinute: p.fromMinute,
+          toMinute: p.toMinute,
+          effectiveFrom: p.effectiveFrom 
+        } 
+      });
       if (!exists) {
         await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
       }

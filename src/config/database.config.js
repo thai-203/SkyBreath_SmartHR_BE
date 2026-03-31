@@ -47,7 +47,10 @@ import { PayrollTypeEntity } from '../models/entities/payroll-type.entity.js';
 import { HolidayGroupEntity } from '../models/entities/holiday-group.entity.js';
 import { HolidayConfigEntity } from '../models/entities/holiday-config.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
-
+import { RequestGroupEntity } from '../models/entities/request-group.entity.js';
+import { RequestGroupWorkflowEntity } from '../models/entities/request-group-workflow.entity.js';
+import { RequestTypeEntity } from '../models/entities/request-type.entity.js';
+import { RequestTypePolicyEntity } from '../models/entities/request-type-policy.entity.js';
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
 
@@ -110,6 +113,10 @@ export const databaseConfig = {
     PayrollTypeEntity,
     HolidayGroupEntity,
     HolidayConfigEntity,
+    RequestGroupEntity,
+    RequestGroupWorkflowEntity,
+    RequestTypeEntity,
+    RequestTypePolicyEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],
