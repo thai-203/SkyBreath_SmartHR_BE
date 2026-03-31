@@ -460,6 +460,57 @@ export class TimesheetsService {
     };
   }
 
+  async getPeriods(queryDto) {
+    const { month, year } = queryDto;
+    const periods = await this.timesheetsRepository.getPeriods({ month, year });
+    return periods;
+  }
+
+  async getMatrix(queryDto, userContext) {
+    const { month, year, departmentId, search } = queryDto;
+    const limit = queryDto.limit || 10;
+    const page = queryDto.page || 1;
+    const skip = (page - 1) * limit;
+
+    const timesheetsResult = await this.timesheetsRepository.findAll({
+      skip,
+      take: limit,
+      month,
+      year,
+      departmentId,
+      search,
+    });
+
+    const items = [];
+    for (const ts of timesheetsResult.items) {
+      try {
+        const details = await this.getAttendanceDetails(ts.id, userContext);
+        items.push({
+          id: ts.id,
+          employeeCode: ts.employee?.employeeCode,
+          fullName: ts.employee?.fullName,
+          department: ts.employee?.department?.departmentName,
+          position: ts.employee?.position?.positionName,
+          totalWorkingDays: ts.totalWorkingDays,
+          isLocked: ts.isLocked,
+          dailyDetails: details.dailyDetails,
+        });
+      } catch (err) {
+        console.error(`Failed to get details for timesheet ${ts.id}:`, err.message);
+      }
+    }
+
+    return {
+      items,
+      total: timesheetsResult.total,
+      page,
+      limit,
+      totalPages: Math.ceil(timesheetsResult.total / limit),
+      month,
+      year,
+    };
+  }
+
   async findById(id, userContext) {
     const timesheet = await this.timesheetsRepository.findById(id);
     if (!timesheet) {
