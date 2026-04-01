@@ -28,10 +28,37 @@ export class HolidayListService {
         return holiday;
     }
 
+    _validateCompensatoryDays(compensatoryDays) {
+        if (!compensatoryDays || !Array.isArray(compensatoryDays)) return;
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = 0; i < compensatoryDays.length; i++) {
+            const cd = compensatoryDays[i];
+            if (!cd.date) {
+                throw new BadRequestException(`Vui lòng chọn ngày làm bù cho dòng thứ ${i + 1}`);
+            }
+
+            const compDate = new Date(cd.date + "T00:00:00");
+            if (compDate < today) {
+                throw new BadRequestException(`Tại ngày làm bù thứ ${i + 1}: Ngày làm bù không được chọn trong quá khứ.`);
+            }
+
+            const dayOfWeek = compDate.getDay();
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                throw new BadRequestException(`Tại ngày làm bù thứ ${i + 1}: Ngày làm bù phải là ngày không có phân ca (Thứ 7 hoặc Chủ Nhật).`);
+            }
+        }
+    }
+
     async create(data) {
         if (new Date(data.startDate) > new Date(data.endDate)) {
             throw new BadRequestException('Ngày kết thúc không được trước ngày bắt đầu');
         }
+        
+        this._validateCompensatoryDays(data.compensatoryDays);
+
         // Validate date format or uniqueness if needed
         const existing = await this.repository.findByNameAndRange(data.holidayName, data.startDate, data.endDate);
         if (existing) {
@@ -47,6 +74,9 @@ export class HolidayListService {
         if (data.startDate && data.endDate && new Date(data.startDate) > new Date(data.endDate)) {
             throw new BadRequestException('Ngày kết thúc không được trước ngày bắt đầu');
         }
+
+        this._validateCompensatoryDays(data.compensatoryDays);
+
         const holiday = await this.findById(id);
         return this.repository.update(holiday.id, {
             ...data,

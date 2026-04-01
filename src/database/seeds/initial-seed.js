@@ -767,32 +767,32 @@ const seed = async () => {
       {
         gradeName: 'Junior',
         departmentName: 'Software Development',
-        minSalary: 800,
-        maxSalary: 1500,
+        minSalary: 6000000,
+        maxSalary: 10000000,
       },
       {
         gradeName: 'Senior',
         departmentName: 'Software Development',
-        minSalary: 1600,
-        maxSalary: 3000,
+        minSalary: 19000000,
+        maxSalary: 30000000,
       },
       {
         gradeName: 'Lead',
         departmentName: 'Software Development',
-        minSalary: 3100,
-        maxSalary: 6000,
+        minSalary: 31000000,
+        maxSalary: 45000000,
       },
       {
         gradeName: 'Junior',
         departmentName: 'Human Resources',
-        minSalary: 600,
-        maxSalary: 1000,
+        minSalary: 6000000,
+        maxSalary: 10000000,
       },
       {
         gradeName: 'Senior',
         departmentName: 'Human Resources',
-        minSalary: 1100,
-        maxSalary: 2000,
+        minSalary: 19000000,
+        maxSalary: 30000000,
       },
     ];
 

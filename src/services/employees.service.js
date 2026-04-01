@@ -120,7 +120,7 @@ export class EmployeesService {
         await mailService.sendAccountInfo(
           user.email,
           createDto.fullName,
-          user.username,
+          user.email,
           randomPassword,
         );
       }
