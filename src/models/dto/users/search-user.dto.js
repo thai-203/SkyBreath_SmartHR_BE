@@ -7,15 +7,24 @@ import {
   Min,
 } from 'class-validator';
 
+import { Transform } from 'class-transformer';
+
 export class SearchUserDto {
   @IsOptional()
   @IsString()
   search; // Search by username, email, fullName
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (!value) return value;
+    if (Array.isArray(value)) return value.map(Number);
+    if (typeof value === 'object') return Object.values(value).map(Number);
+    if (typeof value === 'string' && value.includes(',')) return value.split(',').map(Number);
+    return [Number(value)];
+  })
   @IsArray()
-  @IsEnum(['ADMIN', 'MANAGER', 'EMPLOYEE', 'USER'], { each: true })
-  roles; // Filter by role names
+  @IsNumber({}, { each: true })
+  roles; // Filter by role IDs
 
   @IsOptional()
   @IsArray()

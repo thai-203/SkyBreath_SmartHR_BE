@@ -1,6 +1,7 @@
-import { IsOptional, IsString, MaxLength, IsArray, ValidateNested, IsIn } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsArray, ValidateNested, IsIn, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { RequestGroupWorkflowDto } from './request-group-workflow.dto.js';
+import { RequestGroupCode } from '../../../common/enums/request.enum.js';
 
 export class UpdateRequestGroupDto {
     @IsOptional()
@@ -13,8 +14,7 @@ export class UpdateRequestGroupDto {
     description;
 
     @IsOptional()
-    @IsString({ message: 'Mã nhóm đơn phải là chuỗi ký tự' })
-    @MaxLength(100, { message: 'Mã nhóm đơn không được vượt quá 100 ký tự' })
+    @IsEnum(RequestGroupCode, { message: 'Mã nhóm đơn không hợp lệ' })
     code;
 
     @IsOptional()

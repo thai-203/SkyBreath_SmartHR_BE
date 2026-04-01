@@ -2,6 +2,7 @@ import { RequestTypesRepository } from '../repositories/request-types.repository
 import { RequestTypePoliciesRepository } from '../repositories/request-type-policies.repository.js';
 import { RequestGroupsRepository } from '../repositories/request-groups.repository.js';
 import { NotFoundException, BadRequestException, ConflictException } from '../common/exceptions/index.js';
+import { PaginatedResponseDto } from '../common/dto/pagination.dto.js';
 
 export class RequestTypesService {
     constructor() {
@@ -11,11 +12,12 @@ export class RequestTypesService {
     }
 
     /**
-     * @description Lấy danh sách Loại Đơn (UC-REQ-TYPE-05) với filter tuỳ chỉ định
-     * @param {Object} options Options phân trang và lọc (Ví dụ group id)
+     * @description Lấy danh sách Loại Đơn có phân trang
+     * @param {Object} paginationDto DTO chứa thông tin phân trang
      */
-    async findAll(options) {
-        return await this.repository.findAll(options);
+    async findAll(paginationDto) {
+        const { items, total } = await this.repository.findAll(paginationDto);
+        return new PaginatedResponseDto(items, total, paginationDto);
     }
 
     /**
@@ -40,6 +42,12 @@ export class RequestTypesService {
         // Check nhóm cha có tồn tại không
         const group = await this.groupsRepo.findById(requestGroupId);
         if (!group) throw new NotFoundException('Không tìm thấy Nhóm Đơn Từ cha');
+
+        // Check duplicate name trong cùng group
+        const existingType = await this.repository.findByNameAndGroup(typeData.name, requestGroupId);
+        if (existingType) {
+            throw new ConflictException('Tên loại đơn từ này đã tồn tại trong nhóm.');
+        }
 
         // Tạo loại đơn
         const newType = await this.repository.create({ ...typeData, requestGroupId });
@@ -70,6 +78,15 @@ export class RequestTypesService {
 
         // Cập nhật thông tin cơ bản
         if (Object.keys(typeData).length > 0) {
+            // Check duplicate name nếu thay đổi tên hoặc di chuyển sang group khác
+            const nameToCheck = typeData.name || typeItem.name;
+            const groupToCheck = typeData.requestGroupId || typeItem.requestGroupId;
+            
+            const existingType = await this.repository.findByNameAndGroup(nameToCheck, groupToCheck, id);
+            if (existingType) {
+                throw new ConflictException('Tên loại đơn từ này đã tồn tại trong nhóm đích.');
+            }
+
             await this.repository.update(id, typeData);
         }
 
@@ -82,6 +99,21 @@ export class RequestTypesService {
                 await this.policyRepo.upsert(id, policy);
             }
         }
+
+        return await this.findById(id);
+    }
+
+    /**
+     * @description Cập nhật Policy của Loại Đơn (UC-REQ-TYPE-07)
+     * @param {number} id ID loại đơn
+     * @param {Object} policyData Dữ liệu policy cần cập nhật
+     */
+    async updatePolicy(id, policyData) {
+        // Kiểm tra loại đơn có tồn tại không
+        await this.findById(id);
+
+        // Upsert policy
+        await this.policyRepo.upsert(id, policyData);
 
         return await this.findById(id);
     }

@@ -10,7 +10,7 @@ export class RequestGroupWorkflowsRepository {
         return await this.repository.find({
             where: { requestGroupId: groupId, isDeleted: false },
             order: { levelOrder: 'ASC' },
-            relations: ['approverRole']
+            relations: ['approverRole', 'approverUser']
         });
     }
 

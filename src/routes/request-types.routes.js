@@ -3,7 +3,7 @@ import { RequestTypesController } from '../controllers/request-types.controller.
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
-import { CreateRequestTypeDto, UpdateRequestTypeDto } from '../models/dto/request-types/index.js';
+import { CreateRequestTypeDto, UpdateRequestTypeDto, UpdateRequestTypePolicyDto } from '../models/dto/request-types/index.js';
 
 const router = Router();
 const requestTypesController = new RequestTypesController();
@@ -27,6 +27,15 @@ router.put(
     validationMiddleware(UpdateRequestTypeDto),
     requestTypesController.update
 );
+// PATCH /request-types/:id/policy — Cập nhật riêng phần Policy
+router.patch(
+    '/:id/policy',
+    authMiddleware,
+    permissionsMiddleware('REQUEST_TYPE_UPDATE'),
+    validationMiddleware(UpdateRequestTypePolicyDto),
+    requestTypesController.updatePolicy
+);
 router.delete('/:id', authMiddleware, permissionsMiddleware('REQUEST_TYPE_DELETE'), requestTypesController.remove);
 
 export const requestTypesRoutes = router;
+

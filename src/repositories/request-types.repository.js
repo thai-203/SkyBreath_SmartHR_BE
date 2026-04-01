@@ -6,11 +6,12 @@ export class RequestTypesRepository {
         this.repository = AppDataSource.getRepository(RequestTypeEntity);
     }
 
-    async findAll(options = {}) {
-        const { skip = 0, take = 10, search, status, requestGroupId } = options;
+    async findAll(paginationDto = {}) {
+        const { skip = 0, limit = 10, search, status, requestGroupId } = paginationDto;
 
         const query = this.repository.createQueryBuilder('type')
             .leftJoinAndSelect('type.policy', 'policy')
+            .leftJoinAndSelect('type.requestGroup', 'requestGroup')
             .where('type.isDeleted = :isDeleted', { isDeleted: false });
 
         if (search) {
@@ -28,7 +29,7 @@ export class RequestTypesRepository {
         const [types, total] = await query
             .orderBy('type.createdAt', 'DESC')
             .skip(skip)
-            .take(take)
+            .take(limit)
             .getManyAndCount();
 
         return { items: types, total };
@@ -50,6 +51,19 @@ export class RequestTypesRepository {
     async create(data) {
         const type = this.repository.create(data);
         return await this.repository.save(type);
+    }
+
+    async findByNameAndGroup(name, requestGroupId, excludeId = null) {
+        const query = this.repository.createQueryBuilder('type')
+            .where('type.name = :name', { name })
+            .andWhere('type.requestGroupId = :requestGroupId', { requestGroupId })
+            .andWhere('type.isDeleted = :isDeleted', { isDeleted: false });
+
+        if (excludeId) {
+            query.andWhere('type.id != :excludeId', { excludeId });
+        }
+
+        return await query.getOne();
     }
 
     async update(id, data) {

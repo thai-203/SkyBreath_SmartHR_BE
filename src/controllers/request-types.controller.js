@@ -1,4 +1,8 @@
 import { RequestTypesService } from '../services/request-types.service.js';
+import { plainToInstance } from 'class-transformer';
+import { SearchRequestTypeDto } from '../models/dto/request-types/search-request-type.dto.js';
+import { ResponseUtil } from '../common/utils/response.util.js';
+import { AppMessages } from '../common/constants/index.js';
 
 export class RequestTypesController {
     constructor() {
@@ -10,17 +14,9 @@ export class RequestTypesController {
      */
     findAll = async (req, res, next) => {
         try {
-            const { skip, take, search, status, requestGroupId } = req.query;
-            const options = {
-                skip: skip ? parseInt(skip, 10) : 0,
-                take: take ? parseInt(take, 10) : 10,
-                search,
-                status,
-                requestGroupId: requestGroupId ? parseInt(requestGroupId, 10) : undefined
-            };
-
-            const result = await this.service.findAll(options);
-            res.status(200).json(result);
+            const paginationDto = plainToInstance(SearchRequestTypeDto, req.query, { enableImplicitConversion: true });
+            const result = await this.service.findAll(paginationDto);
+            ResponseUtil.sendResponse(res, 'Lấy danh sách thành công', result);
         } catch (error) {
             next(error);
         }
@@ -58,6 +54,19 @@ export class RequestTypesController {
         try {
             const { id } = req.params;
             const typeItem = await this.service.update(parseInt(id, 10), req.body);
+            res.status(200).json(typeItem);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    /**
+     * @description Cập nhật Policy của Loại Đơn (UC-REQ-TYPE-07)
+     */
+    updatePolicy = async (req, res, next) => {
+        try {
+            const { id } = req.params;
+            const typeItem = await this.service.updatePolicy(parseInt(id, 10), req.body);
             res.status(200).json(typeItem);
         } catch (error) {
             next(error);

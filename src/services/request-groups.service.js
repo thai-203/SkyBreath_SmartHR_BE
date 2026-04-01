@@ -2,6 +2,7 @@ import { RequestGroupsRepository } from '../repositories/request-groups.reposito
 import { RequestGroupWorkflowsRepository } from '../repositories/request-group-workflows.repository.js';
 import { RequestTypesRepository } from '../repositories/request-types.repository.js';
 import { NotFoundException, ConflictException, BadRequestException } from '../common/exceptions/index.js';
+import { PaginatedResponseDto } from '../common/dto/pagination.dto.js';
 
 export class RequestGroupsService {
     constructor() {
@@ -11,12 +12,12 @@ export class RequestGroupsService {
     }
 
     /**
-     * @description Lấy danh sách nhóm đơn từ có phân trang và tìm kiếm (UC-REQ-GRP-05)
-     * @param {Object} options Options phân trang và lọc (skip, take, search)
-     * @returns {Object} Gồm items và tổng số (total)
+     * @description Lấy danh sách nhóm đơn từ có phân trang
+     * @param {Object} paginationDto DTO chứa thông tin phân trang
      */
-    async findAll(options) {
-        return await this.repository.findAll(options);
+    async findAll(paginationDto) {
+        const { items, total } = await this.repository.findAll(paginationDto);
+        return new PaginatedResponseDto(items, total, paginationDto);
     }
 
     /**
@@ -40,8 +41,38 @@ export class RequestGroupsService {
     async create(createDto) {
         const { workflows, ...groupData } = createDto;
         
-        // Tạo nhóm đơn
-        const newGroup = await this.repository.create(groupData);
+        // Kiểm tra mã nhóm (UC-REQ-GRP-01 BR-01) - Bao gồm cả bản ghi bị xoá mềm
+        const existingGroup = await this.repository.findByCodeWithDeleted(groupData.code);
+        let newGroup;
+
+        if (existingGroup) {
+            if (!existingGroup.isDeleted) {
+                throw new ConflictException('Mã nhóm đơn từ đã tồn tại trong hệ thống');
+            } else {
+                // Kiểm tra trùng tên với nhóm khác đang active
+                const existingName = await this.repository.findByName(groupData.name, existingGroup.id);
+                if (existingName) {
+                    throw new ConflictException('Tên nhóm đơn từ đã tồn tại trong hệ thống');
+                }
+
+                // Restore nhóm đơn (Ghi đè thông tin mới, kích hoạt lại)
+                await this.repository.update(existingGroup.id, {
+                    ...groupData,
+                    isDeleted: false,
+                    deletedAt: null
+                });
+                newGroup = await this.repository.findById(existingGroup.id);
+            }
+        } else {
+            // Kiểm tra tên nhóm (UC-REQ-GRP-01 BR-02)
+            const existingName = await this.repository.findByName(groupData.name);
+            if (existingName) {
+                throw new ConflictException('Tên nhóm đơn từ đã tồn tại trong hệ thống');
+            }
+
+            // Tạo nhóm đơn mới hoàn toàn
+            newGroup = await this.repository.create(groupData);
+        }
 
         // Lưu cấu hình duyệt (Nếu có)
         if (workflows && workflows.length > 0) {
@@ -68,6 +99,19 @@ export class RequestGroupsService {
         const group = await this.findById(id);
 
         const { workflows, ...groupData } = updateDto;
+
+        // Mã nhóm không được thay đổi (UC-REQ-GRP-02 BR-01)
+        if (groupData.code) {
+            delete groupData.code;
+        }
+
+        // Kiểm tra tên nhóm nếu có cập nhật (UC-REQ-GRP-02 BR-02)
+        if (groupData.name && groupData.name !== group.name) {
+            const existingName = await this.repository.findByName(groupData.name, id);
+            if (existingName) {
+                throw new ConflictException('Tên nhóm đơn từ đã tồn tại trong hệ thống');
+            }
+        }
 
         // Cập nhật thông tin cơ bản
         if (Object.keys(groupData).length > 0) {
@@ -120,6 +164,7 @@ export class RequestGroupsService {
 
     /**
      * @description Validate xem các cấp duyệt có bị trùng thứ tự không
+     * và kiểm tra logic approverType
      * @param {Array} workflows Danh sách cấp duyệt
      * @private
      */
@@ -128,6 +173,18 @@ export class RequestGroupsService {
         const uniqueLevels = new Set(levels);
         if (levels.length !== uniqueLevels.size) {
             throw new BadRequestException('Thứ tự cấp duyệt (levelOrder) không được trùng lặp');
+        }
+
+        // Validate approverType logic
+        for (const wf of workflows) {
+            if (wf.approverType === 'ROLE') {
+                if (!wf.approverRoleId) {
+                    throw new BadRequestException(`Cấp duyệt "${wf.levelName}": Khi chọn loại "Theo vai trò", phải chọn vai trò duyệt`);
+                }
+                if (!wf.approverUserId) {
+                    throw new BadRequestException(`Cấp duyệt "${wf.levelName}": Khi chọn loại "Theo vai trò", phải chọn người duyệt cụ thể`);
+                }
+            }
         }
     }
 }

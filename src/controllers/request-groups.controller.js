@@ -1,4 +1,8 @@
 import { RequestGroupsService } from '../services/request-groups.service.js';
+import { plainToInstance } from 'class-transformer';
+import { SearchRequestGroupDto } from '../models/dto/request-groups/search-request-group.dto.js';
+import { ResponseUtil } from '../common/utils/response.util.js';
+import { AppMessages } from '../common/constants/index.js';
 
 export class RequestGroupsController {
     constructor() {
@@ -10,17 +14,11 @@ export class RequestGroupsController {
      */
     findAll = async (req, res, next) => {
         try {
-            const { skip, take, search, status } = req.query;
-            const options = {
-                skip: skip ? parseInt(skip, 10) : 0,
-                take: take ? parseInt(take, 10) : 10,
-                search,
-                status,
-            };
-
-            const result = await this.service.findAll(options);
-            res.status(200).json(result);
+            const paginationDto = plainToInstance(SearchRequestGroupDto, req.query, { enableImplicitConversion: true });
+            const result = await this.service.findAll(paginationDto);
+            ResponseUtil.sendResponse(res, 'Lấy danh sách thành công', result);
         } catch (error) {
+            console.error('[RequestGroupsController.findAll] Error:', error);
             next(error);
         }
     };
