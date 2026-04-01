@@ -29,4 +29,12 @@ router.put(
 );
 router.delete('/:id', authMiddleware, permissionsMiddleware('REQUEST_GROUP_DELETE'), requestGroupsController.remove);
 
+// POST /request-groups/:id/restore
+router.post(
+    '/:id/restore',
+    authMiddleware,
+    permissionsMiddleware('REQUEST_GROUP_UPDATE'), // Check if there's a specific REQUEST_GROUP_RESTORE permission, assuming UPDATE for now
+    requestGroupsController.restore
+);
+
 export const requestGroupsRoutes = router;

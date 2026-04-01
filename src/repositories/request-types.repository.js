@@ -7,12 +7,16 @@ export class RequestTypesRepository {
     }
 
     async findAll(paginationDto = {}) {
-        const { skip = 0, limit = 10, search, status, requestGroupId } = paginationDto;
+        const { skip = 0, limit = 10, search, status, requestGroupId, includeDeleted = false } = paginationDto;
 
         const query = this.repository.createQueryBuilder('type')
+            .withDeleted() // MUST because of @DeleteDateColumn
             .leftJoinAndSelect('type.policy', 'policy')
-            .leftJoinAndSelect('type.requestGroup', 'requestGroup')
-            .where('type.isDeleted = :isDeleted', { isDeleted: false });
+            .leftJoinAndSelect('type.requestGroup', 'requestGroup');
+
+        if (!includeDeleted) {
+            query.where('type.isDeleted = :isDeleted', { isDeleted: false });
+        }
 
         if (search) {
             query.andWhere('type.name LIKE :search', { search: `%${search}%` });
@@ -27,7 +31,8 @@ export class RequestTypesRepository {
         }
 
         const [types, total] = await query
-            .orderBy('type.createdAt', 'DESC')
+            .orderBy('type.isDeleted', 'ASC')
+            .addOrderBy('type.createdAt', 'DESC')
             .skip(skip)
             .take(limit)
             .getManyAndCount();
@@ -66,6 +71,21 @@ export class RequestTypesRepository {
         return await query.getOne();
     }
 
+    async findByNameAndGroupWithDeleted(name, requestGroupId) {
+        return await this.repository.createQueryBuilder('type')
+            .withDeleted()
+            .where('type.name = :name', { name })
+            .andWhere('type.requestGroupId = :requestGroupId', { requestGroupId })
+            .getOne();
+    }
+
+    async findByIdWithDeleted(id) {
+        return await this.repository.createQueryBuilder('type')
+            .withDeleted()
+            .where('type.id = :id', { id })
+            .getOne();
+    }
+
     async update(id, data) {
         await this.repository.update(id, data);
         return await this.findById(id);
@@ -75,6 +95,7 @@ export class RequestTypesRepository {
         await this.repository.update(id, {
             isDeleted: true,
             deletedAt: new Date(),
+            status: 'INACTIVE',
         });
     }
 }

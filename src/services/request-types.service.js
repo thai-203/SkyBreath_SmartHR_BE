@@ -16,7 +16,10 @@ export class RequestTypesService {
      * @param {Object} paginationDto DTO chứa thông tin phân trang
      */
     async findAll(paginationDto) {
-        const { items, total } = await this.repository.findAll(paginationDto);
+        const { items, total } = await this.repository.findAll({
+            ...paginationDto,
+            includeDeleted: true, // Trẻ về cả loại đơn xóa mềm
+        });
         return new PaginatedResponseDto(items, total, paginationDto);
     }
 
@@ -43,8 +46,8 @@ export class RequestTypesService {
         const group = await this.groupsRepo.findById(requestGroupId);
         if (!group) throw new NotFoundException('Không tìm thấy Nhóm Đơn Từ cha');
 
-        // Check duplicate name trong cùng group
-        const existingType = await this.repository.findByNameAndGroup(typeData.name, requestGroupId);
+        // Check duplicate name trong cùng group (kể cả xóa mềm)
+        const existingType = await this.repository.findByNameAndGroupWithDeleted(typeData.name, requestGroupId);
         if (existingType) {
             throw new ConflictException('Tên loại đơn từ này đã tồn tại trong nhóm.');
         }
@@ -82,9 +85,9 @@ export class RequestTypesService {
             const nameToCheck = typeData.name || typeItem.name;
             const groupToCheck = typeData.requestGroupId || typeItem.requestGroupId;
             
-            const existingType = await this.repository.findByNameAndGroup(nameToCheck, groupToCheck, id);
-            if (existingType) {
-                throw new ConflictException('Tên loại đơn từ này đã tồn tại trong nhóm đích.');
+            const existingType = await this.repository.findByNameAndGroupWithDeleted(nameToCheck, groupToCheck);
+            if (existingType && existingType.id !== id) {
+                throw new ConflictException('Tên loại đơn từ này đã tồn tại trong nhóm nguồn/đích, kể cả trong thùng rác.');
             }
 
             await this.repository.update(id, typeData);
@@ -132,5 +135,27 @@ export class RequestTypesService {
         await this.repository.delete(id);
         
         return { message: 'Xoá loại đơn thành công' };
+    }
+
+    /**
+     * @description Khôi phục Loại Đơn đã xoá mềm
+     * @param {number} id ID loại đơn cần khôi phục
+     */
+    async restore(id) {
+        const typeItem = await this.repository.findByIdWithDeleted(id);
+        if (!typeItem) {
+            throw new NotFoundException('Không tìm thấy Loại Đơn Từ');
+        }
+        if (!typeItem.isDeleted) {
+            throw new BadRequestException('Loại đơn từ này chưa bị xoá');
+        }
+
+        await this.repository.update(id, {
+            isDeleted: false,
+            deletedAt: null,
+            status: 'INACTIVE',
+        });
+
+        return { message: 'Khôi phục loại đơn thành công' };
     }
 }

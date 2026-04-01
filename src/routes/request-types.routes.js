@@ -37,5 +37,13 @@ router.patch(
 );
 router.delete('/:id', authMiddleware, permissionsMiddleware('REQUEST_TYPE_DELETE'), requestTypesController.remove);
 
+// POST /request-types/:id/restore
+router.post(
+    '/:id/restore',
+    authMiddleware,
+    permissionsMiddleware('REQUEST_TYPE_UPDATE'),
+    requestTypesController.restore
+);
+
 export const requestTypesRoutes = router;
 

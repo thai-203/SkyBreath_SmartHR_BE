@@ -73,4 +73,17 @@ export class RequestGroupsController {
             next(error);
         }
     };
+
+    /**
+     * @description Gọi API khôi phục nhóm đơn đã xóa mềm
+     */
+    restore = async (req, res, next) => {
+        try {
+            const { id } = req.params;
+            const result = await this.service.restore(parseInt(id, 10));
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    };
 }

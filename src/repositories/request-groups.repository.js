@@ -7,13 +7,17 @@ export class RequestGroupsRepository {
     }
 
     async findAll(paginationDto = {}) {
-        const { skip = 0, limit = 10, search, status } = paginationDto;
+        const { skip = 0, limit = 10, search, status, includeDeleted = false } = paginationDto;
 
         const query = this.repository.createQueryBuilder('group')
+            .withDeleted() // Bắt buộc thêm vì BaseEntity có @DeleteDateColumn
             .leftJoinAndSelect('group.workflows', 'workflows')
             .leftJoinAndSelect('workflows.approverRole', 'approverRole')
-            .leftJoinAndSelect('workflows.approverUser', 'approverUser')
-            .where('group.isDeleted = :isDeleted', { isDeleted: false });
+            .leftJoinAndSelect('workflows.approverUser', 'approverUser');
+
+        if (!includeDeleted) {
+            query.where('group.isDeleted = :isDeleted', { isDeleted: false });
+        }
 
         if (search) {
             query.andWhere('group.name LIKE :search', { search: `%${search}%` });
@@ -24,7 +28,8 @@ export class RequestGroupsRepository {
         }
 
         const [groups, total] = await query
-            .orderBy('group.createdAt', 'DESC')
+            .orderBy('group.isDeleted', 'ASC')   // bản ghi xóa mềm xuống dưới
+            .addOrderBy('group.createdAt', 'DESC')
             .skip(skip)
             .take(limit)
             .getManyAndCount();
@@ -52,10 +57,11 @@ export class RequestGroupsRepository {
     }
 
     async findByCodeWithDeleted(code) {
-        return await this.repository.findOne({
-            where: { code },
-            withDeleted: true
-        });
+        // Dùng query trực tiếp vì entity dùng custom isDeleted field, không phải TypeORM paranoid
+        return await this.repository.createQueryBuilder('group')
+            .withDeleted() // MUST use this for BaseEntity
+            .where('group.code = :code', { code })
+            .getOne();
     }
 
     async findByName(name, excludeId = null) {
@@ -68,6 +74,13 @@ export class RequestGroupsRepository {
         }
         
         return await query.getOne();
+    }
+    async findByIdWithDeleted(id) {
+        // Dùng query trực tiếp vì entity dùng custom isDeleted field, không phải TypeORM paranoid
+        return await this.repository.createQueryBuilder('group')
+            .withDeleted() // MUST use this for BaseEntity
+            .where('group.id = :id', { id })
+            .getOne();
     }
 
     async create(data) {
@@ -84,6 +97,7 @@ export class RequestGroupsRepository {
         await this.repository.update(id, {
             isDeleted: true,
             deletedAt: new Date(),
+            status: 'INACTIVE'
         });
     }
 }

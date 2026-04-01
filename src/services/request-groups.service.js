@@ -16,7 +16,10 @@ export class RequestGroupsService {
      * @param {Object} paginationDto DTO chứa thông tin phân trang
      */
     async findAll(paginationDto) {
-        const { items, total } = await this.repository.findAll(paginationDto);
+        const { items, total } = await this.repository.findAll({
+            ...paginationDto,
+            includeDeleted: true, // Luôn bao gồm bản ghi xóa mềm để FE hiển thị icon restore
+        });
         return new PaginatedResponseDto(items, total, paginationDto);
     }
 
@@ -43,36 +46,19 @@ export class RequestGroupsService {
         
         // Kiểm tra mã nhóm (UC-REQ-GRP-01 BR-01) - Bao gồm cả bản ghi bị xoá mềm
         const existingGroup = await this.repository.findByCodeWithDeleted(groupData.code);
-        let newGroup;
 
         if (existingGroup) {
-            if (!existingGroup.isDeleted) {
-                throw new ConflictException('Mã nhóm đơn từ đã tồn tại trong hệ thống');
-            } else {
-                // Kiểm tra trùng tên với nhóm khác đang active
-                const existingName = await this.repository.findByName(groupData.name, existingGroup.id);
-                if (existingName) {
-                    throw new ConflictException('Tên nhóm đơn từ đã tồn tại trong hệ thống');
-                }
-
-                // Restore nhóm đơn (Ghi đè thông tin mới, kích hoạt lại)
-                await this.repository.update(existingGroup.id, {
-                    ...groupData,
-                    isDeleted: false,
-                    deletedAt: null
-                });
-                newGroup = await this.repository.findById(existingGroup.id);
-            }
-        } else {
-            // Kiểm tra tên nhóm (UC-REQ-GRP-01 BR-02)
-            const existingName = await this.repository.findByName(groupData.name);
-            if (existingName) {
-                throw new ConflictException('Tên nhóm đơn từ đã tồn tại trong hệ thống');
-            }
-
-            // Tạo nhóm đơn mới hoàn toàn
-            newGroup = await this.repository.create(groupData);
+            throw new ConflictException('Mã nhóm đơn từ đã tồn tại trong hệ thống');
         }
+
+        // Kiểm tra tên nhóm (UC-REQ-GRP-01 BR-02)
+        const existingName = await this.repository.findByName(groupData.name);
+        if (existingName) {
+            throw new ConflictException('Tên nhóm đơn từ đã tồn tại trong hệ thống');
+        }
+
+        // Tạo nhóm đơn mới hoàn toàn
+        let newGroup = await this.repository.create(groupData);
 
         // Lưu cấu hình duyệt (Nếu có)
         if (workflows && workflows.length > 0) {
@@ -160,6 +146,28 @@ export class RequestGroupsService {
         // Soft-delete nhóm đơn
         await this.repository.delete(id);
         return { message: 'Xoá nhóm đơn thành công' };
+    }
+
+    /**
+     * @description Khôi phục nhóm đơn từ
+     * @param {number} id ID Nhóm đơn cần khôi phục
+     */
+    async restore(id) {
+        const group = await this.repository.findByIdWithDeleted(id);
+        if (!group) {
+            throw new NotFoundException('Không tìm thấy Nhóm Đơn Từ');
+        }
+        if (!group.isDeleted) {
+            throw new BadRequestException('Nhóm đơn từ chưa bị xoá');
+        }
+
+        await this.repository.update(id, {
+            isDeleted: false,
+            deletedAt: null,
+            status: 'INACTIVE'
+        });
+
+        return { message: 'Khôi phục nhóm đơn thành công' };
     }
 
     /**
