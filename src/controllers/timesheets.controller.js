@@ -24,6 +24,19 @@ export class TimesheetsController {
         }
     };
 
+    syncData = async (req, res, next) => {
+        try {
+            const { month, year, departmentId } = req.body;
+            if (!month || !year) {
+                return ResponseUtil.sendResponse(res, "Month and Year are required for sync", null, 400);
+            }
+            const result = await this.timesheetsService.syncAttendance(parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : null, req.user);
+            ResponseUtil.sendResponse(res, "Timesheet data synchronized successfully", result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     addEmployee = async (req, res, next) => {
         try {
             const dto = plainToInstance(AddEmployeeTimesheetDto, req.body);
@@ -79,6 +92,20 @@ export class TimesheetsController {
             if (year && !isNaN(parseInt(year, 10))) queryDto.year = parseInt(year, 10);
             
             const result = await this.timesheetsService.getMatrix(queryDto, req.user);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED_ALL, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    getProcessedMatrix = async (req, res, next) => {
+        try {
+            const queryDto = plainToInstance(TimesheetQueryDto, req.query);
+            const { month, year } = req.query;
+            if (month && !isNaN(parseInt(month, 10))) queryDto.month = parseInt(month, 10);
+            if (year && !isNaN(parseInt(year, 10))) queryDto.year = parseInt(year, 10);
+            
+            const result = await this.timesheetsService.getProcessedMatrix(queryDto, req.user);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED_ALL, result);
         } catch (error) {
             next(error);
