@@ -44,8 +44,10 @@ export class UsersRepository {
     }
 
     // Add role filter if provided
-    if (roles) {
-      query = query.andWhere('role.id = :roleId', { roleId: roles });
+    if (roles && roles.length > 0) {
+      query = query.andWhere('role.id IN (:...roleIds)', {
+        roleIds: roles,
+      });
     }
 
     query = query
