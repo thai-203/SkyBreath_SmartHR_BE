@@ -7,78 +7,74 @@ import { RequestGroupEntity } from './request-group.entity.js';
 @Entity('requests')
 export class RequestEntity extends BaseEntity {
     @Column({ name: 'request_code', type: 'varchar', length: 50, unique: true, nullable: true })
-    requestCode; // VD: REQ-20260401-001
-
-    // Người được tạo đơn (người hưởng lợi)
-    @Column({ name: 'employee_id', type: 'int' })
-    employeeId;
-
-    // Người thực hiện tạo đơn (có thể là HR tạo hộ)
-    @Column({ name: 'created_by_employee_id', type: 'int', nullable: true })
-    createdByEmployeeId;
-
-    @Column({ name: 'request_type_id', type: 'int' })
-    requestTypeId;
+    requestCode; // Mã đơn (REQ-20260401-001)
 
     @Column({ name: 'request_group_id', type: 'int' })
-    requestGroupId;
+    requestGroupId; // Nhóm đơn
 
-    @Column({
-        name: 'status',
-        type: 'varchar',
-        length: 50,
-        default: 'DRAFT',
-    })
-    status; // DRAFT | PENDING | APPROVED | REJECTED | CANCELLED
+    @Column({ name: 'request_type_id', type: 'int' })
+    requestTypeId; // Lý do / loại đơn
+
+    // Tracking số cấp duyệt thay cho workflow_id lock tại thời điểm submit
+    @Column({ name: 'total_approval_levels', type: 'int', default: 0 })
+    totalApprovalLevels; 
+
+    @Column({ name: 'is_worked_time', type: 'boolean', default: false })
+    isWorkedTime; // Tính công
 
     @Column({ name: 'start_date', type: 'date', nullable: true })
-    startDate;
-
-    @Column({ name: 'end_date', type: 'date', nullable: true })
-    endDate;
+    startDate; // Từ ngày
 
     @Column({ name: 'start_time', type: 'time', nullable: true })
-    startTime;
+    startTime; // Từ giờ
+
+    @Column({ name: 'end_date', type: 'date', nullable: true })
+    endDate; // Đến ngày
 
     @Column({ name: 'end_time', type: 'time', nullable: true })
-    endTime;
-
-    // Snapshot từ policy khi tạo đơn
-    @Column({ name: 'is_worked_time', type: 'boolean', default: false })
-    isWorkedTime;
+    endTime; // Đến giờ
 
     @Column({ name: 'unit', type: 'varchar', length: 50, nullable: true })
     unit; // DAY | HOUR | MINUTE | TIME
 
     @Column({ name: 'quantity', type: 'decimal', precision: 10, scale: 2, nullable: true })
-    quantity; // Số lượng (tự tính hoặc nhập tay)
+    quantity; // Số lượng theo policy tính ra
 
     @Column({ type: 'text', nullable: true })
-    description;
+    description; // Mô tả lý do chi tiết
 
-    // Tracking workflow progress
+    @Column({ name: 'status', type: 'varchar', length: 50, default: 'DRAFT' })
+    status; // DRAFT | PENDING | APPROVED | REJECTED | CANCELLED | REVOKED
+
     @Column({ name: 'current_approval_level', type: 'int', default: 0 })
-    currentApprovalLevel; // 0 = chưa gửi, 1+ = đang ở cấp n
+    currentApprovalLevel; // Đang ở bước mấy (cấp duyệt thứ mấy)
 
-    @Column({ name: 'total_approval_levels', type: 'int', default: 0 })
-    totalApprovalLevels; // Snapshot tổng số cấp khi submit
+    @Column({ name: 'current_approver_id', type: 'int', nullable: true })
+    currentApproverId; // Đang chờ ai duyệt (employee_id)
 
     @Column({ name: 'submitted_at', type: 'datetime', nullable: true })
-    submittedAt;
-
-    @Column({ name: 'approved_at', type: 'datetime', nullable: true })
-    approvedAt;
-
-    @Column({ name: 'rejected_at', type: 'datetime', nullable: true })
-    rejectedAt;
+    submittedAt; // Thời điểm gửi duyệt
 
     @Column({ name: 'cancelled_at', type: 'datetime', nullable: true })
-    cancelledAt;
+    cancelledAt; // Thời điểm hủy
+
+    @Column({ name: 'approved_at', type: 'datetime', nullable: true })
+    approvedAt; // Thời điểm duyệt xong
+
+    @Column({ name: 'rejected_at', type: 'datetime', nullable: true })
+    rejectedAt; // Thời điểm từ chối
+
+    // --- Audit Links (Nằm cuối) ---
+    @Column({ name: 'employee_id', type: 'int' })
+    employeeId; // Người được tạo đơn (hưởng lợi)
+
+    @Column({ name: 'created_by_employee_id', type: 'int', nullable: true })
+    createdByEmployeeId; // Người thao tác tạo đơn
 
     @Column({ name: 'cancelled_by_employee_id', type: 'int', nullable: true })
-    cancelledByEmployeeId;
+    cancelledByEmployeeId; // Người thao tác hủy đơn
 
-    // Relations
+    // --- Relations ---
     @ManyToOne(() => EmployeeEntity)
     @JoinColumn({ name: 'employee_id' })
     employee;
@@ -98,4 +94,8 @@ export class RequestEntity extends BaseEntity {
     @ManyToOne(() => EmployeeEntity)
     @JoinColumn({ name: 'cancelled_by_employee_id' })
     cancelledByEmployee;
+
+    @ManyToOne(() => EmployeeEntity)
+    @JoinColumn({ name: 'current_approver_id' })
+    currentApprover;
 }

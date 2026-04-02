@@ -62,19 +62,24 @@ export class RequestsRepository {
     }
 
     async findPendingForApprover(approverEmployeeId, { skip = 0, limit = 20 } = {}) {
-        // Lấy các đơn đang PENDING và cấp duyệt hiện tại đúng là approverEmployeeId
+        // Lấy các đơn đang PENDING và người duyệt là approverEmployeeId
+        // Bao gồm: Đơn đang chờ người này duyệt (Case A) HOẶC Đơn người này đã duyệt nhưng chưa kết thúc (Case B)
         const query = this.repository.createQueryBuilder('r')
             .innerJoin(
                 'request_approval_levels',
                 'level',
-                'level.request_id = r.id AND level.level_order = r.current_approval_level AND level.approver_employee_id = :approverId AND level.status = :levelStatus AND level.is_deleted = false',
-                { approverId: approverEmployeeId, levelStatus: 'PENDING' }
+                'level.request_id = r.id AND level.approver_employee_id = :approverId AND level.is_deleted = false',
+                { approverId: approverEmployeeId }
             )
             .leftJoinAndSelect('r.employee', 'employee')
             .leftJoinAndSelect('r.requestType', 'requestType')
             .leftJoinAndSelect('r.requestGroup', 'requestGroup')
             .where('r.status = :status', { status: 'PENDING' })
-            .andWhere('r.isDeleted = false');
+            .andWhere('r.isDeleted = false')
+            .andWhere(
+                '( (level.level_order = r.current_approval_level AND level.status = :pendingStatus) OR (level.status = :approvedStatus) )',
+                { pendingStatus: 'PENDING', approvedStatus: 'APPROVED' }
+            );
 
         const [items, total] = await query
             .orderBy('r.submittedAt', 'ASC')
@@ -161,12 +166,28 @@ export class RequestsRepository {
     // ─── GENERATE CODE ──────────────────────────────────────────────────
     async generateRequestCode() {
         const today = new Date();
-        const datePart = today.toISOString().slice(0, 10).replace(/-/g, '');
-        const count = await this.repository
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const datePart = `${year}${month}${day}`;
+
+        const lastRequest = await this.repository
             .createQueryBuilder('r')
-            .where('DATE(r.createdAt) = CURDATE()')
-            .getCount();
-        const seq = String(count + 1).padStart(4, '0');
-        return `REQ-${datePart}-${seq}`;
+            .where('r.requestCode LIKE :prefix', { prefix: `REQ-${datePart}-%` })
+            .withDeleted()
+            .orderBy('r.requestCode', 'DESC')
+            .getOne();
+
+        let seq = 1;
+        if (lastRequest && lastRequest.requestCode) {
+            const parts = lastRequest.requestCode.split('-');
+            const lastSeq = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(lastSeq)) {
+                seq = lastSeq + 1;
+            }
+        }
+
+        const seqStr = String(seq).padStart(4, '0');
+        return `REQ-${datePart}-${seqStr}`;
     }
 }

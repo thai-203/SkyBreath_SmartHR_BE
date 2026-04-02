@@ -269,8 +269,8 @@ export class RequestsService {
         const request = await this._findRequestOrFail(requestId);
         const approver = await this._getEmployeeByUserId(reqUser.id);
 
-        if (![RequestStatus.PENDING, RequestStatus.APPROVED].includes(request.status)) {
-            throw new BadRequestException('Chỉ có thể hủy duyệt khi đơn đang chờ duyệt hoặc đã duyệt');
+        if (request.status !== RequestStatus.PENDING) {
+            throw new BadRequestException('Chỉ có thể hủy duyệt khi đơn đang trong trạng thái chờ duyệt (PENDING)');
         }
 
         const targetLevel = await this.repo.getApprovalLevel(requestId, levelOrder);
@@ -284,18 +284,18 @@ export class RequestsService {
             throw new BadRequestException('Cấp duyệt này chưa được phê duyệt, không thể hủy duyệt');
         }
 
-        // Đánh REVOKED cấp đó
+        // Bước 3: Reset cấp hiện tại về PENDING
         await this.repo.updateApprovalLevel(targetLevel.id, {
-            status: ApprovalLevelStatus.REVOKED,
-            actionedAt: new Date(),
-            actionedByEmployeeId: approver.id,
+            status: ApprovalLevelStatus.PENDING,
+            actionedAt: null,
+            actionedByEmployeeId: null,
             comment: comment || null,
         });
 
-        // Reset các cấp sau về PENDING (nếu đã xử lý)
+        // Reset các cấp duyệt phía sau (nếu có) về PENDING
         const allLevels = await this.repo.getApprovalLevels(requestId);
         for (const lvl of allLevels) {
-            if (lvl.levelOrder > levelOrder && lvl.status === ApprovalLevelStatus.APPROVED) {
+            if (lvl.levelOrder > levelOrder) {
                 await this.repo.updateApprovalLevel(lvl.id, {
                     status: ApprovalLevelStatus.PENDING,
                     actionedAt: null,
@@ -305,7 +305,7 @@ export class RequestsService {
             }
         }
 
-        // Đơn quay lại PENDING tại cấp đó để xử lý tiếp (có thể reject)
+        // Bước 4: Update Master quay về đúng cấp của người dùng
         await this.repo.update(requestId, {
             status: RequestStatus.PENDING,
             currentApprovalLevel: levelOrder,
