@@ -1,62 +1,42 @@
 import { Router } from 'express';
 import { RequestsController } from '../controllers/requests.controller.js';
-import { RequestsService } from '../services/requests.service.js';
-import { RequestsRepository } from '../repositories/requests.repository.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = Router();
+const requestsController = new RequestsController();
 
-// Dependency Injection
-const requestsRepository = new RequestsRepository();
-const requestsService = new RequestsService(requestsRepository);
-const requestsController = new RequestsController(requestsService);
+// GET /requests/my — Đơn của tôi
+router.get('/my', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getMyRequests);
 
-/**
- * @swagger
- * tags:
- *   name: Requests
- *   description: Request management endpoints
- */
+// GET /requests/pending — Đơn chờ tôi duyệt
+router.get('/pending', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'), requestsController.getPendingApprovals);
 
-router.get('/leaves/calendar', authMiddleware, requestsController.getLeaveCalendar);
+// GET /requests/workflow-preview
+router.get('/workflow-preview', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getWorkflowPreview);
 
-/**
- * @swagger
- * /requests:
- *   post:
- *     summary: Create a new request (EXCUSE, OVERTIME, LEAVE)
- *     tags: [Requests]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - requestType
- *               - startDate
- *             properties:
- *               employeeId:
- *                 type: integer
- *               requestType:
- *                 type: string
- *               startDate:
- *                 type: string
- *                 format: date
- *               endDate:
- *                 type: string
- *                 format: date
- *               requestContent:
- *                 type: object
- *                 description: JSON data containing reason, proofImage, etc.
- *     responses:
- *       201:
- *         description: Request created
- */
-router.post('/', authMiddleware, requestsController.create);
+// GET /requests — Tất cả (HR/Admin)
+router.get('/', authMiddleware, permissionsMiddleware('REQUEST_VIEW_ALL'), requestsController.getAllRequests);
 
-router.patch('/:id/status', authMiddleware, requestsController.updateStatus);
+// GET /requests/:id — Chi tiết
+router.get('/:id', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getById);
+
+// POST /requests/draft — Lưu nháp
+router.post('/draft', authMiddleware, permissionsMiddleware('REQUEST_CREATE'), requestsController.saveDraft);
+
+// POST /requests/:id/submit
+router.post('/:id/submit', authMiddleware, permissionsMiddleware('REQUEST_SUBMIT'), requestsController.submit);
+
+// POST /requests/:id/cancel
+router.post('/:id/cancel', authMiddleware, permissionsMiddleware('REQUEST_CANCEL'), requestsController.cancel);
+
+// POST /requests/:id/approve
+router.post('/:id/approve', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'), requestsController.approve);
+
+// POST /requests/:id/reject
+router.post('/:id/reject', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'), requestsController.reject);
+
+// POST /requests/:id/revoke
+router.post('/:id/revoke', authMiddleware, permissionsMiddleware('REQUEST_REVOKE'), requestsController.revoke);
 
 export const requestsRoutes = router;

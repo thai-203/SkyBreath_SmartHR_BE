@@ -38,7 +38,6 @@ import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js'
 import { PenaltyEntity } from '../../models/entities/penalty.entity.js';
 import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
-import { RequestApproveEntity } from '../../models/entities/request-approve.entity.js';
 import { RequestEntity } from '../../models/entities/request.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
@@ -478,6 +477,47 @@ const seed = async () => {
         description: 'Delete request type',
         module: 'RequestConfig',
       },
+      // Request Execution (Tạo / Duyệt Đơn Từ)
+      {
+        permissionCode: 'REQUEST_READ',
+        description: 'View own requests',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_CREATE',
+        description: 'Create request for self',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_CREATE_FOR_OTHERS',
+        description: 'Create request on behalf of others',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_SUBMIT',
+        description: 'Submit request for approval',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_CANCEL',
+        description: 'Cancel own request (before any level approved)',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_APPROVE',
+        description: 'Approve or reject a pending request',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_REVOKE',
+        description: 'Revoke an already-approved level (undo approval)',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_VIEW_ALL',
+        description: 'View all requests regardless of ownership',
+        module: 'Request',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -552,6 +592,13 @@ const seed = async () => {
       'ONBOARDING_PLAN_READ',
       'ONBOARDING_PROGRESS_READ',
       'ONBOARDING_TASK_READ',
+      // Request Execution — Manager là người duyệt cấp 1
+      'REQUEST_READ',
+      'REQUEST_CREATE',
+      'REQUEST_SUBMIT',
+      'REQUEST_CANCEL',
+      'REQUEST_APPROVE',
+      'REQUEST_REVOKE',
     ];
     for (const code of managerPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -668,6 +715,15 @@ const seed = async () => {
       'REQUEST_TYPE_CREATE',
       'REQUEST_TYPE_UPDATE',
       'REQUEST_TYPE_DELETE',
+      // Request Execution — HR có toàn quyền tạo/duyệt/xem tất cả
+      'REQUEST_READ',
+      'REQUEST_CREATE',
+      'REQUEST_CREATE_FOR_OTHERS',
+      'REQUEST_SUBMIT',
+      'REQUEST_CANCEL',
+      'REQUEST_APPROVE',
+      'REQUEST_REVOKE',
+      'REQUEST_VIEW_ALL',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -696,6 +752,11 @@ const seed = async () => {
       'PENALTY_READ',
       'REQUEST_GROUP_READ',
       'REQUEST_TYPE_READ',
+      // Request Execution — Employee tạo và gửi đơn cho bản thân
+      'REQUEST_READ',
+      'REQUEST_CREATE',
+      'REQUEST_SUBMIT',
+      'REQUEST_CANCEL',
     ];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -1726,82 +1787,8 @@ const seed = async () => {
     }
 
     // Requests and approval flow
-    const requestRepo = dataSource.getRepository(RequestEntity);
-    const requestApproveRepo = dataSource.getRepository(RequestApproveEntity);
-    const overtimeRequestDetailRepo = dataSource.getRepository(
-      OvertimeRequestDetailEntity,
-    );
-
-    let annualLeaveRequest = null;
-    if (staffEmployee && managerEmployee && leaveTypes['Annual Leave']) {
-      annualLeaveRequest = await requestRepo.findOne({
-        where: {
-          employeeId: staffEmployee.id,
-          requestType: 'LEAVE',
-          startDate: '2026-02-20',
-        },
-      });
-      if (!annualLeaveRequest) {
-        annualLeaveRequest = await requestRepo.save(
-          requestRepo.create({
-            employeeId: staffEmployee.id,
-            requestType: 'LEAVE',
-            leaveTypeId: leaveTypes['Annual Leave'].id,
-            requestContent: 'Nghỉ phép cá nhân',
-            startDate: '2026-02-20',
-            endDate: '2026-02-21',
-            requestStatus: 'APPROVED',
-            submittedAt: new Date('2026-02-10T08:00:00'),
-            approvedBy: managerEmployee.id,
-            approvedAt: new Date('2026-02-11T10:00:00'),
-          }),
-        );
-      }
-
-      const approveExists = await requestApproveRepo.findOne({
-        where: {
-          requestId: annualLeaveRequest.id,
-          approverEmployeeId: managerEmployee.id,
-        },
-      });
-      if (!approveExists) {
-        await requestApproveRepo.save(
-          requestApproveRepo.create({
-            requestId: annualLeaveRequest.id,
-            approverEmployeeId: managerEmployee.id,
-            approvalLevel: 1,
-            approvalStatus: 'APPROVED',
-            comment: 'Approved by direct manager',
-          }),
-        );
-      }
-    }
-
-    let overtimeRequest = null;
-    if (staffEmployee && managerEmployee) {
-      overtimeRequest = await requestRepo.findOne({
-        where: {
-          employeeId: staffEmployee.id,
-          requestType: 'OVERTIME',
-          startDate: '2026-02-18',
-        },
-      });
-      if (!overtimeRequest) {
-        overtimeRequest = await requestRepo.save(
-          requestRepo.create({
-            employeeId: staffEmployee.id,
-            requestType: 'OVERTIME',
-            requestContent: 'OT để hoàn thành sprint',
-            startDate: '2026-02-18',
-            endDate: '2026-02-18',
-            requestStatus: 'APPROVED',
-            submittedAt: new Date('2026-02-17T18:00:00'),
-            approvedBy: managerEmployee.id,
-            approvedAt: new Date('2026-02-18T09:00:00'),
-          }),
-        );
-      }
-    }
+    // * Seed data cho Request đã được gỡ bỏ vì tính năng Request Execution cấu hình request type qua Database, và reference tới file cũ không còn.
+    // * Test thông qua giao diện Web theo thiết kế mới.
 
     // Timesheets
     const timeSheetRepo = dataSource.getRepository(TimeSheetEntity);
@@ -1881,29 +1868,6 @@ const seed = async () => {
       );
     }
 
-    if (overtimeRequest) {
-      const overtimeRule = overtimeRules['Rule Weekday 150%'];
-      const otExists = await overtimeRequestDetailRepo.findOne({
-        where: { requestId: overtimeRequest.id, workDate: '2026-02-18' },
-      });
-      if (!otExists) {
-        await overtimeRequestDetailRepo.save(
-          overtimeRequestDetailRepo.create({
-            requestId: overtimeRequest.id,
-            overtimeTypeId: overtimeTypes['WEEKDAY']?.id,
-            overtimeRuleId: overtimeRule?.id,
-            workDate: '2026-02-18',
-            startTime: '18:00:00',
-            endTime: '20:00:00',
-            totalHours: 2,
-            rateMultiplier: 1.5,
-            overtimeAmount: 150,
-            reason: 'Sprint release support',
-            payrollId: febPayroll.id,
-          }),
-        );
-      }
-    }
 
     // Shift schedules from shift assignments
     const shiftScheduleRepo = dataSource.getRepository(ShiftScheduleEntity);

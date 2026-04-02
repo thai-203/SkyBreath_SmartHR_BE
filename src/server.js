@@ -122,6 +122,7 @@ app.use(
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance`, attendanceRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance-blocking-configs`, attendanceBlockingConfigRoutes);
 
+
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');
 });
