@@ -47,6 +47,7 @@ import { PayrollTypeEntity } from '../models/entities/payroll-type.entity.js';
 import { HolidayGroupEntity } from '../models/entities/holiday-group.entity.js';
 import { HolidayConfigEntity } from '../models/entities/holiday-config.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
+import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -110,6 +111,7 @@ export const databaseConfig = {
     PayrollTypeEntity,
     HolidayGroupEntity,
     HolidayConfigEntity,
+    ProcessedAttendanceRecordEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],
