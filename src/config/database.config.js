@@ -26,7 +26,8 @@ import { LeaveTypeEntity } from '../models/entities/leave-type.entity.js';
 import { LeavePolicyEntity } from '../models/entities/leave-policy.entity.js';
 import { LeaveBalanceEntity } from '../models/entities/leave-balance.entity.js';
 import { RequestEntity } from '../models/entities/request.entity.js';
-import { RequestApproveEntity } from '../models/entities/request-approve.entity.js';
+import { RequestApprovalLevelEntity } from '../models/entities/request-approval-level.entity.js';
+import { RequestAttachmentEntity } from '../models/entities/request-attachment.entity.js';
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { PayrollEntity } from '../models/entities/payroll.entity.js';
 import { PayrollDetailEntity } from '../models/entities/payroll-detail.entity.js';
@@ -92,7 +93,8 @@ export const databaseConfig = {
     LeavePolicyEntity,
     LeaveBalanceEntity,
     RequestEntity,
-    RequestApproveEntity,
+    RequestApprovalLevelEntity,
+    RequestAttachmentEntity,
     HolidayListEntity,
     PayrollEntity,
     PayrollDetailEntity,

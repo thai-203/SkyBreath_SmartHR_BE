@@ -100,6 +100,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/upload`, uploadRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-groups`, requestGroupsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-types`, requestTypesRoutes);
 
+
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');
 });
