@@ -112,6 +112,12 @@ export class EmployeesRepository {
     });
   }
 
+  async findByUserId(id) {
+    return this.repository.findOne({
+      where: { userId: id, isDeleted: false },
+    });
+  }
+
   async findByIds(ids) {
     if (!ids || ids.length === 0) return [];
     return this.repository.find({
@@ -211,9 +217,9 @@ export class EmployeesRepository {
 
   async findByRoleNames(roleNames) {
     if (!roleNames || roleNames.length === 0) return [];
-    
+
     // Normalize to lower case for comparison if needed, but here we assume exact match or case-insensitive
-    const normalizedRoles = roleNames.map(r => r.toUpperCase());
+    const normalizedRoles = roleNames.map((r) => r.toUpperCase());
 
     return this.repository
       .createQueryBuilder('employee')

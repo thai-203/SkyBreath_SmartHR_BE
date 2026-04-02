@@ -360,7 +360,8 @@ export class AuthService {
   }
   async forgotPassword(email) {
     const user = await this.usersService.findByEmail(email);
-
+    console.log(user);
+    
     if (!user) {
       return {
         message: AppMessages.Success.Auth.PASSWORD_RESET_REQUESTED,

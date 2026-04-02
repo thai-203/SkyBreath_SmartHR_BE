@@ -55,7 +55,10 @@ import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-at
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
-
+import { AttendanceSecurityConfigEntity } from '../models/entities/attendance-security-config.entity.js';
+import { AttendanceAllowedIpEntity } from '../models/entities/attendance-allowed-ip.entity.js';
+import { AttendanceBlockingConfigEntity } from '../models/entities/attendance-blocking-config.entity.js';
+import { AttendanceSecurityStatusEntity } from '../models/entities/attendance-security-status.entity.js';
 export const databaseConfig = {
   type: 'mysql',
   host: config.database.host,
@@ -120,6 +123,11 @@ export const databaseConfig = {
     RequestTypeEntity,
     RequestTypePolicyEntity,
     ProcessedAttendanceRecordEntity,
+    OvertimeRequestDetailEntity,
+    AttendanceSecurityConfigEntity,
+    AttendanceAllowedIpEntity,
+    AttendanceBlockingConfigEntity,
+    AttendanceSecurityStatusEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

@@ -102,7 +102,10 @@ export class UsersRepository {
 
   async findByEmail(email) {
     return this.userRepository.findOne({
-      where: { email: email.toLowerCase() },
+      where: {
+        email: email.toLowerCase(),
+        isDeleted: false, // hoặc true tùy bạn muốn lọc
+      },
       relations: [
         'userRoles',
         'userRoles.role',

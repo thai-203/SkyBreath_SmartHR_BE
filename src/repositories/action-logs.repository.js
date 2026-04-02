@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { AppDataSource } from '../database/data-source.js';
 import { ActionLogEntity } from '../models/entities/action-log.entity.js';
 
@@ -73,5 +74,13 @@ export class ActionLogsRepository {
   async create(data) {
     const log = this.repo.create(data);
     return this.repo.save(log);
+  }
+
+  async findRecentAttendanceLogs(userId, limit = 5) {
+    return this.repo.find({
+      where: { userId: userId, actionType: In(['check_in', 'check_out']) },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
   }
 }
