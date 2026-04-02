@@ -51,6 +51,8 @@ import { RequestGroupEntity } from '../models/entities/request-group.entity.js';
 import { RequestGroupWorkflowEntity } from '../models/entities/request-group-workflow.entity.js';
 import { RequestTypeEntity } from '../models/entities/request-type.entity.js';
 import { RequestTypePolicyEntity } from '../models/entities/request-type-policy.entity.js';
+import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
+
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
 
@@ -117,6 +119,7 @@ export const databaseConfig = {
     RequestGroupWorkflowEntity,
     RequestTypeEntity,
     RequestTypePolicyEntity,
+    ProcessedAttendanceRecordEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

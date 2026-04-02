@@ -86,6 +86,38 @@ router.post('/add-employee', authMiddleware, permissionsMiddleware('TIMESHEET_CR
 
 /**
  * @swagger
+ * /timesheets/sync:
+ *   post:
+ *     summary: Synchronize processed attendance records
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - month
+ *               - year
+ *             properties:
+ *               month:
+ *                 type: integer
+ *               year:
+ *                 type: integer
+ *               departmentId:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Successfully synced attendance
+ *       400:
+ *         description: Bad request
+ */
+router.post('/sync', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.syncData);
+
+/**
+ * @swagger
  * /timesheets:
  *   get:
  *     summary: Get all timesheets
@@ -118,6 +150,93 @@ router.post('/add-employee', authMiddleware, permissionsMiddleware('TIMESHEET_CR
  *         description: List of timesheets
  */
 router.get('/', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.findAll);
+
+/**
+ * @swagger
+ * /timesheets/periods:
+ *   get:
+ *     summary: Get generated timesheet periods
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of periods
+ */
+router.get('/periods', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getPeriods);
+
+/**
+ * @swagger
+ * /timesheets/matrix:
+ *   get:
+ *     summary: Get timesheet matrix for generated month
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of matrix rows
+ *       400:
+ *         description: Bad request
+ */
+router.get('/matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getMatrix);
+
+/**
+ * @swagger
+ * /timesheets/processed-matrix:
+ *   get:
+ *     summary: Get processed records matrix for generated month
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of processed matrix rows
+ */
+router.get('/processed-matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getProcessedMatrix);
 
 // UC27 - Export (must be before /:id routes)
 /**
