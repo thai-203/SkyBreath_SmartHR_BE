@@ -558,6 +558,7 @@ export class TimesheetsService {
             }
 
             return {
+                recordId: r.id,
                 date: formattedDate,
                 checkIn: r.checkInTime,
                 checkOut: r.checkOutTime,
@@ -1832,17 +1833,34 @@ export class TimesheetsService {
                  attendanceStatus = 'X';
                  workValue = 1.0;
 
-                 const totalViolation = lateMins + earlyMins;
-                 if (totalViolation > 0) {
-                     const p = penaltyRules.find(pr => totalViolation >= pr.fromMinute && totalViolation <= pr.toMinute);
-                     if (p && p.convertedHours) {
-                         workValue -= Number(p.convertedHours);
-                         if (workValue <= 0) {
-                             workValue = 0;
-                             attendanceStatus = 'ABSENT';
-                         } else if (workValue < 1.0) {
-                             attendanceStatus = 'KL'; // Penalty Partial
-                         }
+                 const validPenaltyRules = penaltyRules.filter(pr => {
+                     let from = null, to = null;
+                     if (pr.effectiveFrom) { from = new Date(pr.effectiveFrom); from.setHours(0,0,0,0); }
+                     if (pr.effectiveTo) { to = new Date(pr.effectiveTo); to.setHours(23,59,59,999); }
+                     return pr.status === 'ACTIVE' 
+                         && !pr.isDeleted
+                         && (!from || dateObj >= from)
+                         && (!to || dateObj <= to);
+                 });
+
+                 let totalPenaltyHours = 0;
+                 const latePenalty = validPenaltyRules.find(pr => pr.violationType === 'LATE' && lateMins >= pr.fromMinute && lateMins <= pr.toMinute);
+                 const earlyPenalty = validPenaltyRules.find(pr => pr.violationType === 'EARLY' && earlyMins >= pr.fromMinute && earlyMins <= pr.toMinute);
+
+                 if (latePenalty && latePenalty.convertedHours) {
+                     totalPenaltyHours += Number(latePenalty.convertedHours);
+                 }
+                 if (earlyPenalty && earlyPenalty.convertedHours) {
+                     totalPenaltyHours += Number(earlyPenalty.convertedHours);
+                 }
+
+                 if (totalPenaltyHours > 0) {
+                     workValue -= (totalPenaltyHours / 8);
+                     if (workValue <= 0) {
+                         workValue = 0;
+                         attendanceStatus = 'ABSENT';
+                     } else if (workValue < 1.0) {
+                         attendanceStatus = 'KL'; // Penalty Partial
                      }
                  }
             }
@@ -1923,5 +1941,41 @@ export class TimesheetsService {
         message: 'Sync completed successfully',
         syncedRecords: recordsToBuild.length
     };
+  }
+
+  // ──────────────────────────────────────
+  // HR: Update a single processed record's work_value
+  // ──────────────────────────────────────
+  async updateProcessedRecord(id, workValue, note, userContext) {
+    const { ProcessedAttendanceRecordEntity } = await import('../models/entities/processed-attendance-record.entity.js');
+    const repo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+
+    const record = await repo.findOneBy({ id });
+    if (!record) {
+      throw new NotFoundException('Không tìm thấy bản ghi chấm công đã xử lý.');
+    }
+
+    const oldValue = record.workValue;
+    record.workValue = parseFloat(parseFloat(workValue).toFixed(4));
+    if (record.workValue < 0 || record.workValue > 1) {
+      throw new BadRequestException('work_value phải nằm trong khoảng 0 – 1.');
+    }
+    // Mark as manually overridden so future syncs don't blindly recalculate here
+    record.sourceType = 2; // 2 = manual
+    await repo.save(record);
+
+    if (this.actionLogsService) {
+      await this.actionLogsService.log({
+        userId: userContext?.id,
+        actionType: 'UPDATE',
+        targetTable: 'processed_attendance_records',
+        targetRecordId: id,
+        description: `HR chỉnh sửa ngày công: ${oldValue} → ${record.workValue}${note ? ` | Lý do: ${note}` : ''}`,
+        beforeData: { workValue: oldValue },
+        afterData: { workValue: record.workValue },
+      });
+    }
+
+    return record;
   }
 }

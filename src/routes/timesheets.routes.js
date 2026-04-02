@@ -474,6 +474,9 @@ router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'),
  */
 router.post('/bulk-lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.bulkLock);
 
+// HR: Manual update of a single processed attendance record's work_value
+router.patch('/processed/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.updateProcessedRecord);
+
 /**
  * @swagger
  * /timesheets/{id}/lock:
