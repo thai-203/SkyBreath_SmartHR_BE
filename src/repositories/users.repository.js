@@ -44,8 +44,10 @@ export class UsersRepository {
     }
 
     // Add role filter if provided
-    if (roles) {
-      query = query.andWhere('role.id = :roleId', { roleId: roles });
+    if (roles && roles.length > 0) {
+      query = query.andWhere('role.id IN (:...roleIds)', {
+        roleIds: roles,
+      });
     }
 
     query = query
@@ -100,7 +102,10 @@ export class UsersRepository {
 
   async findByEmail(email) {
     return this.userRepository.findOne({
-      where: { email: email.toLowerCase() },
+      where: {
+        email: email.toLowerCase(),
+        isDeleted: false, // hoặc true tùy bạn muốn lọc
+      },
       relations: [
         'userRoles',
         'userRoles.role',

@@ -12,7 +12,7 @@ export class AuthController {
   login = async (req, res, next) => {
     try {
       const { email, password } = req.body;
-      
+
       const user = await this.authService.validateUser(email, password);
 
       if (!user) {
@@ -115,11 +115,7 @@ export class AuthController {
         updateDto.avatar = req.file.path.replace(/\\/g, '/');
       }
       const result = await this.authService.editProfile(userId, updateDto);
-      ResponseUtil.sendResponse(
-        res,
-        'Cập nhật hồ sơ thành công',
-        result,
-      );
+      ResponseUtil.sendResponse(res, 'Cập nhật hồ sơ thành công', result);
     } catch (error) {
       next(error);
     }
@@ -128,7 +124,7 @@ export class AuthController {
   forgotPassword = async (req, res, next) => {
     try {
       const { email } = req.body;
-
+      
       await this.authService.forgotPassword(email);
 
       return ResponseUtil.sendResponse(

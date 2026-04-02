@@ -5,9 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
-// import { actionLogMiddleware } from './common/middleware/action-log.middleware.js';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
-import { requestContextMiddleware } from './common/middleware/request-context.middleware.js';
 import { config } from './config/env.config.js';
 import redis from './config/redis.config.js';
 import { swaggerSpec } from './config/swagger.config.js';
@@ -36,12 +34,20 @@ import { shiftsRoutes } from './routes/shifts.routes.js';
 import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
 import { uploadRoutes } from './routes/upload.routes.js';
+import { requestGroupsRoutes } from './routes/request-groups.routes.js';
+import { requestTypesRoutes } from './routes/request-types.routes.js';
 import { aiRoutes } from './routes/ai.routes.js';
 import { ContractsService } from './services/contracts.service.js';
 import { startTimesheetAutoGenerateJob } from './jobs/timesheet-auto-generate.job.js';
 import { startAttendanceSyncJob } from './jobs/attendance-sync.job.js';
 import { startHolidayReminderJob } from './jobs/holiday-reminder.job.js';
-
+import { requestContextMiddleware } from './common/middleware/request-context.middleware.js';
+import { faceRecognitionConfigRoutes } from './routes/face-recognition-config.routes.js';
+import faceRoutes from './routes/face.routes.js';
+import { attendanceSecurityConfigRoutes } from './routes/attendance-security-config.routes.js';
+import { attendanceAllowedIpRoutes } from './routes/attendance-allowed-ip.routes.js';
+import { attendanceRoutes } from './routes/attendance.routes.js';
+import { attendanceBlockingConfigRoutes } from './routes/attendance-blocking-configs.routes.js';
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
   await redis.quit();
@@ -96,7 +102,25 @@ app.use(`/${API_PREFIX}/${API_VERSION}/payroll`, payrollRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll-types`, payrollTypeRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/requests`, requestsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/upload`, uploadRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/request-groups`, requestGroupsRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/request-types`, requestTypesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai`, aiRoutes);
+
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/face-recognition-config`,
+  faceRecognitionConfigRoutes,
+);
+app.use(`/${API_PREFIX}/${API_VERSION}/face`, faceRoutes);
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/attendance-security-config`,
+  attendanceSecurityConfigRoutes,
+);
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/attendance-allowed-ips`,
+  attendanceAllowedIpRoutes,
+);
+app.use(`/${API_PREFIX}/${API_VERSION}/attendance`, attendanceRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/attendance-blocking-configs`, attendanceBlockingConfigRoutes);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');

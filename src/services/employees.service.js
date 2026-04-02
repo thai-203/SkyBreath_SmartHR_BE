@@ -339,4 +339,8 @@ export class EmployeesService {
   async getByUserId(userId) {
     return this.employeesRepository.getByUserId(userId);
   }
+
+  async findByUserId(userId) {
+    return this.employeesRepository.findByUserId(userId);
+  }
 }

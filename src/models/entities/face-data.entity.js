@@ -1,4 +1,4 @@
-import { Entity, Column, OneToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity.js';
 import { EmployeeEntity } from './employee.entity.js';
 
@@ -10,10 +10,13 @@ export class FaceDataEntity extends BaseEntity {
     @Column({ name: 'face_vector', type: 'text' })
     faceVector;
 
+    @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: true })
+    imageUrl;
+
     @Column({ name: 'registered_at', type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
     registeredAt;
 
-    @OneToOne(() => EmployeeEntity)
+    @ManyToOne(() => EmployeeEntity)
     @JoinColumn({ name: 'employee_id' })
     employee;
 }
