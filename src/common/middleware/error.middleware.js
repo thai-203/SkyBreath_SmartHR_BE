@@ -25,13 +25,16 @@ export const errorMiddleware = async (err, req, res, next) => {
     message = err.message;
   }
 
+  console.log(message);
+  
+
   try {
     if (req.method !== 'GET') {
       const ctx = getRequestContext();
 
       await AppDataSource.getRepository(ActionLogEntity).insert({
         userId: ctx?.userId ?? null,
-        actionType: `${req.method} ${req.baseUrl}`,
+        actionType: ctx?.customAction ?? `${req.method} ${req.baseUrl}`,
         targetTable: null,
         targetRecordId: null,
         status: 'FAILED',

@@ -2,7 +2,15 @@
 node_modules/
 dist/
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
 # Environment
+venv/
+arcface-service/venv/
 .env
 .env.local
 .env.*.local
@@ -32,7 +40,6 @@ coverage/
 # Uploads
 uploads/*
 !uploads/.gitkeep
-/arcface-service/
 
 # Temp
 tmp/
