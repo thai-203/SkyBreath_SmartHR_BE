@@ -117,6 +117,42 @@ export const AppMessages = {
       PAYSLIPS_SENT: 'Phiếu lương đã được gửi đến nhân viên',
       EXPORTED: 'Xuất file thành công',
     },
+    BlockingRule: {
+      CREATED: 'Tạo quy tắc thành công',
+      UPDATED: 'Cập nhật quy tắc thành công',
+      RETRIEVED_ALL: 'Lấy danh sách quy tắc thành công',
+      DELETED: 'Xóa quy tắc thành công',
+    },
+    Attendance: {
+      CHECKED_IN: 'Điểm danh vào thành công',
+      CHECKED_OUT: 'Điểm danh ra thành công',
+      TODAY_CONTEXT_RETRIEVED: 'Lấy thông tin chuyên cần hôm nay thành công',
+      SECURITY_CONFIG_RETRIEVED: 'Lấy cấu hình bảo mật thành công',
+      BLOCKING_RULES_RETRIEVED: 'Lấy danh sách quy tắc khóa thành công',
+      BLOCKING_RULE_CREATED: 'Tạo quy tắc khóa thành công',
+      BLOCKING_RULE_UPDATED: 'Cập nhật quy tắc khóa thành công',
+      BLOCKING_RULE_STATUS_UPDATED:
+        'Cập nhật trạng thái quy tắc khóa thành công',
+      BLOCKING_RULE_DELETED: 'Xóa quy tắc khóa thành công',
+      ALLOWED_IPS_RETRIEVED: 'Lấy danh sách IP được phép thành công',
+      ALLOWED_IP_CREATED: 'Thêm IP được phép thành công',
+      ALLOWED_IP_DELETED: 'Xóa IP được phép thành công',
+    },
+    AttendanceAllowedIp: {
+      RETRIEVED_ALL: 'Lấy danh sách IP được phép thành công',
+      CREATED: 'Thêm IP được phép thành công',
+      DELETED: 'Xóa IP được phép thành công',
+    },
+    AttendanceSecurityConfig: {
+      RETRIEVED: 'Lấy cấu hình bảo mật thành công',
+      UPDATED: 'Cập nhật cấu hình bảo mật thành công',
+      RESET: 'Đặt lại cấu hình bảo mật về mặc định thành công',
+    },
+    FaceRecognitionConfig: {
+      RETRIEVED: 'Lấy cấu hình nhận diện khuôn mặt thành công',
+      UPDATED: 'Cập nhật cấu hình nhận diện khuôn mặt thành công',
+      RESET: 'Đặt lại cấu hình nhận diện khuôn mặt về mặc định thành công',
+    },
   },
 
   Errors: {
@@ -209,7 +245,8 @@ export const AppMessages = {
       },
       CIRCULAR_DEPENDENCY: {
         code: 'DEPT_005',
-        message: 'Lỗi vòng lặp: Không thể chọn phòng ban cấp dưới làm phòng ban cha',
+        message:
+          'Lỗi vòng lặp: Không thể chọn phòng ban cấp dưới làm phòng ban cha',
       },
       SAME_AS_PARENT: {
         code: 'DEPT_006',
@@ -229,21 +266,130 @@ export const AppMessages = {
       },
     },
     Attendance: {
-      ALREADY_CHECKED_IN: { code: 'ATT_001', message: 'Đã điểm danh vào' },
-      NOT_CHECKED_IN: { code: 'ATT_002', message: 'Chưa điểm danh vào' },
-      NOT_FOUND: {
+      // ── Check-in / Check-out flow ────────────────────────────────────────
+      ALREADY_CHECKED_IN: {
+        code: 'ATT_001',
+        message: 'Nhân viên đã check-in hôm nay',
+      },
+      ALREADY_CHECKED_OUT: {
+        code: 'ATT_002',
+        message: 'Đã check-out rồi',
+      },
+      NOT_CHECKED_IN: {
         code: 'ATT_003',
+        message: 'Chưa check-in hôm nay',
+      },
+      NOT_FOUND: {
+        code: 'ATT_004',
         message: 'Không tìm thấy bản ghi chuyên cần',
+      },
+      NO_IMAGE_PROVIDED: {
+        code: 'ATT_005',
+        message: 'Không có ảnh được gửi lên',
+      },
+      NO_SHIFT_TODAY: {
+        code: 'ATT_006',
+        message: 'Không có ca làm việc hôm nay',
+      },
+
+      // ── Network / Location ───────────────────────────────────────────────
+      IP_NOT_ALLOWED: {
+        code: 'ATT_007',
+        message: 'IP không được phép chấm công',
+        errorType: 'NETWORK', // ← dùng để map blocking config
+      },
+      LOCATION_OUT_OF_RANGE: {
+        code: 'ATT_008',
+        message: 'Vị trí ngoài phạm vi cho phép',
+        errorType: 'LOCATION',
+      },
+      VPN_DETECTED: {
+        code: 'ATT_021',
+        message: 'Phát hiện kết nối VPN/Proxy. Vui lòng tắt VPN và thử lại.',
+        errorType: 'NETWORK',
+      },
+
+      // ── Face recognition ────────────────────────────────────────────────
+      NO_FACE_DATA_REGISTERED: {
+        code: 'ATT_009',
+        message: 'Chưa đăng ký khuôn mặt',
+      },
+      FACE_RECOGNITION_FAILED: {
+        code: 'ATT_010',
+        message: 'Nhận diện thất bại',
+        errorType: 'FACE',
+      },
+      INSUFFICIENT_FRAMES: {
+        code: 'ATT_011',
+        message: 'Cần ít nhất {requiredFrames} frames, nhận được {fileCount}',
+        errorType: 'FACE',
+      },
+      LIVENESS_SCORE_LOW: {
+        code: 'ATT_012',
+        message: 'Liveness thấp ({score}), ngưỡng: {threshold}',
+        errorType: 'FACE',
+      },
+      SPOOF_DETECTED: {
+        code: 'ATT_013',
+        message: 'Phát hiện gian lận chấm công',
+        errorType: 'FACE',
+      },
+      NO_FACE_DETECTED: {
+        code: 'ATT_014',
+        message: 'Không phát hiện khuôn mặt',
+        errorType: 'FACE',
+      },
+      FACE_TOO_SMALL: {
+        code: 'ATT_015',
+        message: 'Khuôn mặt quá nhỏ (min {minSize}px)',
+        errorType: 'FACE',
+      },
+      FACE_NOT_MATCHED: {
+        code: 'ATT_016',
+        message: 'Khuôn mặt không khớp với dữ liệu đã đăng ký',
+        errorType: 'FACE',
+      },
+
+      // ── Blocking config CRUD ────────────────────────────────────────────
+      BLOCKING_RULE_ALREADY_EXISTS: {
+        code: 'ATT_018',
+        message: 'Quy tắc cho loại vi phạm này đã tồn tại',
+      },
+      BLOCKING_RULE_NOT_FOUND: {
+        code: 'ATT_019',
+        message: 'Không tìm thấy cấu hình quy tắc',
+      },
+
+      // ── Allowed IP CRUD ─────────────────────────────────────────────────
+      ALLOWED_IP_ALREADY_EXISTS: {
+        code: 'ATT_020',
+        message: 'IP đã tồn tại trong danh sách',
+      },
+      ALLOWED_IP_NOT_FOUND: {
+        code: 'ATT_022',
+        message: 'Không tìm thấy IP trong danh sách',
       },
     },
     Payroll: {
       NOT_FOUND: { code: 'PAY_001', message: 'Không tìm thấy bảng lương' },
-      ALREADY_EXISTS: { code: 'PAY_002', message: 'Bảng lương cho tháng/năm này đã tồn tại' },
+      ALREADY_EXISTS: {
+        code: 'PAY_002',
+        message: 'Bảng lương cho tháng/năm này đã tồn tại',
+      },
       INVALID_PERIOD: { code: 'PAY_003', message: 'Kỳ lương không hợp lệ' },
-      IS_LOCKED: { code: 'PAY_004', message: 'Bảng lương đã bị khóa, không thể chỉnh sửa' },
+      IS_LOCKED: {
+        code: 'PAY_004',
+        message: 'Bảng lương đã bị khóa, không thể chỉnh sửa',
+      },
       NOT_LOCKED: { code: 'PAY_005', message: 'Bảng lương chưa được khóa' },
-      INVALID_STATUS_TRANSITION: { code: 'PAY_006', message: 'Trạng thái bảng lương không hợp lệ cho thao tác này' },
-      DETAIL_NOT_FOUND: { code: 'PAY_007', message: 'Không tìm thấy chi tiết lương' },
+      INVALID_STATUS_TRANSITION: {
+        code: 'PAY_006',
+        message: 'Trạng thái bảng lương không hợp lệ cho thao tác này',
+      },
+      DETAIL_NOT_FOUND: {
+        code: 'PAY_007',
+        message: 'Không tìm thấy chi tiết lương',
+      },
     },
     ActionLog: {
       NOT_FOUND: {
@@ -282,7 +428,10 @@ export const AppMessages = {
         message: 'Bảng chấm công đã được khóa rồi',
       },
       NOT_LOCKED: { code: 'TS_005', message: 'Bảng chấm công chưa bị khóa' },
-      EMPLOYEE_NOT_FOUND: { code: 'TS_006', message: 'Không tìm thấy nhân viên' },
+      EMPLOYEE_NOT_FOUND: {
+        code: 'TS_006',
+        message: 'Không tìm thấy nhân viên',
+      },
     },
     ShiftGroup: {
       NOT_FOUND: { code: 'SG_001', message: 'Không tìm thấy nhóm ca' },

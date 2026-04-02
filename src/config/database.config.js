@@ -52,9 +52,14 @@ import { RequestGroupEntity } from '../models/entities/request-group.entity.js';
 import { RequestGroupWorkflowEntity } from '../models/entities/request-group-workflow.entity.js';
 import { RequestTypeEntity } from '../models/entities/request-type.entity.js';
 import { RequestTypePolicyEntity } from '../models/entities/request-type-policy.entity.js';
+import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
+
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
-
+import { AttendanceSecurityConfigEntity } from '../models/entities/attendance-security-config.entity.js';
+import { AttendanceAllowedIpEntity } from '../models/entities/attendance-allowed-ip.entity.js';
+import { AttendanceBlockingConfigEntity } from '../models/entities/attendance-blocking-config.entity.js';
+import { AttendanceSecurityStatusEntity } from '../models/entities/attendance-security-status.entity.js';
 export const databaseConfig = {
   type: 'mysql',
   host: config.database.host,
@@ -119,6 +124,12 @@ export const databaseConfig = {
     RequestGroupWorkflowEntity,
     RequestTypeEntity,
     RequestTypePolicyEntity,
+    ProcessedAttendanceRecordEntity,
+    OvertimeRequestDetailEntity,
+    AttendanceSecurityConfigEntity,
+    AttendanceAllowedIpEntity,
+    AttendanceBlockingConfigEntity,
+    AttendanceSecurityStatusEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

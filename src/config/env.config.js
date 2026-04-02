@@ -33,4 +33,8 @@ export const config = {
     host: process.env.REDIS_HOST,
     port: process.env.REDIS_PORT,
   },
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY,
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  },
 };
