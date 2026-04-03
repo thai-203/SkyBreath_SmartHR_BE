@@ -13,12 +13,14 @@ export class AuditSubscriber {
 
     try {
       const ctx = getRequestContext();
-      
+      const { actionType: defaultActionType, ...restPayload } = payload;
+
       await event.manager.insert(ActionLogEntity, {
+        actionType: ctx?.customAction ?? defaultActionType,
         targetTable: event.metadata.tableName,
         targetRecordId: event.entity?.id ?? event.databaseEntity?.id ?? null,
-        ...payload,
-        status: "SUCCESS",
+        ...restPayload,
+        status: 'SUCCESS',
         errorMessage: null,
         userId: ctx?.userId ?? null,
         requestIp: ctx?.ip ?? null,

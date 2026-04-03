@@ -2,8 +2,11 @@ import { AppDataSource } from '../database/data-source.js';
 import { RequestGroupWorkflowEntity } from '../models/entities/request-group-workflow.entity.js';
 
 export class RequestGroupWorkflowsRepository {
-    constructor() {
-        this.repository = AppDataSource.getRepository(RequestGroupWorkflowEntity);
+    constructor() {}
+
+    get repository() {
+        if (!this._repository) this._repository = AppDataSource.getRepository(RequestGroupWorkflowEntity);
+        return this._repository;
     }
 
     async findByGroupId(groupId) {

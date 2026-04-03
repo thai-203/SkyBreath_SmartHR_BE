@@ -183,15 +183,28 @@ export class RequestGroupsService {
             throw new BadRequestException('Thứ tự cấp duyệt (levelOrder) không được trùng lặp');
         }
 
+        let dmCount = 0;
+        const userIds = new Set();
+
         // Validate approverType logic
         for (const wf of workflows) {
-            if (wf.approverType === 'ROLE') {
+            if (wf.approverType === 'DIRECT_MANAGER') {
+                dmCount++;
+                if (dmCount > 1) {
+                    throw new BadRequestException('Chỉ được cấu hình tối đa 1 cấp Quản lý trực tiếp để tránh vòng lặp');
+                }
+            } else if (wf.approverType === 'ROLE') {
                 if (!wf.approverRoleId) {
                     throw new BadRequestException(`Cấp duyệt "${wf.levelName}": Khi chọn loại "Theo vai trò", phải chọn vai trò duyệt`);
                 }
                 if (!wf.approverUserId) {
                     throw new BadRequestException(`Cấp duyệt "${wf.levelName}": Khi chọn loại "Theo vai trò", phải chọn người duyệt cụ thể`);
                 }
+                
+                if (userIds.has(wf.approverUserId)) {
+                    throw new BadRequestException(`Không được chọn trùng lặp người duyệt cho nhiều cấp khác nhau để tránh vòng lặp.`);
+                }
+                userIds.add(wf.approverUserId);
             }
         }
     }

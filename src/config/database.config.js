@@ -26,7 +26,8 @@ import { LeaveTypeEntity } from '../models/entities/leave-type.entity.js';
 import { LeavePolicyEntity } from '../models/entities/leave-policy.entity.js';
 import { LeaveBalanceEntity } from '../models/entities/leave-balance.entity.js';
 import { RequestEntity } from '../models/entities/request.entity.js';
-import { RequestApproveEntity } from '../models/entities/request-approve.entity.js';
+import { RequestApprovalLevelEntity } from '../models/entities/request-approval-level.entity.js';
+import { RequestAttachmentEntity } from '../models/entities/request-attachment.entity.js';
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { PayrollEntity } from '../models/entities/payroll.entity.js';
 import { PayrollDetailEntity } from '../models/entities/payroll-detail.entity.js';
@@ -55,7 +56,10 @@ import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-at
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
-
+import { AttendanceSecurityConfigEntity } from '../models/entities/attendance-security-config.entity.js';
+import { AttendanceAllowedIpEntity } from '../models/entities/attendance-allowed-ip.entity.js';
+import { AttendanceBlockingConfigEntity } from '../models/entities/attendance-blocking-config.entity.js';
+import { AttendanceSecurityStatusEntity } from '../models/entities/attendance-security-status.entity.js';
 export const databaseConfig = {
   type: 'mysql',
   host: config.database.host,
@@ -94,7 +98,8 @@ export const databaseConfig = {
     LeavePolicyEntity,
     LeaveBalanceEntity,
     RequestEntity,
-    RequestApproveEntity,
+    RequestApprovalLevelEntity,
+    RequestAttachmentEntity,
     HolidayListEntity,
     PayrollEntity,
     PayrollDetailEntity,
@@ -120,6 +125,11 @@ export const databaseConfig = {
     RequestTypeEntity,
     RequestTypePolicyEntity,
     ProcessedAttendanceRecordEntity,
+    OvertimeRequestDetailEntity,
+    AttendanceSecurityConfigEntity,
+    AttendanceAllowedIpEntity,
+    AttendanceBlockingConfigEntity,
+    AttendanceSecurityStatusEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],
