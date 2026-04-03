@@ -1951,13 +1951,14 @@ const seed = async () => {
     const faceDataRepo = dataSource.getRepository(FaceDataEntity);
 
     let faceConfig = await faceConfigRepo.findOne({
-      where: { modelVersion: 'v1.0-seed' },
+      where: { arcfaceModelName: 'buffalo_l' },
     });
     if (!faceConfig) {
       faceConfig = await faceConfigRepo.save(
         faceConfigRepo.create({
-          confidenceThreshold: 85,
-          modelVersion: 'v1.0-seed',
+          recognitionThreshold: 0.6,
+          spoofThreshold: 0.8,
+          arcfaceModelName: 'buffalo_l',
         }),
       );
     }
@@ -2074,25 +2075,26 @@ const seed = async () => {
             cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
           let coutH = 17,
             coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
-          let status = 'ON_TIME';
-          let type = 'NORMAL';
+          let status = 'present';
+          let type = 'face';
+          let overtimeMins = 0;
 
           // Randomize some behavior
           const rand = Math.random();
           if (rand < 0.1) {
             // 10% late
             cinM = 10 + Math.floor(Math.random() * 20); // 08:10 - 08:30
-            status = 'LATE';
+            status = 'late';
           } else if (rand < 0.2) {
             // 10% early leave
             coutH = 16;
             coutM = 30 + Math.floor(Math.random() * 20); // 16:30 - 16:50
-            status = 'EARLY_LEAVE';
+            status = 'early_leave';
           } else if (rand < 0.3) {
             // 10% OT
             coutH = 18 + Math.floor(Math.random() * 2); // 18:00 - 20:00
             coutM = Math.floor(Math.random() * 60);
-            type = 'OVERTIME';
+            overtimeMins = (coutH - 17) * 60 + coutM;
           }
 
           const checkIn = new Date(2026, 1, day, cinH, cinM, 0);
@@ -2105,6 +2107,7 @@ const seed = async () => {
               checkOutTime: checkOut,
               attendanceStatus: status,
               attendanceType: type,
+              overtimeMinutes: overtimeMins > 0 ? overtimeMins : null,
             }),
           );
         }

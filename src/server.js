@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import http from 'http';
 import morgan from 'morgan';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
@@ -48,6 +49,8 @@ import { attendanceSecurityConfigRoutes } from './routes/attendance-security-con
 import { attendanceAllowedIpRoutes } from './routes/attendance-allowed-ip.routes.js';
 import { attendanceRoutes } from './routes/attendance.routes.js';
 import { attendanceBlockingConfigRoutes } from './routes/attendance-blocking-configs.routes.js';
+import { initializeSocket } from './config/socket.js';
+import { notificationsRoutes } from './routes/notifications.routes.js';
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
   await redis.quit();
@@ -121,6 +124,7 @@ app.use(
 );
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance`, attendanceRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance-blocking-configs`, attendanceBlockingConfigRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/notifications`, notificationsRoutes);
 
 
 app.get('/', (req, res) => {
@@ -138,10 +142,15 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(errorMiddleware);
 
 // Database Initialization and Server Start
+const httpServer = http.createServer(app);
+
 const startServer = async () => {
   try {
     await AppDataSource.initialize();
     console.log('Data Source has been initialized!');
+
+    // Initialize Socket.io
+    initializeSocket(httpServer);
 
     // Seed overtime_types nếu chưa có
     try {
@@ -163,7 +172,7 @@ const startServer = async () => {
       console.error('Failed to seed overtime_types:', e);
     }
 
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
       console.log(
         `API Endpoint: http://localhost:${PORT}/${API_PREFIX}/${API_VERSION}`,
