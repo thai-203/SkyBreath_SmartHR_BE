@@ -34,18 +34,30 @@ export class PayrollService {
     // ──────────────────────────────────────
 
     async create(dto) {
-        const { payrollMonth, payrollYear } = dto;
+        const { payrollMonth, payrollYear, employeeIds = [] } = dto;
 
         const existing = await this.payrollRepository.findByPeriod(payrollMonth, payrollYear);
         if (existing) {
             throw new ConflictException(AppMessages.Errors.Payroll.ALREADY_EXISTS);
         }
 
-        return this.payrollRepository.create({
+        const payroll = await this.payrollRepository.create({
             payrollMonth,
             payrollYear,
             payrollStatus: PAYROLL_STATUS.DRAFT,
         });
+
+        // Pre-create details for selected employees
+        if (employeeIds && employeeIds.length > 0) {
+            const detailData = employeeIds.map(id => ({
+                payrollId: payroll.id,
+                employeeId: id,
+                netSalary: 0, // Placeholder
+            }));
+            await this.payrollDetailRepository.bulkCreate(detailData);
+        }
+
+        return payroll;
     }
 
     async autoCalculate(payrollId) {
@@ -57,15 +69,9 @@ export class PayrollService {
 
         const { payrollMonth, payrollYear } = payroll;
 
-        // 1. Get all active employees
-        const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
-        const employees = await employeeRepo.find({
-            where: [
-                { employmentStatus: 'ACTIVE', isDeleted: false },
-                { employmentStatus: 'PROBATION', isDeleted: false },
-            ],
-            relations: ['department'],
-        });
+        // 1. Get employees assigned to this payroll via PayrollDetail
+        const existingDetails = await this.payrollDetailRepository.findByPayroll(payrollId);
+        const employees = existingDetails.map(d => d.employee).filter(Boolean);
 
         if (employees.length === 0) {
             return { calculated: 0, details: [] };
@@ -160,6 +166,21 @@ export class PayrollService {
                 taxDeduction,
                 netSalary: parseFloat((netSalary + parseFloat(existingDetail?.bonus || 0) - parseFloat(existingDetail?.penalty || 0) - parseFloat(existingDetail?.deduction || 0)).toFixed(2)),
                 note: existingDetail?.note || null,
+                // Granular timesheet snapshot
+                standardDays: timesheet?.standardDays || 0,
+                officialDays: timesheet?.officialDays || 0,
+                probationDays: timesheet?.probationDays || 0,
+                businessTripDays: timesheet?.businessTripDays || 0,
+                holidayDays: timesheet?.holidayDays || 0,
+                benefitLeaveDays: timesheet?.benefitLeaveDays || 0,
+                annualLeaveDays: timesheet?.annualLeaveDays || 0,
+                unpaidLeaveDays: timesheet?.unpaidLeaveDays || 0,
+                nightShiftOfficialDays: timesheet?.nightShiftOfficialDays || 0,
+                nightShiftProbationDays: timesheet?.nightShiftProbationDays || 0,
+                waitingDays: timesheet?.waitingDays || 0,
+                mealCount: timesheet?.mealCount || 0,
+                usedLeaveDays: timesheet?.usedLeaveDays || 0,
+                remainingLeaveDays: timesheet?.remainingLeaveDays || 0,
             };
 
             let detail;
@@ -204,6 +225,82 @@ export class PayrollService {
             netSalary,
             note: dto.note !== undefined ? dto.note : detail.note,
         });
+    }
+
+    async importDetails(payrollId, fileBuffer) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+        if (payroll.payrollStatus === PAYROLL_STATUS.LOCKED) {
+            throw new BadRequestException(AppMessages.Errors.Payroll.IS_LOCKED);
+        }
+
+        const ExcelJS = await import('exceljs');
+        const workbook = new ExcelJS.default.Workbook();
+        
+        try {
+            await workbook.xlsx.load(fileBuffer);
+        } catch (err) {
+            if (err.message.includes('Worksheet name')) {
+                throw new BadRequestException('Tên sheet trong file Excel chứa ký tự không hợp lệ (* ? : \\ / [ ]). Vui lòng đổi tên sheet (VD: "Sheet1") và thử lại.');
+            }
+            throw err;
+        }
+
+        const worksheet = workbook.getWorksheet(1); // Standard: first sheet
+
+        const importedData = [];
+        worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return; // Skip header
+
+            const employeeCode = row.getCell(2).value?.toString() || row.getCell(2).text;
+            if (!employeeCode) return;
+
+            importedData.push({
+                employeeCode,
+                standardDays: parseFloat(row.getCell(6).value || 0),
+                workingDays: parseFloat(row.getCell(7).value || 0),
+                officialDays: parseFloat(row.getCell(8).value || 0),
+                probationDays: parseFloat(row.getCell(9).value || 0),
+                businessTripDays: parseFloat(row.getCell(10).value || 0),
+                holidayDays: parseFloat(row.getCell(11).value || 0),
+                benefitLeaveDays: parseFloat(row.getCell(12).value || 0),
+                annualLeaveDays: parseFloat(row.getCell(13).value || 0),
+                unpaidLeaveDays: parseFloat(row.getCell(14).value || 0),
+                nightShiftOfficialDays: parseFloat(row.getCell(15).value || 0),
+                nightShiftProbationDays: parseFloat(row.getCell(16).value || 0),
+                waitingDays: parseFloat(row.getCell(17).value || 0),
+                mealCount: parseFloat(row.getCell(18).value || 0),
+                usedLeaveDays: parseFloat(row.getCell(19).value || 0),
+                remainingLeaveDays: parseFloat(row.getCell(20).value || 0),
+                bonus: parseFloat(row.getCell(21).value || 0),
+                deduction: parseFloat(row.getCell(22).value || 0),
+                penalty: parseFloat(row.getCell(23).value || 0),
+            });
+        });
+
+        const results = [];
+        for (const data of importedData) {
+            const detail = await this.payrollDetailRepository.findByPayrollAndEmployeeCode(payrollId, data.employeeCode);
+            if (!detail) continue;
+
+            const netSalary = parseFloat((
+                parseFloat(detail.baseSalary) +
+                parseFloat(detail.overtimePay) +
+                data.bonus -
+                data.deduction -
+                data.penalty -
+                parseFloat(detail.insuranceDeduction) -
+                parseFloat(detail.taxDeduction)
+            ).toFixed(2));
+
+            const updated = await this.payrollDetailRepository.update(detail.id, {
+                ...data,
+                employeeCode: undefined, // Don't update this
+                netSalary,
+            });
+            results.push(updated);
+        }
+
+        return { importedCount: results.length };
     }
 
     // ──────────────────────────────────────
@@ -253,6 +350,14 @@ export class PayrollService {
         };
     }
 
+    async update(id, data) {
+        const payroll = await this._findPayrollOrFail(id);
+        if (payroll.payrollStatus === PAYROLL_STATUS.LOCKED) {
+            throw new BadRequestException(AppMessages.Errors.Payroll.IS_LOCKED);
+        }
+        return this.payrollRepository.update(id, data);
+    }
+
     async getDetailsByDepartment(payrollId, departmentId) {
         await this._findPayrollOrFail(payrollId);
         return this.payrollDetailRepository.findByPayrollAndDepartment(payrollId, departmentId);
@@ -268,16 +373,25 @@ export class PayrollService {
             fullName: d.employee?.fullName || '',
             department: d.employee?.department?.departmentName || '',
             position: d.employee?.position?.positionName || '',
+            standardDays: d.standardDays || 26,
             workingDays: d.workingDays || 0,
-            baseSalary: parseFloat(d.baseSalary || 0),
-            overtimePay: parseFloat(d.overtimePay || 0),
+            officialDays: d.officialDays || 0,
+            probationDays: d.probationDays || 0,
+            businessTripDays: d.businessTripDays || 0,
+            holidayDays: d.holidayDays || 0,
+            benefitLeaveDays: d.benefitLeaveDays || 0,
+            annualLeaveDays: d.annualLeaveDays || 0,
+            unpaidLeaveDays: d.unpaidLeaveDays || 0,
+            nightShiftOfficialDays: d.nightShiftOfficialDays || 0,
+            nightShiftProbationDays: d.nightShiftProbationDays || 0,
+            waitingDays: d.waitingDays || 0,
+            mealCount: d.mealCount || 0,
+            usedLeaveDays: d.usedLeaveDays || 0,
+            remainingLeaveDays: d.remainingLeaveDays || 0,
             bonus: parseFloat(d.bonus || 0),
             deduction: parseFloat(d.deduction || 0),
             penalty: parseFloat(d.penalty || 0),
-            insuranceDeduction: parseFloat(d.insuranceDeduction || 0),
-            taxDeduction: parseFloat(d.taxDeduction || 0),
             netSalary: parseFloat(d.netSalary || 0),
-            payslipSent: d.payslipSentAt ? 'Đã gửi' : 'Chưa gửi',
         }));
 
         const columns = [
@@ -286,16 +400,25 @@ export class PayrollService {
             { header: 'Họ và tên', key: 'fullName', width: 25 },
             { header: 'Phòng ban', key: 'department', width: 20 },
             { header: 'Chức vụ', key: 'position', width: 18 },
+            { header: 'Số lương chuẩn', key: 'standardDays', width: 10 },
             { header: 'Ngày công', key: 'workingDays', width: 10 },
-            { header: 'Lương cơ bản', key: 'baseSalary', width: 15 },
-            { header: 'Phụ cấp OT', key: 'overtimePay', width: 14 },
+            { header: 'Công CT', key: 'officialDays', width: 10 },
+            { header: 'Công TV', key: 'probationDays', width: 10 },
+            { header: 'Công tác/Học', key: 'businessTripDays', width: 10 },
+            { header: 'Lễ', key: 'holidayDays', width: 10 },
+            { header: 'Chế độ', key: 'benefitLeaveDays', width: 10 },
+            { header: 'Phép', key: 'annualLeaveDays', width: 10 },
+            { header: 'KL/BHXH', key: 'unpaidLeaveDays', width: 10 },
+            { header: 'Đêm CT', key: 'nightShiftOfficialDays', width: 10 },
+            { header: 'Đêm TV', key: 'nightShiftProbationDays', width: 10 },
+            { header: 'Chờ việc', key: 'waitingDays', width: 10 },
+            { header: 'Cơm', key: 'mealCount', width: 10 },
+            { header: 'Phép dùng', key: 'usedLeaveDays', width: 10 },
+            { header: 'Phép tồn', key: 'remainingLeaveDays', width: 10 },
             { header: 'Thưởng', key: 'bonus', width: 14 },
             { header: 'Khấu trừ', key: 'deduction', width: 14 },
             { header: 'Phạt', key: 'penalty', width: 12 },
-            { header: 'BHXH/YT/TN', key: 'insuranceDeduction', width: 16 },
-            { header: 'Thuế TNCN', key: 'taxDeduction', width: 14 },
             { header: 'Thực nhận', key: 'netSalary', width: 16 },
-            { header: 'Phiếu lương', key: 'payslipSent', width: 14 },
         ];
 
         return ExcelUtil.export(

@@ -29,6 +29,7 @@ export class PayrollRepository {
     async findById(id) {
         return this.repository.findOne({
             where: { id, isDeleted: false },
+            relations: ['submitter'],
         });
     }
 

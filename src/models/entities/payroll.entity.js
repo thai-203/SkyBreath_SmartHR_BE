@@ -15,6 +15,21 @@ export class PayrollEntity extends BaseEntity {
     @Column({ name: 'payroll_status', nullable: true, type: 'varchar', default: 'DRAFT' })
     payrollStatus;
 
+    @Column({ name: 'unit_name', nullable: true, type: 'varchar' })
+    unitName;
+
+    @Column({ name: 'contact_name', nullable: true, type: 'varchar' })
+    contactName;
+
+    @Column({ name: 'contact_phone', nullable: true, type: 'varchar' })
+    contactPhone;
+
+    @Column({ name: 'contact_email', nullable: true, type: 'varchar' })
+    contactEmail;
+
+    @Column({ name: 'payment_date', nullable: true, type: 'datetime' })
+    paymentDate;
+
     @Column({ name: 'submitted_by', nullable: true, type: 'int' })
     submittedBy;
 

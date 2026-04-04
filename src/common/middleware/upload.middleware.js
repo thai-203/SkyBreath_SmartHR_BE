@@ -50,3 +50,19 @@ export const uploadMiddleware = multer({
     fileFilter: fileFilter,
     limits: { fileSize: 5 * 1024 * 1024 }
 });
+
+// Excel upload middleware (Memory Storage)
+const excelFileFilter = (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.xlsx' || ext === '.xls' || file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+        cb(null, true);
+    } else {
+        cb(new Error('Chỉ cho phép tải lên tệp Excel (.xlsx, .xls)!'), false);
+    }
+};
+
+export const excelUpload = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: excelFileFilter,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
