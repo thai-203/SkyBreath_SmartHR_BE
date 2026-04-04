@@ -5,9 +5,8 @@
 -- Table structure for table `attendance_records`
 --
 
-DROP TABLE IF EXISTS `attendance_records`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
+-- smarthr_db.attendance_records definition
+
 CREATE TABLE `attendance_records` (
   `id` int NOT NULL AUTO_INCREMENT,
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -15,16 +14,22 @@ CREATE TABLE `attendance_records` (
   `deleted_at` datetime(6) DEFAULT NULL,
   `is_deleted` tinyint NOT NULL DEFAULT '0',
   `employee_id` int NOT NULL,
+  `work_date` date DEFAULT NULL,
+  `shift_schedule_id` int DEFAULT NULL,
   `check_in_time` datetime DEFAULT NULL,
   `check_out_time` datetime DEFAULT NULL,
-  `attendance_status` varchar(255) DEFAULT NULL,
-  `attendance_type` varchar(255) DEFAULT NULL,
+  `attendance_status` enum('present','late','early_leave','absent','half_day') DEFAULT NULL,
+  `attendance_type` enum('face','gps','qr','manual') NOT NULL DEFAULT 'face',
+  `late_minutes` int DEFAULT NULL,
+  `early_leave_minutes` int DEFAULT NULL,
+  `overtime_minutes` int DEFAULT NULL,
+  `total_work_minutes` int DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `FK_f97d7be854091ef9ab5d75c0de3` (`employee_id`),
+  UNIQUE KEY `IDX_2b0a2fa36d23a8a5876990de1e` (`employee_id`,`work_date`),
+  KEY `FK_f7d39577ffb9490b79b5f4e646f` (`shift_schedule_id`),
+  CONSTRAINT `FK_f7d39577ffb9490b79b5f4e646f` FOREIGN KEY (`shift_schedule_id`) REFERENCES `shift_schedules` (`id`),
   CONSTRAINT `FK_f97d7be854091ef9ab5d75c0de3` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=77 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
 --
 -- Table structure for table `contracts`
 --

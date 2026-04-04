@@ -2,13 +2,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/env.config.js';
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { AiChatConversationRepository } from '../repositories/ai-chat-conversations.repository.js';
+import { AiChatMessageRepository } from '../repositories/ai-chat-messages.repository.js';
 import fs from 'fs';
 import path from 'path';
 
 // ============================================================================
 // KEYWORD → TABLE RELEVANCE MAP
-// Maps Vietnamese/English keywords to the tables needed to answer the question.
-// Always ensure 'employees' and 'departments' are included as base JOIN tables.
 // ============================================================================
 const KEYWORD_TABLE_MAP = [
   { keywords: ['phép', 'nghỉ phép', 'leave', 'ngày phép', 'phep'], tables: ['leave_balances', 'leave_types', 'leave_policies'] },
@@ -27,11 +27,10 @@ const KEYWORD_TABLE_MAP = [
   { keywords: ['nhân viên', 'nhan vien', 'employee', 'người', 'ai', 'staff', 'họ tên', 'phòng ban', 'department'], tables: ['employees', 'departments', 'positions'] },
 ];
 
-// BASE TABLES are always included — they're needed for JOINs
 const BASE_TABLES = ['employees', 'departments'];
 
 // ============================================================================
-// SCHEMA PARSER — reads databsedescription.txt and parses CREATE TABLE blocks
+// SCHEMA PARSER
 // ============================================================================
 function parseSchemaFile() {
   const schemaFilePath = path.resolve(__dirname, '../../databsedescription.txt');
@@ -43,27 +42,24 @@ function parseSchemaFile() {
   const content = fs.readFileSync(schemaFilePath, 'utf-8');
   const tableDict = {};
 
-  // Split by CREATE TABLE blocks
-  const tableRegex = /CREATE TABLE `([^`]+)` \(([\s\S]*?)\) ENGINE=/g;
+  const tableRegex = /CREATE TABLE `([^`]+)` \(([\\s\\S]*?)\) ENGINE=/g;
   let match;
   while ((match = tableRegex.exec(content)) !== null) {
     const tableName = match[1];
     const columnBlock = match[2];
 
-    // Extract only column definitions (lines starting with backtick)
     const columns = columnBlock
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.startsWith('`') && !line.startsWith('`id`') === false || line.startsWith('`'))
       .filter(line => !line.startsWith('PRIMARY') && !line.startsWith('KEY') && !line.startsWith('CONSTRAINT') && !line.startsWith('UNIQUE'))
       .map(line => {
-        // Extract column name and type
         const colMatch = line.match(/`([^`]+)`\s+(\w+(?:\(\d+(?:,\d+)?\))?)/);
         if (colMatch) return `  ${colMatch[1]} (${colMatch[2]})`;
         return null;
       })
       .filter(Boolean)
-      .slice(0, 15); // Cap at 15 columns per table to save tokens
+      .slice(0, 15);
 
     if (columns.length > 0) {
       tableDict[tableName] = `Table \`${tableName}\`:\n${columns.join('\n')}`;
@@ -74,9 +70,6 @@ function parseSchemaFile() {
   return tableDict;
 }
 
-// ============================================================================
-// RELEVANCE ENGINE — finds which tables are needed for a given question
-// ============================================================================
 function getRelevantTables(question) {
   const q = question.toLowerCase();
   const relevantTables = new Set(BASE_TABLES);
@@ -97,7 +90,6 @@ export class AiService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(config.gemini.apiKey);
     this.modelName = config.gemini.model || 'gemini-2.5-flash';
-    // Parse schema ONCE at startup and cache it
     this.schemaDict = parseSchemaFile();
   }
 
@@ -109,10 +101,6 @@ export class AiService {
     });
   }
 
-  /**
-   * Returns a minimal schema string containing only the tables relevant to the question.
-   * This is the core optimization — instead of ~3000 tokens, we send ~150-300 tokens.
-   */
   getRelevantSchema(question) {
     const relevantTableNames = getRelevantTables(question);
     const parts = [];
@@ -124,24 +112,69 @@ export class AiService {
     }
 
     if (parts.length === 0) {
-      // Fallback: return a list of all table names so AI at least knows what exists
       return `Các bảng trong hệ thống: ${Object.keys(this.schemaDict).join(', ')}`;
     }
 
     return parts.join('\n\n');
   }
 
-  async handleChat(userId, roles, messages) {
+  // ── Conversation management ──────────────────────────────────────────────
+
+  async getConversations(userId) {
+    return AiChatConversationRepository.findByUserId(userId);
+  }
+
+  async createConversation(userId, title = 'Cuộc hội thoại mới') {
+    const conv = AiChatConversationRepository.create({ userId, title, isActive: 1 });
+    return AiChatConversationRepository.save(conv);
+  }
+
+  async deleteConversation(conversationId, userId) {
+    const conv = await AiChatConversationRepository.findByIdAndUserId(conversationId, userId);
+    if (!conv) throw new Error('Conversation not found or unauthorized.');
+    await AiChatConversationRepository.softDelete(conversationId);
+  }
+
+  async getMessages(conversationId, userId) {
+    // Validate ownership
+    const conv = await AiChatConversationRepository.findByIdAndUserId(conversationId, userId);
+    if (!conv) throw new Error('Conversation not found or unauthorized.');
+    return AiChatMessageRepository.findByConversationId(conversationId);
+  }
+
+  // ── Main chat handler ────────────────────────────────────────────────────
+
+  async handleChat(userId, roles, content, conversationId) {
     const employee = await this.getEmployeeInfo(userId);
     if (!employee) {
       throw new Error('Employee not found for the given user.');
     }
 
-    // Get the relevant schema for THIS specific question (token optimization)
-    const lastMessage = messages[messages.length - 1];
-    const schemaText = this.getRelevantSchema(lastMessage.content);
+    // Resolve or create conversation
+    let conversation;
+    if (conversationId) {
+      conversation = await AiChatConversationRepository.findByIdAndUserId(conversationId, userId);
+      if (!conversation) throw new Error('Conversation not found or unauthorized.');
+    } else {
+      // Auto-create a new conversation
+      const title = content.substring(0, 50) || 'Cuộc hội thoại mới';
+      conversation = await this.createConversation(userId, title);
+    }
 
-    // Text-to-SQL Tool
+    // Save user message to DB
+    await AiChatMessageRepository.saveMessage({
+      conversationId: conversation.id,
+      role: 'user',
+      content,
+    });
+
+    // Load complete history from DB (excluding the just-saved user msg for history building)
+    const allMessages = await AiChatMessageRepository.findByConversationId(conversation.id);
+
+    // Schema optimization — based on the current user question
+    const schemaText = this.getRelevantSchema(content);
+
+    // Tools
     const tools = [
       {
         functionDeclarations: [
@@ -192,13 +225,13 @@ Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằn
       tools: tools,
     });
 
-    const historyMessages = messages.slice(0, -1);
-    let historyData = historyMessages.map(msg => ({
+    // Build history for Gemini (all messages except the last user message)
+    const historyData = allMessages.slice(0, -1).map(msg => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }],
     }));
 
-    // Gemini API requires the first message in the history to be 'user'
+    // Gemini requires history to start with 'user'
     while (historyData.length > 0 && historyData[0].role === 'model') {
       historyData.shift();
     }
@@ -207,7 +240,7 @@ Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằn
 
     let result;
     try {
-      result = await chatSession.sendMessage(lastMessage.content);
+      result = await chatSession.sendMessage(content);
     } catch (err) {
       console.error('Lỗi gửi message:', err);
       throw err;
@@ -215,10 +248,16 @@ Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằn
 
     let finalResponseText = result.response.text();
     let functionCalls = result.response.functionCalls();
+    let functionCallName = null;
+    let functionArgs = null;
+    let functionResponse = null;
 
     if (functionCalls && functionCalls.length > 0) {
       const call = functionCalls[0];
+      functionCallName = call.name;
+      functionArgs = call.args;
       const toolResult = await this.executeTool(call);
+      functionResponse = toolResult;
 
       const functionResponseResult = await chatSession.sendMessage([{
         functionResponse: {
@@ -232,8 +271,23 @@ Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằn
       finalResponseText = functionResponseResult.response.text();
     }
 
+    // Save assistant message to DB
+    await AiChatMessageRepository.saveMessage({
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: finalResponseText,
+      functionCallName,
+      functionArgs,
+      functionResponse,
+    });
+
+    // Update conversation timestamp
+    await AiChatConversationRepository.update(conversation.id, { updatedAt: new Date() });
+
     return {
       content: finalResponseText,
+      conversationId: conversation.id,
+      conversationTitle: conversation.title,
       action: null,
     };
   }
