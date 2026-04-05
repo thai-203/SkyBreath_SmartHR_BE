@@ -434,7 +434,7 @@ export class RequestsService {
             status: ApprovalLevelStatus.PENDING,
             actionedAt: null,
             actionedByEmployeeId: null,
-            comment: comment || null,
+            comment: null,
         });
 
         // Reset các cấp duyệt phía sau (nếu có) về PENDING
