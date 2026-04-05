@@ -1,10 +1,26 @@
 import { AiService } from '../services/ai.service.js';
 import { ResponseUtil } from '../common/utils/response.util.js';
+import { AppDataSource } from '../database/data-source.js';
+import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
 
 export class AiController {
   constructor() {
     this.aiService = new AiService();
   }
+
+  // GET /ai/status
+  getStatus = async (req, res, next) => {
+    try {
+      // Check if an ACTIVE config exists
+      const repo = AppDataSource.getRepository(AiConfigurationEntity);
+      const activeConfig = await repo.findOne({ where: { status: 'ACTIVE' } });
+        
+      const isActive = !!activeConfig;
+      return ResponseUtil.sendResponse(res, 'Trạng thái cấu hình AI', { active: isActive });
+    } catch (error) {
+      next(error);
+    }
+  };
 
   // POST /ai/chat
   chat = async (req, res, next) => {

@@ -55,6 +55,7 @@ import { RequestTypePolicyEntity } from '../models/entities/request-type-policy.
 import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
 import { AiChatConversationEntity } from '../models/entities/ai-chat-conversation.entity.js';
 import { AiChatMessageEntity } from '../models/entities/ai-chat-message.entity.js';
+import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -134,6 +135,7 @@ export const databaseConfig = {
     AttendanceSecurityStatusEntity,
     AiChatConversationEntity,
     AiChatMessageEntity,
+    AiConfigurationEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

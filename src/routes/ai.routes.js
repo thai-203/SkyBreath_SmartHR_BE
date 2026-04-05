@@ -5,6 +5,9 @@ import { authMiddleware } from '../common/middleware/auth.middleware.js';
 export const aiRoutes = express.Router();
 const aiController = new AiController();
 
+// Status
+aiRoutes.get('/status', authMiddleware, aiController.getStatus);
+
 // Chat
 aiRoutes.post('/chat', authMiddleware, aiController.chat);
 
