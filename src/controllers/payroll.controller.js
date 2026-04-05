@@ -5,6 +5,7 @@ import { validate } from 'class-validator';
 import {
     CreatePayrollDto,
     UpdatePayrollDetailDto,
+    UpdatePayrollDto,
     PayrollQueryDto,
     RejectPayrollDto,
 } from '../models/dto/payroll/index.js';
@@ -64,6 +65,20 @@ export class PayrollController {
         try {
             const result = await this.payrollService.findById(parseInt(req.params.id));
             ResponseUtil.sendResponse(res, AppMessages.Success.Payroll.RETRIEVED, result);
+        } catch (error) { next(error); }
+    };
+
+    // UC28 - Update payroll general info
+    update = async (req, res, next) => {
+        try {
+            const dto = plainToInstance(UpdatePayrollDto, req.body, { enableImplicitConversion: true });
+            const errors = await validate(dto);
+            if (errors.length > 0) {
+                const message = Object.values(errors[0].constraints)[0];
+                return ResponseUtil.sendResponse(res, message, null, 400);
+            }
+            const result = await this.payrollService.update(parseInt(req.params.id), dto);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Payroll.UPDATED, result);
         } catch (error) { next(error); }
     };
 
@@ -145,6 +160,16 @@ export class PayrollController {
             res.setHeader('Content-Disposition', `attachment; filename=payslips_${payrollId}.xlsx`);
             res.setHeader('Content-Length', buffer.length);
             res.end(buffer);
+        } catch (error) { next(error); }
+    };
+
+    importDetails = async (req, res, next) => {
+        try {
+            if (!req.file) {
+                return ResponseUtil.sendResponse(res, 'No file uploaded', null, 400);
+            }
+            const result = await this.payrollService.importDetails(parseInt(req.params.id), req.file.buffer);
+            ResponseUtil.sendResponse(res, 'Imported payroll details successfully', result);
         } catch (error) { next(error); }
     };
 }
