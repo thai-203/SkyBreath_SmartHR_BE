@@ -18,7 +18,12 @@ export class TimesheetsController {
                 return ResponseUtil.sendResponse(res, message, null, 400);
             }
             const result = await this.timesheetsService.generate(dto, req.user);
-            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.GENERATED, result);
+            const failed = result?.failed || 0;
+            const msg =
+                failed > 0
+                    ? `${AppMessages.Success.Timesheet.GENERATED} (thất bại ${failed})`
+                    : AppMessages.Success.Timesheet.GENERATED;
+            ResponseUtil.sendResponse(res, msg, result);
         } catch (error) {
             next(error);
         }

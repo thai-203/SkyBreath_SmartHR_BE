@@ -35,6 +35,16 @@ export class RequestsController {
         }
     };
 
+    // GET /requests/excuses — Danh sách đơn giải trình (request_type_id = 2)
+    getExcuseRequests = async (req, res, next) => {
+        try {
+            const result = await this.service.getExcuseRequests(req.query, req.user);
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     // GET /requests/:id — Chi tiết đơn
     getById = async (req, res, next) => {
         try {

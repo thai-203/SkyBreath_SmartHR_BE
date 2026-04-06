@@ -110,6 +110,61 @@ export class RequestsRepository {
         return { items, total };
     }
 
+    /**
+     * Danh sách đơn giải trình theo requestTypeId cố định (vd: 2)
+     * Hỗ trợ lọc theo tháng/năm (dựa trên start_date), phòng ban, trạng thái, search.
+     */
+    async findExcuseRequests({
+        requestTypeId,
+        month,
+        year,
+        departmentId,
+        search,
+        status,
+        employeeId,
+        skip = 0,
+        limit = 20,
+    } = {}) {
+        const query = this.repository.createQueryBuilder('r')
+            .leftJoinAndSelect('r.employee', 'employee')
+            .leftJoinAndSelect('employee.department', 'department')
+            .leftJoinAndSelect('employee.position', 'position')
+            .leftJoinAndSelect('r.requestType', 'requestType')
+            .leftJoinAndSelect('r.requestGroup', 'requestGroup')
+            .where('r.isDeleted = false')
+            .andWhere('r.requestTypeId = :requestTypeId', { requestTypeId });
+
+        if (status) query.andWhere('r.status = :status', { status });
+        if (employeeId) query.andWhere('r.employeeId = :employeeId', { employeeId });
+        if (departmentId) query.andWhere('employee.departmentId = :departmentId', { departmentId });
+
+        if (year && month) {
+            query.andWhere('YEAR(r.startDate) = :year AND MONTH(r.startDate) = :month', { year, month });
+        } else if (year) {
+            query.andWhere('YEAR(r.startDate) = :year', { year });
+        }
+
+        if (search) {
+            query.andWhere(
+                '(employee.fullName LIKE :search OR employee.employeeCode LIKE :search OR r.requestCode LIKE :search)',
+                { search: `%${search}%` },
+            );
+        }
+
+        const [items, total] = await query
+            .orderBy('r.createdAt', 'DESC')
+            .skip(skip)
+            .take(limit)
+            .getManyAndCount();
+
+        return {
+            items,
+            total,
+            page: Math.floor(skip / limit) + 1,
+            limit,
+        };
+    }
+
     async create(data) {
         const entity = this.repository.create(data);
         return await this.repository.save(entity);
