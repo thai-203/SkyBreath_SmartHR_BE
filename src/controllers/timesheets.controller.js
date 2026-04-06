@@ -225,4 +225,18 @@ export class TimesheetsController {
             next(error);
         }
     };
+
+    updateProcessedRecord = async (req, res, next) => {
+        try {
+            const id = parseInt(req.params.id);
+            const { workValue, note } = req.body;
+            if (workValue === undefined || workValue === null || isNaN(parseFloat(workValue))) {
+                return ResponseUtil.sendResponse(res, 'workValue là bắt buộc và phải là số.', null, 400);
+            }
+            const result = await this.timesheetsService.updateProcessedRecord(id, parseFloat(workValue), note, req.user);
+            ResponseUtil.sendResponse(res, 'Cập nhật ngày công thành công', result);
+        } catch (error) {
+            next(error);
+        }
+    };
 }

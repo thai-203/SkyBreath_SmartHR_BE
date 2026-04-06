@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import http from 'http';
 import morgan from 'morgan';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
@@ -37,6 +38,7 @@ import { uploadRoutes } from './routes/upload.routes.js';
 import { requestGroupsRoutes } from './routes/request-groups.routes.js';
 import { requestTypesRoutes } from './routes/request-types.routes.js';
 import { aiRoutes } from './routes/ai.routes.js';
+import { aiConfigurationsRoutes } from './routes/ai-configurations.routes.js';
 import { ContractsService } from './services/contracts.service.js';
 import { startTimesheetAutoGenerateJob } from './jobs/timesheet-auto-generate.job.js';
 import { startAttendanceSyncJob } from './jobs/attendance-sync.job.js';
@@ -48,6 +50,8 @@ import { attendanceSecurityConfigRoutes } from './routes/attendance-security-con
 import { attendanceAllowedIpRoutes } from './routes/attendance-allowed-ip.routes.js';
 import { attendanceRoutes } from './routes/attendance.routes.js';
 import { attendanceBlockingConfigRoutes } from './routes/attendance-blocking-configs.routes.js';
+import { initializeSocket } from './config/socket.js';
+import { notificationsRoutes } from './routes/notifications.routes.js';
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
   await redis.quit();
@@ -105,6 +109,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/upload`, uploadRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-groups`, requestGroupsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-types`, requestTypesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai`, aiRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/ai-configurations`, aiConfigurationsRoutes);
 
 app.use(
   `/${API_PREFIX}/${API_VERSION}/face-recognition-config`,
@@ -121,6 +126,7 @@ app.use(
 );
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance`, attendanceRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance-blocking-configs`, attendanceBlockingConfigRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/notifications`, notificationsRoutes);
 
 
 app.get('/', (req, res) => {
@@ -138,10 +144,15 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(errorMiddleware);
 
 // Database Initialization and Server Start
+const httpServer = http.createServer(app);
+
 const startServer = async () => {
   try {
     await AppDataSource.initialize();
     console.log('Data Source has been initialized!');
+
+    // Initialize Socket.io
+    initializeSocket(httpServer);
 
     // Seed overtime_types nếu chưa có
     try {
@@ -163,7 +174,7 @@ const startServer = async () => {
       console.error('Failed to seed overtime_types:', e);
     }
 
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
       console.log(
         `API Endpoint: http://localhost:${PORT}/${API_PREFIX}/${API_VERSION}`,

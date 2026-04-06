@@ -5,12 +5,14 @@ import { NotFoundException, BadRequestException, ForbiddenException } from '../c
 import { RequestStatus, ApprovalLevelStatus, ApproverType } from '../common/enums/request.enum.js';
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { NotificationsService } from './notifications.service.js';
 
 export class RequestsService {
     constructor() {
         this.repo = new RequestsRepository();
         this.workflowRepo = new RequestGroupWorkflowsRepository();
         this.typeRepo = new RequestTypesRepository();
+        this.notificationService = new NotificationsService();
     }
 
     // Lazy getter — chỉ lấy repository khi thực sự gọi method (lúc đó DB đã init xong)
@@ -48,6 +50,12 @@ export class RequestsService {
         const request = await this.repo.findById(id);
         if (!request) throw new NotFoundException('Không tìm thấy đơn từ');
         return request;
+    }
+
+    // ─── HELPER: Lấy employee name từ employeeId ────────────────────────
+    async _getEmployeeName(employeeId) {
+        const emp = await this.employeeRepo.findOne({ where: { id: employeeId, isDeleted: false } });
+        return emp?.fullName || 'Nhân viên';
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -148,12 +156,37 @@ export class RequestsService {
 
         await this.repo.createApprovalLevels(approvalLevels);
 
-        return await this.repo.update(request.id, {
+        const result = await this.repo.update(request.id, {
             status: RequestStatus.PENDING,
             currentApprovalLevel: 1,
             totalApprovalLevels: workflows.length,
             submittedAt: new Date(),
         });
+
+        // 🔔 Thông báo cho Approver cấp 1
+        try {
+            const firstLevel = approvalLevels.find(l => l.levelOrder === 1);
+            if (firstLevel) {
+                const approverEmp = await this.employeeRepo.findOne({ where: { id: firstLevel.approverEmployeeId, isDeleted: false } });
+                const creatorName = targetEmployee?.fullName || 'Nhân viên';
+                const requestType = await this.typeRepo.findById(request.requestTypeId);
+
+                if (approverEmp?.userId) {
+                    await this.notificationService.createAndNotify({
+                        title: 'Đơn mới cần phê duyệt',
+                        message: `"${creatorName}" đã gửi đơn "${requestType?.name || ''}" cần bạn phê duyệt.`,
+                        notificationType: 'WORKFLOW',
+                        link: '/requests/pending-approvals',
+                        relatedRequestId: request.id,
+                        recipientUserIds: [approverEmp.userId],
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[Notification] Lỗi gửi thông báo khi submit:', err);
+        }
+
+        return result;
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -178,6 +211,28 @@ export class RequestsService {
                 throw new BadRequestException(
                     'Không thể hủy đơn khi đã có cấp duyệt phê duyệt. Vui lòng yêu cầu người duyệt hủy duyệt trước.'
                 );
+            }
+
+            // 🔔 Gửi signal REMOVE cho approver cấp hiện tại
+            try {
+                const currentLevel = levels.find(l => l.levelOrder === request.currentApprovalLevel);
+                if (currentLevel) {
+                    const approverEmp = await this.employeeRepo.findOne({ where: { id: currentLevel.approverEmployeeId, isDeleted: false } });
+                    if (approverEmp?.userId) {
+                        const creatorName = await this._getEmployeeName(request.employeeId);
+                        this.notificationService.emitRemovePendingRequest([approverEmp.userId], requestId);
+                        await this.notificationService.createAndNotify({
+                            title: 'Đơn đã bị hủy',
+                            message: `Nhân viên "${creatorName}" đã hủy đơn "${request.requestCode}".`,
+                            notificationType: 'WORKFLOW',
+                            link: '/requests/pending-approvals',
+                            relatedRequestId: requestId,
+                            recipientUserIds: [approverEmp.userId],
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('[Notification] Lỗi gửi thông báo khi cancel:', err);
             }
         }
 
@@ -220,10 +275,66 @@ export class RequestsService {
                 status: RequestStatus.APPROVED,
                 approvedAt: new Date(),
             });
+
+            // 🔔 Đơn đã duyệt hoàn tất — thông báo cho người tạo đơn
+            try {
+                const creatorEmp = await this.employeeRepo.findOne({ where: { id: request.createdByEmployeeId, isDeleted: false } });
+                const approverName = approver?.fullName || 'Người duyệt';
+                if (creatorEmp?.userId) {
+                    await this.notificationService.createAndNotify({
+                        title: 'Đơn đã được duyệt',
+                        message: `Đơn "${request.requestCode}" đã được duyệt hoàn tất! "${approverName}" đã phê duyệt cấp cuối cùng.`,
+                        notificationType: 'WORKFLOW',
+                        link: '/requests/my-requests',
+                        relatedRequestId: requestId,
+                        recipientUserIds: [creatorEmp.userId],
+                    });
+                }
+            } catch (err) {
+                console.error('[Notification] Lỗi gửi thông báo approve (cấp cuối):', err);
+            }
         } else {
             await this.repo.update(requestId, {
                 currentApprovalLevel: request.currentApprovalLevel + 1,
             });
+
+            // 🔔 Thông báo cho Approver cấp tiếp theo + Người tạo đơn
+            try {
+                const allLevels = await this.repo.getApprovalLevels(requestId);
+                const nextLevel = allLevels.find(l => l.levelOrder === request.currentApprovalLevel + 1);
+                const approverName = approver?.fullName || 'Người duyệt';
+
+                // → Thông báo cho cấp tiếp theo
+                if (nextLevel) {
+                    const nextApproverEmp = await this.employeeRepo.findOne({ where: { id: nextLevel.approverEmployeeId, isDeleted: false } });
+                    const nextApproverName = nextApproverEmp?.fullName || 'người duyệt tiếp theo';
+                    if (nextApproverEmp?.userId) {
+                        await this.notificationService.createAndNotify({
+                            title: 'Đơn mới cần phê duyệt',
+                            message: `"${approverName}" đã duyệt đơn "${request.requestCode}". Đơn chuyển sang cấp "${nextLevel.levelName}" cho bạn duyệt.`,
+                            notificationType: 'WORKFLOW',
+                            link: '/requests/pending-approvals',
+                            relatedRequestId: requestId,
+                            recipientUserIds: [nextApproverEmp.userId],
+                        });
+                    }
+
+                    // → Thông báo cho người tạo đơn
+                    const creatorEmp = await this.employeeRepo.findOne({ where: { id: request.createdByEmployeeId, isDeleted: false } });
+                    if (creatorEmp?.userId) {
+                        await this.notificationService.createAndNotify({
+                            title: 'Đơn đang được xử lý',
+                            message: `"${approverName}" đã phê duyệt cấp ${request.currentApprovalLevel} cho đơn "${request.requestCode}". Đơn chuyển sang cho "${nextApproverName}" duyệt.`,
+                            notificationType: 'WORKFLOW',
+                            link: '/requests/my-requests',
+                            relatedRequestId: requestId,
+                            recipientUserIds: [creatorEmp.userId],
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('[Notification] Lỗi gửi thông báo approve (cấp giữa):', err);
+            }
         }
 
         return await this._findRequestOrFail(requestId);
@@ -259,6 +370,40 @@ export class RequestsService {
             rejectedAt: new Date(),
         });
 
+        // 🔔 Thông báo cho người tạo đơn + các cấp đã approved trước đó
+        try {
+            const approverName = approver?.fullName || 'Người duyệt';
+            const recipientUserIds = [];
+
+            // Người tạo đơn
+            const creatorEmp = await this.employeeRepo.findOne({ where: { id: request.createdByEmployeeId, isDeleted: false } });
+            if (creatorEmp?.userId) recipientUserIds.push(creatorEmp.userId);
+
+            // Các cấp đã approved trước đó
+            const allLevels = await this.repo.getApprovalLevels(requestId);
+            for (const lvl of allLevels) {
+                if (lvl.status === ApprovalLevelStatus.APPROVED && lvl.approverEmployeeId) {
+                    const emp = await this.employeeRepo.findOne({ where: { id: lvl.approverEmployeeId, isDeleted: false } });
+                    if (emp?.userId && !recipientUserIds.includes(emp.userId)) {
+                        recipientUserIds.push(emp.userId);
+                    }
+                }
+            }
+
+            if (recipientUserIds.length > 0) {
+                await this.notificationService.createAndNotify({
+                    title: 'Đơn bị từ chối',
+                    message: `"${approverName}" đã từ chối đơn "${request.requestCode}".${comment ? ` Lý do: "${comment}"` : ''}`,
+                    notificationType: 'WORKFLOW',
+                    link: '/requests/my-requests',
+                    relatedRequestId: requestId,
+                    recipientUserIds,
+                });
+            }
+        } catch (err) {
+            console.error('[Notification] Lỗi gửi thông báo khi reject:', err);
+        }
+
         return await this._findRequestOrFail(requestId);
     }
 
@@ -289,7 +434,7 @@ export class RequestsService {
             status: ApprovalLevelStatus.PENDING,
             actionedAt: null,
             actionedByEmployeeId: null,
-            comment: comment || null,
+            comment: null,
         });
 
         // Reset các cấp duyệt phía sau (nếu có) về PENDING
@@ -311,6 +456,43 @@ export class RequestsService {
             currentApprovalLevel: levelOrder,
             approvedAt: null,
         });
+
+        // 🔔 Thông báo
+        try {
+            const approverName = approver?.fullName || 'Người duyệt';
+
+            // → Gửi REMOVE_PENDING_REQUEST tới approver cấp sau (nếu có)
+            const nextLevel = allLevels.find(l => l.levelOrder === levelOrder + 1);
+            if (nextLevel) {
+                const nextApproverEmp = await this.employeeRepo.findOne({ where: { id: nextLevel.approverEmployeeId, isDeleted: false } });
+                if (nextApproverEmp?.userId) {
+                    this.notificationService.emitRemovePendingRequest([nextApproverEmp.userId], requestId);
+                    await this.notificationService.createAndNotify({
+                        title: 'Đơn đã bị thu hồi',
+                        message: `"${approverName}" đã hủy phê duyệt đơn "${request.requestCode}". Đơn đã quay lại cấp trước.`,
+                        notificationType: 'WORKFLOW',
+                        link: '/requests/pending-approvals',
+                        relatedRequestId: requestId,
+                        recipientUserIds: [nextApproverEmp.userId],
+                    });
+                }
+            }
+
+            // → Thông báo cho người tạo đơn
+            const creatorEmp = await this.employeeRepo.findOne({ where: { id: request.createdByEmployeeId, isDeleted: false } });
+            if (creatorEmp?.userId) {
+                await this.notificationService.createAndNotify({
+                    title: 'Đơn bị hủy phê duyệt',
+                    message: `"${approverName}" đã hủy phê duyệt đơn "${request.requestCode}". Đơn quay lại cấp "${targetLevel.levelName}" để xử lý lại.`,
+                    notificationType: 'WORKFLOW',
+                    link: '/requests/my-requests',
+                    relatedRequestId: requestId,
+                    recipientUserIds: [creatorEmp.userId],
+                });
+            }
+        } catch (err) {
+            console.error('[Notification] Lỗi gửi thông báo khi revoke:', err);
+        }
 
         return await this._findRequestOrFail(requestId);
     }

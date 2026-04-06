@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller.js';
-import { upload } from '../common/middleware/upload.middleware.js';
+import { uploadCloud } from '../common/middleware/upload.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import {
@@ -141,7 +141,7 @@ router.get('/profile', authMiddleware, authController.getProfile);
 router.put(
   '/profile',
   authMiddleware,
-  upload.single('avatar'),
+  uploadCloud.single('avatar'),
   validationMiddleware(UpdateProfileDto),
   authController.editProfile,
 );

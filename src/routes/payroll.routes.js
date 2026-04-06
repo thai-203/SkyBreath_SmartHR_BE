@@ -5,6 +5,7 @@ import { PayrollRepository } from '../repositories/payroll.repository.js';
 import { PayrollDetailRepository } from '../repositories/payroll-detail.repository.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
+import { excelUpload } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
 
@@ -36,6 +37,9 @@ router.get('/payslips/:id', authMiddleware, permissionsMiddleware('PAYROLL_EXPOR
 // UC28 - Get payroll detail
 router.get('/:id', authMiddleware, permissionsMiddleware('PAYROLL_READ'), payrollController.findById);
 
+// UC28 - Update payroll general info
+router.patch('/:id', authMiddleware, permissionsMiddleware('PAYROLL_UPDATE'), payrollController.update);
+
 // UC28 - Get details by department
 router.get('/:id/department/:departmentId', authMiddleware, permissionsMiddleware('PAYROLL_READ'), payrollController.getDetailsByDepartment);
 
@@ -53,5 +57,8 @@ router.post('/:id/reject', authMiddleware, permissionsMiddleware('PAYROLL_APPROV
 // UC30 - Lock & Payslips
 router.post('/:id/lock', authMiddleware, permissionsMiddleware('PAYROLL_LOCK'), payrollController.lock);
 router.post('/:id/send-payslips', authMiddleware, permissionsMiddleware('PAYROLL_LOCK'), payrollController.sendPayslips);
+
+// UC28 - Import Details Excel
+router.post('/:id/import-details', authMiddleware, permissionsMiddleware('PAYROLL_UPDATE'), excelUpload.single('file'), payrollController.importDetails);
 
 export const payrollRoutes = router;
