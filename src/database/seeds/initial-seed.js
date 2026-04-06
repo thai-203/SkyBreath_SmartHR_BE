@@ -1651,19 +1651,12 @@ const seed = async () => {
         note: 'Về sớm 15-60 phút trừ 0.5h công',
       },
     ];
-    for (const p of penaltiesData) {
-      const exists = await penaltyRepo.findOne({ 
-        where: { 
-          violationType: p.violationType,
-          fromMinute: p.fromMinute,
-          toMinute: p.toMinute,
-          effectiveFrom: p.effectiveFrom 
-        } 
-      });
-      if (!exists) {
-        await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
-      }
-    }
+    // for (const p of penaltiesData) {
+    //   const exists = await penaltyRepo.findOne({ where: { name: p.name } });
+    //   if (!exists) {
+    //     await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
+    //   }
+    // }
 
     // Onboarding flow
     const onboardingPlanRepo = dataSource.getRepository(OnboardingPlanEntity);

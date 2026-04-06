@@ -3,7 +3,7 @@ import {
   IsOptional,
   IsInt,
   IsBoolean,
-  IsNotEmpty,
+  IsIn,
   Min,
   Allow,
 } from 'class-validator';
@@ -48,6 +48,11 @@ export class CreateOnboardingPlanDto {
   @IsOptional()
   @IsBoolean()
   isTemplate = false;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['ACTIVE', 'DRAFT'])
+  status;
 
   @IsOptional()
   @Allow()
