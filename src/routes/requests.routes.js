@@ -6,6 +6,9 @@ import { permissionsMiddleware } from '../common/middleware/permissions.middlewa
 const router = Router();
 const requestsController = new RequestsController();
 
+// GET /requests/excuses — Danh sách đơn giải trình (request_type_id = 2)
+router.get('/excuses', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getExcuseRequests);
+
 // GET /requests/my — Đơn của tôi
 router.get('/my', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getMyRequests);
 

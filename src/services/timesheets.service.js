@@ -119,6 +119,7 @@ export class TimesheetsService {
     let generatedCount = 0;
     let updatedCount = 0;
     let failedCount = 0;
+    const failedDetails = [];
     const results = [];
 
     for (const employee of employees) {
@@ -154,11 +155,12 @@ export class TimesheetsService {
         const otDetails = await otDetailRepo
           .createQueryBuilder('detail')
           .innerJoin('detail.request', 'request')
+          .innerJoin('request.requestGroup', 'requestGroup')
           .where('request.employeeId = :employeeId', {
             employeeId: employee.id,
           })
-          .andWhere('request.requestStatus = :status', { status: 'APPROVED' })
-          .andWhere('request.requestType = :type', { type: 'OVERTIME' })
+          .andWhere('request.status = :status', { status: 'APPROVED' })
+          .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
           .andWhere('detail.workDate >= :startDate', {
             startDate: startDate.toISOString().split('T')[0],
           })
@@ -173,12 +175,13 @@ export class TimesheetsService {
         const excuseRequests = await requestRepo.find({
           where: {
             employeeId: employee.id,
-            requestStatus: 'APPROVED',
-            requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+            status: 'APPROVED',
+            requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
             startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
             endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
             isDeleted: false,
           },
+          relations: ['requestGroup'],
         });
 
         // Calculate totals with break deduction & half-day support
@@ -260,9 +263,15 @@ export class TimesheetsService {
       } catch (err) {
         console.error(
           `[TimesheetsService] generate failed for employee ${employee.id}:`,
-          err.message,
+          err,
         );
         failedCount++;
+        failedDetails.push({
+          employeeId: employee.id,
+          employeeCode: employee.employeeCode,
+          fullName: employee.fullName,
+          error: err?.message || String(err),
+        });
       }
     }
 
@@ -279,6 +288,7 @@ export class TimesheetsService {
       generated: generatedCount,
       updated: updatedCount,
       failed: failedCount,
+      failedDetails,
       standardWorkingDays,
       timesheets: results,
     };
@@ -672,13 +682,13 @@ export class TimesheetsService {
     const leaveRequests = await requestRepo.find({
       where: {
         employeeId: timesheet.employeeId,
-        requestStatus: 'APPROVED',
-        requestType: 'LEAVE',
+        status: 'APPROVED',
+        requestGroup: { code: 'LEAVE' },
         startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
         endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
         isDeleted: false,
       },
-      relations: ['leaveType'],
+      relations: ['requestGroup', 'requestType'],
     });
 
     // Get approved OT requests
@@ -688,11 +698,12 @@ export class TimesheetsService {
     const otDetails = await otDetailRepo
       .createQueryBuilder('detail')
       .innerJoin('detail.request', 'request')
+      .innerJoin('request.requestGroup', 'requestGroup')
       .where('request.employeeId = :employeeId', {
         employeeId: timesheet.employeeId,
       })
-      .andWhere('request.requestStatus = :status', { status: 'APPROVED' })
-      .andWhere('request.requestType = :type', { type: 'OVERTIME' })
+      .andWhere('request.status = :status', { status: 'APPROVED' })
+      .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('detail.workDate >= :startDate', {
         startDate: startDate.toISOString().split('T')[0],
       })
@@ -706,11 +717,12 @@ export class TimesheetsService {
     const excuseRequests = await requestRepo.find({
       where: {
         employeeId: timesheet.employeeId,
-        requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+        requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
         startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
         endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
         isDeleted: false,
       },
+      relations: ['requestGroup'],
     });
 
     // Build daily detail with on-the-fly computation
@@ -815,11 +827,12 @@ export class TimesheetsService {
       const excuseRequests = await requestRepo.find({
         where: {
           employeeId: employee.id,
-          requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+          requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
           startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
           endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
           isDeleted: false,
         },
+        relations: ['requestGroup'],
       });
 
       // Calculate daily details (minimal computed set)
@@ -916,11 +929,12 @@ export class TimesheetsService {
     const otDetails = await otDetailRepo
       .createQueryBuilder('detail')
       .innerJoin('detail.request', 'request')
+      .innerJoin('request.requestGroup', 'requestGroup')
       .where('request.employeeId = :employeeId', {
         employeeId: timesheet.employeeId,
       })
-      .andWhere('request.requestStatus = :status', { status: 'APPROVED' })
-      .andWhere('request.requestType = :type', { type: 'OVERTIME' })
+      .andWhere('request.status = :status', { status: 'APPROVED' })
+      .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('detail.workDate >= :startDate', {
         startDate: startDate.toISOString().split('T')[0],
       })
@@ -935,12 +949,13 @@ export class TimesheetsService {
     const excuseRequests = await requestRepo.find({
       where: {
         employeeId: timesheet.employeeId,
-        requestStatus: 'APPROVED',
-        requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+        status: 'APPROVED',
+        requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
         startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
         endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
         isDeleted: false,
       },
+      relations: ['requestGroup'],
     });
 
     let totalWorkingDays = 0;
@@ -1554,7 +1569,7 @@ export class TimesheetsService {
 
       if (leave) {
         detail.status = 'LEAVE';
-        detail.leaveType = leave.leaveType?.leaveTypeName || 'Nghỉ';
+        detail.leaveType = leave.requestType?.name || 'Nghỉ';
       }
 
       // Check if there is an excuse request for this date
@@ -1577,7 +1592,7 @@ export class TimesheetsService {
 
         detail.excuseRequest = {
           id: excuseRequest.id,
-          status: excuseRequest.requestStatus,
+          status: excuseRequest.status,
           content: parsedContent,
         };
       }
@@ -1758,8 +1773,8 @@ export class TimesheetsService {
     // 3. Fetch approved requests
     const requestRepo = AppDataSource.getRepository(RequestEntity);
     const requests = await requestRepo.find({
-        where: { requestStatus: 'APPROVED', isDeleted: false },
-        relations: ['leaveType']
+        where: { status: 'APPROVED', isDeleted: false },
+        relations: ['requestGroup', 'requestType']
     });
 
     // 4. Fetch holidays
@@ -1874,13 +1889,14 @@ export class TimesheetsService {
             });
 
             if (overlappingReq) {
-                if (overlappingReq.requestType === 'LEAVE') {
-                    attendanceStatus = overlappingReq.leaveType?.code || 'P'; // Use leave code (e.g., P, V, S...)
-                    workValue = overlappingReq.leaveType?.isPaid ? 1.0 : 0.0;
-                } else if (overlappingReq.requestType === 'BUSINESS_TRIP') {
+                const groupCode = overlappingReq.requestGroup?.code;
+                if (groupCode === 'LEAVE') {
+                    attendanceStatus = 'LEAVE';
+                    workValue = overlappingReq.isWorkedTime ? 1.0 : 0.0;
+                } else if (groupCode === 'BUSINESS_TRIP') {
                     attendanceStatus = 'CT';
                     workValue = 1.0;
-                } else if (overlappingReq.requestType === 'EXCUSE') {
+                } else if (groupCode === 'LATE_EARLY' || groupCode === 'ATTENDANCE_CORRECTION') {
                     attendanceStatus = 'X';
                     lateMins = 0; earlyMins = 0;
                     if(workValue === 0) workValue = 1.0;
