@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { PayrollController } from '../controllers/payroll.controller.js';
-import { PayrollService } from '../services/payroll.service.js';
-import { PayrollRepository } from '../repositories/payroll.repository.js';
-import { PayrollDetailRepository } from '../repositories/payroll-detail.repository.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { excelUpload } from '../common/middleware/upload.middleware.js';
+import { PayrollController } from '../controllers/payroll.controller.js';
+import { PayrollDetailRepository } from '../repositories/payroll-detail.repository.js';
+import { PayrollRepository } from '../repositories/payroll.repository.js';
+import { PayrollService } from '../services/payroll.service.js';
 
 const router = Router();
 

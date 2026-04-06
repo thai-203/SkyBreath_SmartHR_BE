@@ -1943,6 +1943,228 @@ export class TimesheetsService {
     };
   }
 
+  async getSummaryMatrix(queryDto, userContext) {
+    const { month, year, departmentId, search } = queryDto;
+    const limit = queryDto.limit || 10;
+    const page = queryDto.page || 1;
+    const skip = (page - 1) * limit;
+
+    // 1. Get Employees
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const qb = employeeRepo
+      .createQueryBuilder('emp')
+      .leftJoinAndSelect('emp.department', 'dept')
+      .leftJoinAndSelect('emp.position', 'pos')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
+
+    if (departmentId) {
+      qb.andWhere('emp.departmentId = :departmentId', { departmentId });
+    }
+    if (search) {
+      qb.andWhere(
+        '(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const [employees, total] = await qb
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    if (employees.length === 0) {
+      return { items: [], total, page, limit, totalPages: 0, month, year };
+    }
+
+    const empIds = employees.map((e) => e.id);
+
+    // 2. Get Holidays for standardDays calculation
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
+    const holidays = await holidayRepo.find({
+      where: [
+        {
+          startDate: Between(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0],
+          ),
+          isDeleted: false,
+        },
+        {
+          endDate: Between(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0],
+          ),
+          isDeleted: false,
+        },
+        {
+          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
+          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          isDeleted: false,
+        },
+      ],
+    });
+    const holidayDates = new Set();
+    holidays.forEach((h) => {
+      const current = new Date(h.startDate);
+      const stop = new Date(h.endDate || h.startDate);
+      while (current <= stop) {
+        holidayDates.add(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    });
+
+    const standardDays = this._countWorkingDays(year, month, holidayDates);
+
+    // 3. Get Processed Attendance Records with Request info
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity,
+    );
+    const records = await processedRepo
+      .createQueryBuilder('par')
+      .leftJoinAndSelect('par.request', 'req')
+      .leftJoinAndSelect('req.requestGroup', 'rg')
+      .where(
+        'MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year',
+        { month, year },
+      )
+      .andWhere('par.employeeId IN (:...empIds)', { empIds })
+      .getMany();
+
+    // 4. Get Approved Overtime Requests
+    const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
+    const otDetails = await otDetailRepo
+      .createQueryBuilder('otd')
+      .leftJoinAndSelect('otd.request', 'req')
+      .leftJoinAndSelect('otd.overtimeRule', 'rule')
+      .leftJoinAndSelect('rule.overtimeType', 'type')
+      .where('MONTH(otd.workDate) = :month AND YEAR(otd.workDate) = :year', {
+        month,
+        year,
+      })
+      .andWhere('req.status = :status', { status: 'APPROVED' })
+      .andWhere('req.employeeId IN (:...empIds)', { empIds })
+      .getMany();
+
+    // 5. Map and Aggregate
+    const items = employees.map((emp) => {
+      const empRecords = records.filter((r) => r.employeeId === emp.id);
+      const empOtDetails = otDetails.filter((ot) => ot.request?.employeeId === emp.id);
+
+      let officialDays = 0;
+      let probationDays = 0;
+      let businessTripDays = 0;
+      let holidayDays = 0;
+      let paidLeaveDays = 0;
+
+      // Aggregate Attendance
+      empRecords.forEach((r) => {
+        const val = Number(r.workValue) || 0;
+
+        // Check status for Holiday first
+        if (r.attendanceStatus === 'HOLIDAY') {
+          holidayDays += val;
+        } else if (r.request && r.request.requestGroup) {
+          const groupCode = r.request.requestGroup.code;
+          if (groupCode === 'BUSINESS_TRIP' || groupCode === 'WORK_FROM_HOME') {
+            businessTripDays += val;
+          } else if (groupCode === 'LEAVE' && r.request.isWorkedTime) {
+            paidLeaveDays += val;
+          } else {
+            // Fallback to employee status
+            if (emp.employmentStatus === 'ACTIVE') officialDays += val;
+            else if (emp.employmentStatus === 'PROBATION') probationDays += val;
+          }
+        } else {
+          // Regular working day (PRESENT)
+          if (emp.employmentStatus === 'ACTIVE') officialDays += val;
+          else if (emp.employmentStatus === 'PROBATION') probationDays += val;
+        }
+      });
+
+      // Aggregate Overtime breakdown
+      let otWeekday = 0;
+      let otWeekdayNight = 0;
+      let otWeekend = 0;
+      let otWeekendNight = 0;
+      let otHoliday = 0;
+      let otHolidayNight = 0;
+
+      empOtDetails.forEach((ot) => {
+        const hours = Number(ot.totalHours) || 0;
+        const typeCode = ot.overtimeRule?.overtimeType?.code || 'WEEKDAY';
+        const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
+
+        if (typeCode === 'WEEKDAY') {
+          if (isNight) otWeekdayNight += hours;
+          else otWeekday += hours;
+        } else if (typeCode === 'WEEKEND') {
+          if (isNight) otWeekendNight += hours;
+          else otWeekend += hours;
+        } else if (typeCode === 'HOLIDAY') {
+          if (isNight) otHolidayNight += hours;
+          else otHoliday += hours;
+        }
+      });
+
+      const totalOtHours =
+        otWeekday +
+        otWeekdayNight +
+        otWeekend +
+        otWeekendNight +
+        otHoliday +
+        otHolidayNight;
+
+      const totalMonthlyDays =
+        officialDays +
+        probationDays +
+        businessTripDays +
+        holidayDays +
+        paidLeaveDays;
+
+      return {
+        id: emp.id,
+        employeeCode: emp.employeeCode,
+        fullName: emp.fullName,
+        positionName: emp.position?.positionName || '',
+        departmentName: emp.department?.departmentName || '',
+        employmentStatus: emp.employmentStatus,
+        standardDays,
+        officialDays: Number(officialDays.toFixed(2)),
+        probationDays: Number(probationDays.toFixed(2)),
+        businessTripDays: Number(businessTripDays.toFixed(2)),
+        holidayDays: Number(holidayDays.toFixed(2)),
+        paidLeaveDays: Number(paidLeaveDays.toFixed(2)),
+        totalMonthlyDays: Number(totalMonthlyDays.toFixed(2)),
+        // Overtime breakdown
+        otWeekday: Number(otWeekday.toFixed(2)),
+        otWeekdayNight: Number(otWeekdayNight.toFixed(2)),
+        otWeekend: Number(otWeekend.toFixed(2)),
+        otWeekendNight: Number(otWeekendNight.toFixed(2)),
+        otHoliday: Number(otHoliday.toFixed(2)),
+        otHolidayNight: Number(otHolidayNight.toFixed(2)),
+        totalOtHours: Number(totalOtHours.toFixed(2)),
+      };
+    });
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      month,
+      year,
+    };
+  }
+
   // ──────────────────────────────────────
   // HR: Update a single processed record's work_value
   // ──────────────────────────────────────

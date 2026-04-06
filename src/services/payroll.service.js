@@ -8,6 +8,11 @@ import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
 import sendMail from '../common/utils/mail.util.js';
 
+import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
+import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
+import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
+import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+
 const PAYROLL_STATUS = {
     DRAFT: 'DRAFT',
     PENDING_APPROVAL: 'PENDING_APPROVAL',
@@ -68,131 +73,173 @@ export class PayrollService {
         }
 
         const { payrollMonth, payrollYear } = payroll;
+        const startDate = new Date(payrollYear, payrollMonth - 1, 1);
+        const endDate = new Date(payrollYear, payrollMonth, 0, 23, 59, 59);
 
-        // 1. Get employees assigned to this payroll via PayrollDetail
+        // 1. Get employees assigned to this payroll
         const existingDetails = await this.payrollDetailRepository.findByPayroll(payrollId);
         const employees = existingDetails.map(d => d.employee).filter(Boolean);
+        if (employees.length === 0) return { calculated: 0, details: [] };
 
-        if (employees.length === 0) {
-            return { calculated: 0, details: [] };
-        }
+        const empIds = employees.map(e => e.id);
 
-        // 2. Load overtime rule (use first available)
-        const overtimeRuleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
-        const overtimeRule = await overtimeRuleRepo.findOne({ where: { isDeleted: false } });
-        const otRateWeekday = overtimeRule?.overtimeRateWeekday || 1.5;
-        const otRateWeekend = overtimeRule?.overtimeRateWeekend || 2.0;
+        // 2. Calculate Standard Days for the month (Dynamic)
+        const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
+        const holidays = await holidayRepo.find({
+            where: [
+                { startDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
+                { endDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
+                { startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]), endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]), isDeleted: false },
+            ],
+        });
+        const holidayDates = new Set();
+        holidays.forEach(h => {
+            const current = new Date(h.startDate);
+            const stop = new Date(h.endDate || h.startDate);
+            while (current <= stop) { holidayDates.add(current.toISOString().split('T')[0]); current.setDate(current.getDate() + 1); }
+        });
+        const standardDays = this._countWorkingDays(payrollYear, payrollMonth, holidayDates);
 
-        // 3. For each employee: load salary + timesheet, compute payroll detail
+        // 3. Get Processed Attendance Records & OT Details
+        const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+        const attendanceRecords = await processedRepo.createQueryBuilder('par')
+            .leftJoinAndSelect('par.request', 'req').leftJoinAndSelect('req.requestGroup', 'rg')
+            .where('MONTH(par.attendanceDate) = :m AND YEAR(par.attendanceDate) = :y', { m: payrollMonth, y: payrollYear })
+            .andWhere('par.employeeId IN (:...empIds)', { empIds }).getMany();
+
+        const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
+        const otDetails = await otDetailRepo.createQueryBuilder('otd')
+            .leftJoinAndSelect('otd.request', 'req').leftJoinAndSelect('otd.overtimeRule', 'rule').leftJoinAndSelect('rule.overtimeType', 'type')
+            .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', { m: payrollMonth, y: payrollYear })
+            .andWhere('req.status = :s', { s: 'APPROVED' })
+            .andWhere('req.employeeId IN (:...empIds)', { empIds }).getMany();
+
+        // 4. Calculate each detail
         const details = [];
         for (const employee of employees) {
-            // Get current active salary
             const salaryRepo = AppDataSource.getRepository(EmployeeSalaryEntity);
             const salary = await salaryRepo.findOne({
-                where: {
-                    employeeId: employee.id,
-                    salaryStatus: 'ACTIVE',
-                    isDeleted: false,
-                },
+                where: { employeeId: employee.id, salaryStatus: 'ACTIVE', isDeleted: false },
                 order: { effectiveFrom: 'DESC' },
             });
+            if (!salary) continue;
 
-            if (!salary) continue; // Skip employees without salary config
+            const empAttendance = attendanceRecords.filter(r => r.employeeId === employee.id);
+            const empOt = otDetails.filter(ot => ot.request?.employeeId === employee.id);
 
-            // Get timesheet for the period
-            const tsRepo = AppDataSource.getRepository(TimeSheetEntity);
-            const timesheet = await tsRepo.findOne({
-                where: {
-                    employeeId: employee.id,
-                    month: payrollMonth,
-                    year: payrollYear,
-                    isDeleted: false,
-                },
+            // AGGREGATE ATTENDANCE
+            let officialDays = 0, probationDays = 0, businessTripDays = 0, holidayDays = 0, paidLeaveDays = 0;
+            empAttendance.forEach(r => {
+                const val = Number(r.workValue) || 0;
+                if (r.attendanceStatus === 'HOLIDAY') holidayDays += val;
+                else if (r.request?.requestGroup) {
+                    const group = r.request.requestGroup.code;
+                    if (group === 'BUSINESS_TRIP' || group === 'WORK_FROM_HOME') businessTripDays += val;
+                    else if (group === 'LEAVE' && r.request.isWorkedTime) paidLeaveDays += val;
+                    else if (employee.employmentStatus === 'ACTIVE') officialDays += val;
+                    else probationDays += val;
+                } else {
+                    if (employee.employmentStatus === 'ACTIVE') officialDays += val;
+                    else probationDays += val;
+                }
             });
 
-            // Compute base salary (pro-rated if working days < standard 26 days)
-            const standardDays = 26;
-            const workingDays = timesheet ? parseFloat(timesheet.totalWorkingDays) || 0 : 0;
-            const overtimeHours = timesheet ? parseFloat(timesheet.overtimeHours) || 0 : 0;
+            // AGGREGATE OT
+            let overtimePay = 0;
+            let otWeekday = 0, otWeekdayNight = 0, otWeekend = 0, otWeekendNight = 0, otHoliday = 0, otHolidayNight = 0;
 
-            const totalBaseSalary = parseFloat(salary.baseSalary) || 0;
-            const allowances = (
-                parseFloat(salary.lunchAllowance || 0) +
-                parseFloat(salary.fuelAllowance || 0) +
-                parseFloat(salary.phoneAllowance || 0) +
-                parseFloat(salary.otherAllowance || 0) +
-                parseFloat(salary.performanceSalary || 0)
-            );
+            const hourlyRate = (parseFloat(salary.baseSalary) || 0) / (standardDays || 26) / 8;
 
-            // Pro-rate base salary by actual working days
-            const dailyRate = totalBaseSalary / standardDays;
-            const earnedBaseSalary = parseFloat((dailyRate * workingDays).toFixed(2));
+            empOt.forEach(ot => {
+                const hours = Number(ot.totalHours) || 0;
+                const multiplier = parseFloat(ot.rateMultiplier || ot.overtimeRule?.salaryMultiplier || 1.5);
+                overtimePay += hours * hourlyRate * multiplier;
 
-            // Overtime pay: hourly rate * OT hours * rate multiplier
-            const hourlyRate = totalBaseSalary / standardDays / 8;
-            const overtimePay = parseFloat((hourlyRate * overtimeHours * otRateWeekday).toFixed(2));
+                const typeCode = ot.overtimeRule?.overtimeType?.code || 'WEEKDAY';
+                const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
+                if (typeCode === 'WEEKDAY') { if (isNight) otWeekdayNight += hours; else otWeekday += hours; }
+                else if (typeCode === 'WEEKEND') { if (isNight) otWeekendNight += hours; else otWeekend += hours; }
+                else if (typeCode === 'HOLIDAY') { if (isNight) otHolidayNight += hours; else otHoliday += hours; }
+            });
 
-            // Insurance deductions (applied on base salary only)
-            const insuranceBase = Math.min(totalBaseSalary, 20 * 2_340_000); // cap at 20x regional min wage
-            const insuranceDeduction = parseFloat((
-                insuranceBase * (SOCIAL_INSURANCE_RATE + HEALTH_INSURANCE_RATE + UNEMPLOYMENT_RATE)
-            ).toFixed(2));
+            const workingDays = officialDays + probationDays + businessTripDays + holidayDays + paidLeaveDays;
+            
+            // Refined P1, P2, P3 Logic
+            const p1Amount = parseFloat(salary.baseSalary) || 0;
+            const p21Amount = (parseFloat(salary.performanceSalary) || 0) * 0.8;
+            const p22Amount = (parseFloat(salary.performanceSalary) || 0) * 0.2;
+            const p1p2Percentage = 100; // Default
+            const p3Percentage = 100; // Default
 
-            // PIT (simplified personal income tax)
-            const taxableIncome = earnedBaseSalary + allowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
-            const taxDeduction = taxableIncome > 0
-                ? parseFloat(this._calcPIT(taxableIncome).toFixed(2))
-                : 0;
+            const earnedP1 = (p1Amount / (standardDays || 26)) * (officialDays + holidayDays + paidLeaveDays);
+            const earnedP21 = (p21Amount / (standardDays || 26)) * (officialDays + holidayDays + paidLeaveDays);
+            const earnedP22 = (p22Amount / (standardDays || 26)) * (officialDays + holidayDays + paidLeaveDays);
+            const probationSalary = (p1Amount / (standardDays || 26)) * probationDays * 0.85; // 85% for probation
 
-            const netSalary = parseFloat((
-                earnedBaseSalary + allowances + overtimePay - insuranceDeduction - taxDeduction
-            ).toFixed(2));
+            const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
+            
+            const allowances = (parseFloat(salary.lunchAllowance || 0) + parseFloat(salary.fuelAllowance || 0) + parseFloat(salary.phoneAllowance || 0) + parseFloat(salary.otherAllowance || 0));
+            const insuranceBase = Math.min(parseFloat(salary.baseSalary) || 0, 20 * 2_340_000);
+            
+            const socialInsurance = parseFloat((insuranceBase * SOCIAL_INSURANCE_RATE).toFixed(2));
+            const healthInsurance = parseFloat((insuranceBase * HEALTH_INSURANCE_RATE).toFixed(2));
+            const unemploymentInsurance = parseFloat((insuranceBase * UNEMPLOYMENT_RATE).toFixed(2));
+            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
 
-            // Upsert detail
-            const existingDetail = await this.payrollDetailRepository.findByPayrollAndEmployee(
-                payrollId, employee.id
-            );
+            const taxableIncome = totalOfficialSalary + allowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
+            const taxDeduction = taxableIncome > 0 ? parseFloat(this._calcPIT(taxableIncome).toFixed(2)) : 0;
+
+            const existingDetail = await this.payrollDetailRepository.findByPayrollAndEmployee(payrollId, employee.id);
+            const bonus = parseFloat(existingDetail?.bonus || 0);
+            const penalty = parseFloat(existingDetail?.penalty || 0);
+            const deduction = parseFloat(existingDetail?.deduction || 0);
+
+            // NET SALARY AGREEMENT: Deductions (Insurance/Tax) are NOT subtracted from netSalary
+            // They are borne by the company.
+            const netSalary = parseFloat((totalOfficialSalary + allowances + overtimePay + bonus - penalty - deduction).toFixed(2));
+
+            // Company Costs
+            const companySocialInsurance = parseFloat((insuranceBase * 0.175).toFixed(2));
+            const companyHealthInsurance = parseFloat((insuranceBase * 0.03).toFixed(2));
+            const companyUnemploymentInsurance = parseFloat((insuranceBase * 0.01).toFixed(2));
+            const companyUnionFee = parseFloat((insuranceBase * 0.02).toFixed(2));
+            const totalHrCost = netSalary + insuranceDeduction + taxDeduction + companySocialInsurance + companyHealthInsurance + companyUnemploymentInsurance + companyUnionFee;
 
             const detailData = {
-                payrollId,
-                employeeId: employee.id,
-                workingDays,
-                baseSalary: earnedBaseSalary,
-                overtimePay,
-                bonus: existingDetail?.bonus || 0,
-                penalty: existingDetail?.penalty || 0,
-                deduction: existingDetail?.deduction || 0,
-                insuranceDeduction,
-                taxDeduction,
-                netSalary: parseFloat((netSalary + parseFloat(existingDetail?.bonus || 0) - parseFloat(existingDetail?.penalty || 0) - parseFloat(existingDetail?.deduction || 0)).toFixed(2)),
-                note: existingDetail?.note || null,
-                // Granular timesheet snapshot
-                standardDays: timesheet?.standardDays || 0,
-                officialDays: timesheet?.officialDays || 0,
-                probationDays: timesheet?.probationDays || 0,
-                businessTripDays: timesheet?.businessTripDays || 0,
-                holidayDays: timesheet?.holidayDays || 0,
-                benefitLeaveDays: timesheet?.benefitLeaveDays || 0,
-                annualLeaveDays: timesheet?.annualLeaveDays || 0,
-                unpaidLeaveDays: timesheet?.unpaidLeaveDays || 0,
-                nightShiftOfficialDays: timesheet?.nightShiftOfficialDays || 0,
-                nightShiftProbationDays: timesheet?.nightShiftProbationDays || 0,
-                waitingDays: timesheet?.waitingDays || 0,
-                mealCount: timesheet?.mealCount || 0,
-                usedLeaveDays: timesheet?.usedLeaveDays || 0,
-                remainingLeaveDays: timesheet?.remainingLeaveDays || 0,
+                payrollId, employeeId: employee.id,
+                workingDays, baseSalary: p1Amount, overtimePay: parseFloat(overtimePay.toFixed(2)),
+                bonus, penalty, deduction, insuranceDeduction, taxDeduction, netSalary,
+                standardDays, officialDays, probationDays, businessTripDays, holidayDays,
+                benefitLeaveDays: paidLeaveDays,
+                otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight,
+                totalOtHours: otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight,
+                // New Fields
+                p1Amount, p21Amount, p22Amount, p1p2Percentage, p3Percentage,
+                probationAmount: probationSalary,
+                socialInsurance, healthInsurance, unemploymentInsurance,
+                taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
+                companySocialInsurance,
+                companyHealthInsurance,
+                companyUnemploymentInsurance,
+                companyUnionFee,
+                totalHrCost: parseFloat(totalHrCost.toFixed(2))
             };
 
-            let detail;
-            if (existingDetail) {
-                detail = await this.payrollDetailRepository.update(existingDetail.id, detailData);
-            } else {
-                detail = await this.payrollDetailRepository.create(detailData);
-            }
-            details.push(detail);
+            details.push(existingDetail ? await this.payrollDetailRepository.update(existingDetail.id, detailData) : await this.payrollDetailRepository.create(detailData));
         }
-
         return { calculated: details.length, details };
+    }
+
+    _countWorkingDays(year, month, holidayDates) {
+        const daysInMonth = new Date(year, month, 0).getDate();
+        let count = 0;
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month - 1, day);
+            const dayOfWeek = date.getDay();
+            const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateKey)) count++;
+        }
+        return count;
     }
 
     async updateDetail(detailId, dto) {
@@ -208,14 +255,13 @@ export class PayrollService {
         const deduction = dto.deduction !== undefined ? parseFloat(dto.deduction) : parseFloat(detail.deduction);
         const penalty = dto.penalty !== undefined ? parseFloat(dto.penalty) : parseFloat(detail.penalty);
 
+        // NET SALARY AGREEMENT: Deductions (Insurance/Tax) are NOT subtracted from netSalary
         const netSalary = parseFloat((
             parseFloat(detail.baseSalary) +
             parseFloat(detail.overtimePay) +
             bonus -
             deduction -
-            penalty -
-            parseFloat(detail.insuranceDeduction) -
-            parseFloat(detail.taxDeduction)
+            penalty
         ).toFixed(2));
 
         return this.payrollDetailRepository.update(detailId, {
