@@ -15,6 +15,9 @@ router.get('/pending', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'),
 // GET /requests/workflow-preview
 router.get('/workflow-preview', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getWorkflowPreview);
 
+// GET /requests/quota-status — Kiểm tra hạn mức policy
+router.get('/quota-status', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getQuotaStatus);
+
 // GET /requests — Tất cả (HR/Admin)
 router.get('/', authMiddleware, permissionsMiddleware('REQUEST_VIEW_ALL'), requestsController.getAllRequests);
 

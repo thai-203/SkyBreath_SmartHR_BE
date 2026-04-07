@@ -55,8 +55,12 @@ export class RequestTypesService {
         // Tạo loại đơn
         const newType = await this.repository.create({ ...typeData, requestGroupId });
 
-        // Tạo policy nêys có gửi kèm
+        // Tạo policy nếu có gửi kèm
         if (policy) {
+            if (policy.isUnlimited) {
+                policy.maxQuantity = 0;
+            }
+            delete policy.isUnlimited;
             await this.policyRepo.upsert(newType.id, policy);
         }
 
@@ -99,6 +103,10 @@ export class RequestTypesService {
                 // Remove policy
                 await this.policyRepo.deleteByTypeId(id);
             } else {
+                if (policy.isUnlimited) {
+                    policy.maxQuantity = 0;
+                }
+                delete policy.isUnlimited;
                 await this.policyRepo.upsert(id, policy);
             }
         }
@@ -114,6 +122,11 @@ export class RequestTypesService {
     async updatePolicy(id, policyData) {
         // Kiểm tra loại đơn có tồn tại không
         await this.findById(id);
+
+        if (policyData.isUnlimited) {
+            policyData.maxQuantity = 0;
+        }
+        delete policyData.isUnlimited;
 
         // Upsert policy
         await this.policyRepo.upsert(id, policyData);

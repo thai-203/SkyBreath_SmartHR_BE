@@ -35,6 +35,7 @@ export class RequestsRepository {
                 'createdByEmployee',
                 'requestType',
                 'requestGroup',
+                'overtimeType',
                 'cancelledByEmployee',
             ],
         });
@@ -190,4 +191,33 @@ export class RequestsRepository {
         const seqStr = String(seq).padStart(4, '0');
         return `REQ-${datePart}-${seqStr}`;
     }
+
+    /**
+     * Lấy các đơn đã PENDING/APPROVED trong khoảng thời gian để tính quota đã dùng
+     * @param {number} employeeId
+     * @param {number} requestTypeId
+     * @param {Date} periodStart - đầu chu kỳ
+     * @param {Date} periodEnd - cuối chu kỳ
+     * @param {number|null} excludeRequestId - loại trừ đơn này (khi đang edit)
+     */
+    async findUsedRequests({ employeeId, requestTypeId, periodStart, periodEnd, excludeRequestId = null }) {
+        const query = this.repository
+            .createQueryBuilder('r')
+            .where('r.isDeleted = false')
+            .andWhere('r.employeeId = :employeeId', { employeeId })
+            .andWhere('r.requestTypeId = :requestTypeId', { requestTypeId })
+            .andWhere('r.status IN (:...statuses)', { statuses: ['PENDING', 'APPROVED'] })
+            .andWhere('r.startDate IS NOT NULL')
+            .andWhere('r.endDate IS NOT NULL')
+            // Chỉ lấy các đơn giao nhau với chu kỳ
+            .andWhere('r.startDate <= :periodEnd', { periodEnd: periodEnd.toISOString().slice(0, 10) })
+            .andWhere('r.endDate >= :periodStart', { periodStart: periodStart.toISOString().slice(0, 10) });
+
+        if (excludeRequestId) {
+            query.andWhere('r.id != :excludeId', { excludeId: excludeRequestId });
+        }
+
+        return await query.getMany();
+    }
 }
+

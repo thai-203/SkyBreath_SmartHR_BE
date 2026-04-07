@@ -42,6 +42,7 @@ import { ContractsService } from './services/contracts.service.js';
 import { startTimesheetAutoGenerateJob } from './jobs/timesheet-auto-generate.job.js';
 import { startAttendanceSyncJob } from './jobs/attendance-sync.job.js';
 import { startHolidayReminderJob } from './jobs/holiday-reminder.job.js';
+import { startScheduledNotificationJob } from './jobs/scheduled-notification.job.js';
 import { requestContextMiddleware } from './common/middleware/request-context.middleware.js';
 import { faceRecognitionConfigRoutes } from './routes/face-recognition-config.routes.js';
 import faceRoutes from './routes/face.routes.js';
@@ -217,6 +218,13 @@ const startServer = async () => {
         startHolidayReminderJob();
       } catch (e) {
         console.error('Failed to initialize holiday reminder job', e);
+      }
+
+      // Scheduled notification dispatcher (every minute)
+      try {
+        startScheduledNotificationJob();
+      } catch (e) {
+        console.error('Failed to initialize scheduled notification job', e);
       }
     });
   } catch (error) {
