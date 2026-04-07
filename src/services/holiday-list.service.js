@@ -41,8 +41,8 @@ export class HolidayListService {
             }
 
             const compDate = new Date(cd.date + "T00:00:00");
-            if (compDate < today) {
-                throw new BadRequestException(`Tại ngày làm bù thứ ${i + 1}: Ngày làm bù không được chọn trong quá khứ.`);
+            if (isNaN(compDate.getTime()) || compDate < today) {
+                throw new BadRequestException(`Tại ngày làm bù thứ ${i + 1}: Ngày làm bù không được chọn trong quá khứ hoặc không hợp lệ.`);
             }
 
             const dayOfWeek = compDate.getDay();
