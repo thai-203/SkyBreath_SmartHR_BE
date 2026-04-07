@@ -15,6 +15,54 @@ import { ExcelUtil } from '../common/utils/excel.util.js';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { RequestEntity } from '../models/entities/request.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
+import { RequestGroupCode } from '../common/enums/request.enum.js';
+
+/** Đơn được hợp nhất vào bảng công khi sync — theo request_groups.code (không gồm OVERTIME). */
+const TIMESHEET_SYNC_REQUEST_GROUP_CODES = [
+  RequestGroupCode.LEAVE,
+  RequestGroupCode.BUSINESS_TRIP,
+  RequestGroupCode.ATTENDANCE_CORRECTION,
+];
+
+/** Cùng ngày có nhiều đơn: ưu tiên LEAVE > CT > cập nhật công. */
+const TIMESHEET_SYNC_GROUP_PRIORITY = {
+  [RequestGroupCode.LEAVE]: 3,
+  [RequestGroupCode.BUSINESS_TRIP]: 2,
+  [RequestGroupCode.ATTENDANCE_CORRECTION]: 1,
+};
+
+/** Chuẩn hóa DATE từ DB (string hoặc Date) → YYYY-MM-DD; Date dùng UTC tránh lệch múi giờ. */
+function _dateKeyFromRequestField(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Chọn đơn áp dụng cho một ngày (nghỉ nhiều ngày: mỗi ngày trong [start_date, end_date] trùng cùng request). */
+function _pickSyncRequestForDay(empRequests, calendarDateKey) {
+  const candidates = empRequests.filter((r) => {
+    const code = r.requestGroup?.code;
+    if (!code || !TIMESHEET_SYNC_GROUP_PRIORITY[code]) return false;
+    const start = _dateKeyFromRequestField(r.startDate);
+    if (!start) return false;
+    const end = _dateKeyFromRequestField(r.endDate) || start;
+    return calendarDateKey >= start && calendarDateKey <= end;
+  });
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+  candidates.sort((a, b) => {
+    const pa = TIMESHEET_SYNC_GROUP_PRIORITY[a.requestGroup?.code] || 0;
+    const pb = TIMESHEET_SYNC_GROUP_PRIORITY[b.requestGroup?.code] || 0;
+    if (pb !== pa) return pb - pa;
+    return (a.id || 0) - (b.id || 0);
+  });
+  return candidates[0];
+}
 
 export class TimesheetsService {
   constructor(timesheetsRepository, actionLogsService) {
@@ -575,7 +623,8 @@ export class TimesheetsService {
                 lateMinutes: r.lateMinutes,
                 earlyLeaveMinutes: r.earlyMinutes,
                 attendanceStatus: r.attendanceStatus,
-                workingHours: r.workValue
+                workingHours: r.workValue,
+                requestId: r.requestId ?? null,
             };
         });
 
@@ -725,6 +774,37 @@ export class TimesheetsService {
       relations: ['requestGroup'],
     });
 
+    // Fetch processed records (requestId per day) for UI linking
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity,
+    );
+    const processedRecords = await processedRepo
+      .createQueryBuilder('par')
+      .where('MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year', {
+        month: timesheet.month,
+        year: timesheet.year,
+      })
+      .andWhere('par.employeeId = :employeeId', { employeeId: timesheet.employeeId })
+      .getMany();
+
+    const requestIdByFormattedDate = new Map();
+    for (const r of processedRecords) {
+      if (!r.attendanceDate) continue;
+      let formattedDate = r.attendanceDate;
+      if (typeof r.attendanceDate === 'string') {
+        const parts = r.attendanceDate.split('-');
+        if (parts.length === 3) formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      } else if (r.attendanceDate instanceof Date) {
+        formattedDate = `${String(r.attendanceDate.getDate()).padStart(2, '0')}/${String(
+          r.attendanceDate.getMonth() + 1,
+        ).padStart(2, '0')}/${r.attendanceDate.getFullYear()}`;
+      }
+      requestIdByFormattedDate.set(formattedDate, r.requestId ?? null);
+    }
+
     // Build daily detail with on-the-fly computation
     const dailyDetails = this._buildDailyDetails(
       records,
@@ -747,6 +827,7 @@ export class TimesheetsService {
       shiftName: shift?.shiftName || null,
       shiftStartTime,
       shiftEndTime,
+      requestId: requestIdByFormattedDate.get(d.date) ?? null,
     }));
 
     return {
@@ -1731,231 +1812,419 @@ export class TimesheetsService {
   // NEW: Processed Attendance Synchronization
   // ──────────────────────────────────────
   async syncAttendance(month, year, departmentId, userContext) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
-
-    // 1. Get employees
-    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
-    const employeeQuery = employeeRepo.createQueryBuilder('employee')
-      .where('employee.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('employee.employmentStatus IN (:...statuses)', { statuses: ['ACTIVE', 'PROBATION'] });
-    if (departmentId) {
-      employeeQuery.andWhere('employee.departmentId = :departmentId', { departmentId });
-    }
-    const employees = await employeeQuery.getMany();
-    if (employees.length === 0) return { synced: 0 };
-
-    // 2. Fetch raw attendance records
-    const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
-    const rawRecords = await attendanceRepo.createQueryBuilder('att')
-      .where('att.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('att.checkInTime >= :start', { start: startDate })
-      .andWhere('att.checkInTime <= :end', { end: endDate })
-      .getMany();
-
-    const currentMonthData = new Map();
-    rawRecords.forEach(record => {
-      const d = new Date(record.checkInTime || record.checkOutTime);
-      if (!d || isNaN(d.getTime())) return;
-      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const empMap = currentMonthData.get(record.employeeId) || new Map();
-      
-      const existing = empMap.get(dateKey);
-      if (!existing) {
-        empMap.set(dateKey, record);
-      } else {
-        if (record.checkInTime && new Date(record.checkInTime) < new Date(existing.checkInTime)) existing.checkInTime = record.checkInTime;
-        if (record.checkOutTime && new Date(record.checkOutTime) > new Date(existing.checkOutTime)) existing.checkOutTime = record.checkOutTime;
-      }
-      currentMonthData.set(record.employeeId, empMap);
-    });
-
-    // 3. Fetch approved requests
-    const requestRepo = AppDataSource.getRepository(RequestEntity);
-    const requests = await requestRepo.find({
-        where: { status: 'APPROVED', isDeleted: false },
-        relations: ['requestGroup', 'requestType']
-    });
-
-    // 4. Fetch holidays
-    const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
-    const holidays = await holidayRepo.find({ where: { isDeleted: false }});
-    const holidayDates = new Set();
-    holidays.forEach(h => {
-        const start = new Date(h.startDate);
-        const end = new Date(h.endDate || h.startDate);
-        if (start.getFullYear() === year && start.getMonth() + 1 === month) {
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                holidayDates.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-            }
-        }
-    });
-
-    // 5. Fetch Penalty Rules
-    const { PenaltyEntity } = await import('../models/entities/penalty.entity.js');
-    const penaltyRepo = AppDataSource.getRepository(PenaltyEntity);
-    const penaltyRules = await penaltyRepo.find({
-        where: { status: 'ACTIVE', isDeleted: false }
-    });
-
-    // 6. Delete old processed records
-    const { ProcessedAttendanceRecordEntity } = await import('../models/entities/processed-attendance-record.entity.js');
-    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
-    const deleteQuery = processedRepo.createQueryBuilder().delete()
-        .where('MONTH(attendance_date) = :month AND YEAR(attendance_date) = :year', { month, year });
-    if (departmentId) {
-        deleteQuery.andWhere('employee_id IN (SELECT id FROM employees WHERE department_id = :departmentId)', { departmentId });
-    }
-    await deleteQuery.execute();
-
-    // 7. Rebuild day by day
-    const recordsToBuild = [];
+    const monthStart = new Date(year, month - 1, 1);
+    const nextMonthStart = new Date(year, month, 1);
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    for (const emp of employees) {
-        const empRawMap = currentMonthData.get(emp.id) || new Map();
-        const empRequests = requests.filter(r => r.employeeId === emp.id);
-        const shift = await this._getEmployeeShift(emp.id, month, year);
-        const shiftStartStr = shift?.startTime || "08:00:00";
-        const shiftEndStr = shift?.endTime || "17:00:00";
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const dateObj = new Date(year, month - 1, day);
-            const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+    // 1) Get employees (scoped by department if provided)
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const employeeQuery = employeeRepo
+      .createQueryBuilder('employee')
+      .select(['employee.id'])
+      .where('employee.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('employee.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
+    if (departmentId) {
+      employeeQuery.andWhere('employee.departmentId = :departmentId', {
+        departmentId,
+      });
+    }
+    const employees = await employeeQuery.getMany();
+    const employeeIds = employees.map((e) => e.id);
+    if (employeeIds.length === 0) return { synced: 0 };
 
-            const raw = empRawMap.get(dateStr);
-            const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
-            const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
+    // 2) Fetch raw attendance records (ONLY for employees in scope)
+    //    Note: restrict by employeeIds early to avoid scanning whole table.
+    const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
+    const rawRecords = await attendanceRepo
+      .createQueryBuilder('att')
+      .select([
+        'att.id',
+        'att.employeeId',
+        'att.checkInTime',
+        'att.checkOutTime',
+      ])
+      .where('att.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('att.employeeId IN (:...employeeIds)', { employeeIds })
+      .andWhere('att.checkInTime >= :start', { start: monthStart })
+      .andWhere('att.checkInTime < :end', { end: nextMonthStart })
+      .getMany();
 
-            const shiftStart = new Date(`${dateStr}T${shiftStartStr}`);
-            const shiftEnd = new Date(`${dateStr}T${shiftEndStr}`);
-
-            let lateMins = 0;
-            let earlyMins = 0;
-            if (checkIn && checkIn > shiftStart) {
-                lateMins = Math.floor((checkIn - shiftStart) / 60000);
-            }
-            if (checkOut && checkOut < shiftEnd) {
-                earlyMins = Math.floor((shiftEnd - checkOut) / 60000);
-            }
-
-            let attendanceStatus = 'ABSENT';
-            let workValue = 0.0;
-            let reqId = null;
-
-            if (checkIn || checkOut) {
-                 attendanceStatus = 'X';
-                 workValue = 1.0;
-
-                 const validPenaltyRules = penaltyRules.filter(pr => {
-                     let from = null, to = null;
-                     if (pr.effectiveFrom) { from = new Date(pr.effectiveFrom); from.setHours(0,0,0,0); }
-                     if (pr.effectiveTo) { to = new Date(pr.effectiveTo); to.setHours(23,59,59,999); }
-                     return pr.status === 'ACTIVE' 
-                         && !pr.isDeleted
-                         && (!from || dateObj >= from)
-                         && (!to || dateObj <= to);
-                 });
-
-                 let totalPenaltyHours = 0;
-                 const latePenalty = validPenaltyRules.find(pr => pr.violationType === 'LATE' && lateMins >= pr.fromMinute && lateMins <= pr.toMinute);
-                 const earlyPenalty = validPenaltyRules.find(pr => pr.violationType === 'EARLY' && earlyMins >= pr.fromMinute && earlyMins <= pr.toMinute);
-
-                 if (latePenalty && latePenalty.convertedHours) {
-                     totalPenaltyHours += Number(latePenalty.convertedHours);
-                 }
-                 if (earlyPenalty && earlyPenalty.convertedHours) {
-                     totalPenaltyHours += Number(earlyPenalty.convertedHours);
-                 }
-
-                 if (totalPenaltyHours > 0) {
-                     workValue -= (totalPenaltyHours / 8);
-                     if (workValue <= 0) {
-                         workValue = 0;
-                         attendanceStatus = 'ABSENT';
-                     } else if (workValue < 1.0) {
-                         attendanceStatus = 'KL'; // Penalty Partial
-                     }
-                 }
-            }
-
-            const overlappingReq = empRequests.find(r => {
-                if (!r.startDate || !r.endDate) return false;
-                const rs = new Date(r.startDate);
-                const re = new Date(r.endDate);
-                return dateObj >= new Date(rs.getFullYear(), rs.getMonth(), rs.getDate()) &&
-                       dateObj <= new Date(re.getFullYear(), re.getMonth(), re.getDate());
-            });
-
-            if (overlappingReq) {
-                const groupCode = overlappingReq.requestGroup?.code;
-                if (groupCode === 'LEAVE') {
-                    attendanceStatus = 'LEAVE';
-                    workValue = overlappingReq.isWorkedTime ? 1.0 : 0.0;
-                } else if (groupCode === 'BUSINESS_TRIP') {
-                    attendanceStatus = 'CT';
-                    workValue = 1.0;
-                } else if (groupCode === 'LATE_EARLY' || groupCode === 'ATTENDANCE_CORRECTION') {
-                    attendanceStatus = 'X';
-                    lateMins = 0; earlyMins = 0;
-                    if(workValue === 0) workValue = 1.0;
-                }
-                reqId = overlappingReq.id;
-            } else if (holidayDates.has(dateStr)) {
-                if (isWeekend) {
-                   attendanceStatus = 'L';
-                   workValue = 1.0; // Holidays give 1 công even if weekend
-                } else {
-                   attendanceStatus = 'L';
-                   workValue = 1.0;
-                }
-            } else if (isWeekend && !checkIn && !checkOut) {
-                attendanceStatus = 'WEEKEND';
-                workValue = 0.0;
-            }
-
-            if (attendanceStatus === 'ABSENT' && !isWeekend && !holidayDates.has(dateStr)) {
-                attendanceStatus = 'ABSENT';
-                workValue = 0.0;
-            }
-
-            const record = processedRepo.create({
-                employeeId: emp.id,
-                attendanceDate: dateStr,
-                checkInTime: checkIn,
-                checkOutTime: checkOut,
-                shiftStartTime: shiftStartStr,
-                shiftEndTime: shiftEndStr,
-                lateMinutes: lateMins,
-                earlyMinutes: earlyMins,
-                attendanceStatus: attendanceStatus,
-                workValue: workValue,
-                sourceType: 1,
-                rawRecordId: raw?.id || null,
-                requestId: reqId
-            });
-            recordsToBuild.push(record);
+    // Build minimal map: employeeId -> dateKey -> { id, checkInTime, checkOutTime }
+    const currentMonthData = new Map();
+    for (const record of rawRecords) {
+      const d = new Date(record.checkInTime || record.checkOutTime);
+      if (!d || Number.isNaN(d.getTime())) continue;
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      let empMap = currentMonthData.get(record.employeeId);
+      if (!empMap) {
+        empMap = new Map();
+        currentMonthData.set(record.employeeId, empMap);
+      }
+      const existing = empMap.get(dateKey);
+      if (!existing) {
+        empMap.set(dateKey, {
+          id: record.id,
+          checkInTime: record.checkInTime || null,
+          checkOutTime: record.checkOutTime || null,
+        });
+      } else {
+        if (
+          record.checkInTime &&
+          (!existing.checkInTime ||
+            new Date(record.checkInTime) < new Date(existing.checkInTime))
+        ) {
+          existing.checkInTime = record.checkInTime;
         }
+        if (
+          record.checkOutTime &&
+          (!existing.checkOutTime ||
+            new Date(record.checkOutTime) > new Date(existing.checkOutTime))
+        ) {
+          existing.checkOutTime = record.checkOutTime;
+        }
+      }
     }
 
-    const chunkSize = 500;
-    for (let i = 0; i < recordsToBuild.length; i += chunkSize) {
-        await processedRepo.save(recordsToBuild.slice(i, i + chunkSize));
+    // 3) Approved requests used for sync (LEAVE/BUSINESS_TRIP/ATTENDANCE_CORRECTION) in one query
+    const requestRepo = AppDataSource.getRepository(RequestEntity);
+    const requests = await requestRepo
+      .createQueryBuilder('r')
+      .innerJoinAndSelect('r.requestGroup', 'requestGroup')
+      .leftJoinAndSelect('r.requestType', 'requestType')
+      .where('r.status = :status', { status: 'APPROVED' })
+      .andWhere('r.isDeleted = :isDel', { isDel: false })
+      .andWhere('r.employeeId IN (:...employeeIds)', { employeeIds })
+      .andWhere('requestGroup.code IN (:...codes)', {
+        codes: TIMESHEET_SYNC_REQUEST_GROUP_CODES,
+      })
+      .andWhere('r.startDate IS NOT NULL')
+      .andWhere('r.startDate <= :monthEnd', { monthEnd: monthEndStr })
+      .andWhere('COALESCE(r.endDate, r.startDate) >= :monthStart', {
+        monthStart: monthStartStr,
+      })
+      .getMany();
+
+    // Index requests by employeeId (avoid filter() inside main loop)
+    const requestsByEmployeeId = new Map();
+    for (const r of requests) {
+      const list = requestsByEmployeeId.get(r.employeeId) || [];
+      list.push(r);
+      requestsByEmployeeId.set(r.employeeId, list);
     }
+
+    // 4) Fetch holidays overlapping this month only
+    const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
+    const holidays = await holidayRepo.find({
+      where: [
+        {
+          startDate: Between(monthStartStr, monthEndStr),
+          isDeleted: false,
+        },
+        {
+          endDate: Between(monthStartStr, monthEndStr),
+          isDeleted: false,
+        },
+        {
+          startDate: LessThanOrEqual(monthStartStr),
+          endDate: MoreThanOrEqual(monthEndStr),
+          isDeleted: false,
+        },
+      ],
+    });
+    const holidayDates = new Set();
+    for (const h of holidays) {
+      const start = new Date(h.startDate);
+      const end = new Date(h.endDate || h.startDate);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (key >= monthStartStr && key <= monthEndStr) {
+          holidayDates.add(key);
+        }
+      }
+    }
+
+    // 5) Fetch penalty rules and precompute applicable lookups per day-of-month
+    const { PenaltyEntity } = await import('../models/entities/penalty.entity.js');
+    const penaltyRepo = AppDataSource.getRepository(PenaltyEntity);
+    const allPenaltyRules = await penaltyRepo.find({
+      where: { status: 'ACTIVE', isDeleted: false },
+    });
+    const rulesOverlappingMonth = allPenaltyRules.filter((pr) => {
+      const from = pr.effectiveFrom ? new Date(pr.effectiveFrom) : null;
+      const to = pr.effectiveTo ? new Date(pr.effectiveTo) : null;
+      if (from) from.setHours(0, 0, 0, 0);
+      if (to) to.setHours(23, 59, 59, 999);
+      return (!from || from < nextMonthStart) && (!to || to >= monthStart);
+    });
+
+    const penaltyLookupByDay = new Array(daysInMonth + 1);
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateObj = new Date(year, month - 1, day);
+      dateObj.setHours(12, 0, 0, 0); // safe mid-day to avoid DST edge
+      const applicable = rulesOverlappingMonth.filter((pr) => {
+        const from = pr.effectiveFrom ? new Date(pr.effectiveFrom) : null;
+        const to = pr.effectiveTo ? new Date(pr.effectiveTo) : null;
+        if (from) from.setHours(0, 0, 0, 0);
+        if (to) to.setHours(23, 59, 59, 999);
+        return (!from || dateObj >= from) && (!to || dateObj <= to);
+      });
+      penaltyLookupByDay[day] = {
+        late: applicable
+          .filter((pr) => pr.violationType === 'LATE')
+          .map((pr) => ({
+            fromMinute: pr.fromMinute,
+            toMinute: pr.toMinute,
+            convertedHours: Number(pr.convertedHours || 0),
+          })),
+        early: applicable
+          .filter((pr) => pr.violationType === 'EARLY')
+          .map((pr) => ({
+            fromMinute: pr.fromMinute,
+            toMinute: pr.toMinute,
+            convertedHours: Number(pr.convertedHours || 0),
+          })),
+      };
+    }
+    const penaltyHours = (ranges, mins) => {
+      if (!mins || mins <= 0) return 0;
+      for (const r of ranges) {
+        if (mins >= r.fromMinute && mins <= r.toMinute) return r.convertedHours;
+      }
+      return 0;
+    };
+
+    // 6) Batch load shift assignment (one query) and pick latest per employee
+    const assignmentRepo = AppDataSource.getRepository(ShiftAssignmentEntity);
+    const assignments = await assignmentRepo.find({
+      where: { employeeId: In(employeeIds), isDeleted: false },
+      relations: ['shift'],
+      order: { effectiveFrom: 'DESC' },
+    });
+    const shiftByEmployeeId = new Map();
+    for (const a of assignments) {
+      if (!shiftByEmployeeId.has(a.employeeId) && a.shift) {
+        shiftByEmployeeId.set(a.employeeId, a.shift);
+      }
+    }
+    const defaultShift = await this._getDefaultShift();
+
+    // 7) Delete old processed records fast (range scan), but KEEP manual/finalized records
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity
+    );
+
+    // Build protected keys (manual or finalized) so we don't overwrite them.
+    // Fast-path: if none exist for this month, skip this extra query and set work.
+    const maybeProtectedCount = await processedRepo
+      .createQueryBuilder('par')
+      .where('par.employeeId IN (:...employeeIds)', { employeeIds })
+      .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere('(par.sourceType = :manual OR par.isFinalized = :final)', {
+        manual: 2,
+        final: true,
+      })
+      .getCount();
+
+    const protectedKeySet = new Set();
+    if (maybeProtectedCount > 0) {
+      const protectedRows = await processedRepo
+        .createQueryBuilder('par')
+        .select(['par.employeeId', 'par.attendanceDate'])
+        .where('par.employeeId IN (:...employeeIds)', { employeeIds })
+        .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
+          start: monthStartStr,
+          end: monthEndStr,
+        })
+        .andWhere('(par.sourceType = :manual OR par.isFinalized = :final)', {
+          manual: 2,
+          final: true,
+        })
+        .getMany();
+
+      for (const r of protectedRows) {
+        protectedKeySet.add(
+          `${r.employeeId}|${String(r.attendanceDate).slice(0, 10)}`
+        );
+      }
+    }
+
+    await processedRepo
+      .createQueryBuilder()
+      .delete()
+      .where('employee_id IN (:...employeeIds)', { employeeIds })
+      .andWhere('attendance_date >= :start AND attendance_date <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere('source_type <> :manual', { manual: 2 })
+      .andWhere('is_finalized = :final', { final: false })
+      .execute();
+
+    // 8) Rebuild day-by-day using pure objects + bulk insert (faster than entity create/save)
+    const recordsToInsert = [];
+    for (const empId of employeeIds) {
+      const empRawMap = currentMonthData.get(empId) || new Map();
+      const empRequests = requestsByEmployeeId.get(empId) || [];
+      const shift = shiftByEmployeeId.get(empId) || defaultShift;
+      const shiftStartStr = shift?.startTime || '08:00:00';
+      const shiftEndStr = shift?.endTime || '17:00:00';
+      const workingShiftId = shift?.id || null;
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (protectedKeySet.has(`${empId}|${dateStr}`)) continue;
+
+        const dateObj = new Date(year, month - 1, day);
+        const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+
+        const raw = empRawMap.get(dateStr);
+        const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
+        const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
+
+        const shiftStart = new Date(`${dateStr}T${shiftStartStr}`);
+        const shiftEnd = new Date(`${dateStr}T${shiftEndStr}`);
+
+        let lateMins = 0;
+        let earlyMins = 0;
+        if (checkIn && checkIn > shiftStart) {
+          lateMins = Math.floor((checkIn - shiftStart) / 60000);
+        }
+        if (checkOut && checkOut < shiftEnd) {
+          earlyMins = Math.floor((shiftEnd - checkOut) / 60000);
+        }
+
+        let attendanceStatus = 'ABSENT';
+        let workValue = 0.0;
+        let reqId = null;
+
+        if (checkIn || checkOut) {
+          attendanceStatus = 'X';
+          workValue = 1.0;
+
+          const lookup = penaltyLookupByDay[day];
+          const lateHours = penaltyHours(lookup.late, lateMins);
+          const earlyHours = penaltyHours(lookup.early, earlyMins);
+          const totalPenaltyHours = lateHours + earlyHours;
+
+          if (totalPenaltyHours > 0) {
+            workValue -= totalPenaltyHours / 8;
+            if (workValue <= 0) {
+              workValue = 0;
+              attendanceStatus = 'ABSENT';
+            } else if (workValue < 1.0) {
+              attendanceStatus = 'KL';
+            }
+          }
+        }
+
+        const overlappingReq = _pickSyncRequestForDay(empRequests, dateStr);
+        if (overlappingReq) {
+          const groupCode = overlappingReq.requestGroup?.code;
+          if (groupCode === RequestGroupCode.LEAVE) {
+            attendanceStatus = 'LEAVE';
+            workValue = overlappingReq.isWorkedTime ? 1.0 : 0.0;
+          } else if (groupCode === RequestGroupCode.BUSINESS_TRIP) {
+            attendanceStatus = 'CT';
+            workValue = 1.0;
+          } else if (groupCode === RequestGroupCode.ATTENDANCE_CORRECTION) {
+            attendanceStatus = 'X';
+            lateMins = 0;
+            earlyMins = 0;
+            if (workValue === 0) workValue = 1.0;
+          }
+          reqId = overlappingReq.id;
+        } else if (holidayDates.has(dateStr)) {
+          attendanceStatus = 'L';
+          workValue = 1.0;
+        } else if (isWeekend && !checkIn && !checkOut) {
+          attendanceStatus = 'WEEKEND';
+          workValue = 0.0;
+        }
+
+        if (
+          attendanceStatus === 'ABSENT' &&
+          !isWeekend &&
+          !holidayDates.has(dateStr)
+        ) {
+          attendanceStatus = 'ABSENT';
+          workValue = 0.0;
+        }
+
+        recordsToInsert.push({
+          employeeId: empId,
+          attendanceDate: dateStr,
+          workingShiftId,
+          checkInTime: checkIn,
+          checkOutTime: checkOut,
+          shiftStartTime: shiftStartStr,
+          shiftEndTime: shiftEndStr,
+          lateMinutes: lateMins,
+          earlyMinutes: earlyMins,
+          attendanceStatus,
+          workValue,
+          sourceType: 1,
+          rawRecordId: raw?.id || null,
+          requestId: reqId,
+          isFinalized: false,
+          updatedBy: userContext?.id || null,
+        });
+      }
+    }
+
+    // Parallel inserts (controlled concurrency) to better utilize DB throughput.
+    // Tune via env if needed.
+    const chunkSize = parseInt(process.env.TIMESHEETS_SYNC_INSERT_CHUNK || '5000', 10);
+    const insertConcurrency = parseInt(process.env.TIMESHEETS_SYNC_INSERT_CONCURRENCY || '4', 10);
+
+    const chunks = [];
+    for (let i = 0; i < recordsToInsert.length; i += chunkSize) {
+      chunks.push(recordsToInsert.slice(i, i + chunkSize));
+    }
+
+    const runPool = async (items, worker, concurrency) => {
+      const c = Math.max(1, concurrency || 1);
+      let idx = 0;
+      const runners = new Array(Math.min(c, items.length)).fill(null).map(async () => {
+        while (idx < items.length) {
+          const current = idx++;
+          await worker(items[current], current);
+        }
+      });
+      await Promise.all(runners);
+    };
+
+    await runPool(
+      chunks,
+      async (chunk) => {
+        await processedRepo.insert(chunk);
+      },
+      insertConcurrency
+    );
 
     if (this.actionLogsService) {
-        await this.actionLogsService.log({
-          userId: userContext.id,
-          actionType: 'SYNC_ATTENDANCE',
-          targetTable: 'processed_attendance_records',
-          description: `Synced ${recordsToBuild.length} records for month ${month}/${year}`
-        });
+      await this.actionLogsService.log({
+        userId: userContext?.id,
+        actionType: 'SYNC_ATTENDANCE',
+        targetTable: 'processed_attendance_records',
+        description: `Synced ${recordsToInsert.length} records for month ${month}/${year}`,
+      });
     }
 
     return {
-        message: 'Sync completed successfully',
-        syncedRecords: recordsToBuild.length
+      message: 'Sync completed successfully',
+      syncedRecords: recordsToInsert.length,
+      keptManualOrFinalized: protectedKeySet.size,
     };
   }
 
