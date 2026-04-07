@@ -15,6 +15,54 @@ import { ExcelUtil } from '../common/utils/excel.util.js';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { RequestEntity } from '../models/entities/request.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
+import { RequestGroupCode } from '../common/enums/request.enum.js';
+
+/** Đơn được hợp nhất vào bảng công khi sync — theo request_groups.code (không gồm OVERTIME). */
+const TIMESHEET_SYNC_REQUEST_GROUP_CODES = [
+  RequestGroupCode.LEAVE,
+  RequestGroupCode.BUSINESS_TRIP,
+  RequestGroupCode.ATTENDANCE_CORRECTION,
+];
+
+/** Cùng ngày có nhiều đơn: ưu tiên LEAVE > CT > cập nhật công. */
+const TIMESHEET_SYNC_GROUP_PRIORITY = {
+  [RequestGroupCode.LEAVE]: 3,
+  [RequestGroupCode.BUSINESS_TRIP]: 2,
+  [RequestGroupCode.ATTENDANCE_CORRECTION]: 1,
+};
+
+/** Chuẩn hóa DATE từ DB (string hoặc Date) → YYYY-MM-DD; Date dùng UTC tránh lệch múi giờ. */
+function _dateKeyFromRequestField(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Chọn đơn áp dụng cho một ngày (nghỉ nhiều ngày: mỗi ngày trong [start_date, end_date] trùng cùng request). */
+function _pickSyncRequestForDay(empRequests, calendarDateKey) {
+  const candidates = empRequests.filter((r) => {
+    const code = r.requestGroup?.code;
+    if (!code || !TIMESHEET_SYNC_GROUP_PRIORITY[code]) return false;
+    const start = _dateKeyFromRequestField(r.startDate);
+    if (!start) return false;
+    const end = _dateKeyFromRequestField(r.endDate) || start;
+    return calendarDateKey >= start && calendarDateKey <= end;
+  });
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+  candidates.sort((a, b) => {
+    const pa = TIMESHEET_SYNC_GROUP_PRIORITY[a.requestGroup?.code] || 0;
+    const pb = TIMESHEET_SYNC_GROUP_PRIORITY[b.requestGroup?.code] || 0;
+    if (pb !== pa) return pb - pa;
+    return (a.id || 0) - (b.id || 0);
+  });
+  return candidates[0];
+}
 
 export class TimesheetsService {
   constructor(timesheetsRepository, actionLogsService) {
@@ -119,6 +167,7 @@ export class TimesheetsService {
     let generatedCount = 0;
     let updatedCount = 0;
     let failedCount = 0;
+    const failedDetails = [];
     const results = [];
 
     for (const employee of employees) {
@@ -154,11 +203,12 @@ export class TimesheetsService {
         const otDetails = await otDetailRepo
           .createQueryBuilder('detail')
           .innerJoin('detail.request', 'request')
+          .innerJoin('request.requestGroup', 'requestGroup')
           .where('request.employeeId = :employeeId', {
             employeeId: employee.id,
           })
-          .andWhere('request.requestStatus = :status', { status: 'APPROVED' })
-          .andWhere('request.requestType = :type', { type: 'OVERTIME' })
+          .andWhere('request.status = :status', { status: 'APPROVED' })
+          .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
           .andWhere('detail.workDate >= :startDate', {
             startDate: startDate.toISOString().split('T')[0],
           })
@@ -173,12 +223,13 @@ export class TimesheetsService {
         const excuseRequests = await requestRepo.find({
           where: {
             employeeId: employee.id,
-            requestStatus: 'APPROVED',
-            requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+            status: 'APPROVED',
+            requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
             startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
             endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
             isDeleted: false,
           },
+          relations: ['requestGroup'],
         });
 
         // Calculate totals with break deduction & half-day support
@@ -260,9 +311,15 @@ export class TimesheetsService {
       } catch (err) {
         console.error(
           `[TimesheetsService] generate failed for employee ${employee.id}:`,
-          err.message,
+          err,
         );
         failedCount++;
+        failedDetails.push({
+          employeeId: employee.id,
+          employeeCode: employee.employeeCode,
+          fullName: employee.fullName,
+          error: err?.message || String(err),
+        });
       }
     }
 
@@ -279,6 +336,7 @@ export class TimesheetsService {
       generated: generatedCount,
       updated: updatedCount,
       failed: failedCount,
+      failedDetails,
       standardWorkingDays,
       timesheets: results,
     };
@@ -565,7 +623,9 @@ export class TimesheetsService {
                 lateMinutes: r.lateMinutes,
                 earlyLeaveMinutes: r.earlyMinutes,
                 attendanceStatus: r.attendanceStatus,
-                workingHours: r.workValue
+                workingHours: r.workValue,
+                requestId: r.requestId ?? null,
+                isFinalized: !!r.isFinalized,
             };
         });
 
@@ -672,13 +732,13 @@ export class TimesheetsService {
     const leaveRequests = await requestRepo.find({
       where: {
         employeeId: timesheet.employeeId,
-        requestStatus: 'APPROVED',
-        requestType: 'LEAVE',
+        status: 'APPROVED',
+        requestGroup: { code: 'LEAVE' },
         startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
         endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
         isDeleted: false,
       },
-      relations: ['leaveType'],
+      relations: ['requestGroup', 'requestType'],
     });
 
     // Get approved OT requests
@@ -688,11 +748,12 @@ export class TimesheetsService {
     const otDetails = await otDetailRepo
       .createQueryBuilder('detail')
       .innerJoin('detail.request', 'request')
+      .innerJoin('request.requestGroup', 'requestGroup')
       .where('request.employeeId = :employeeId', {
         employeeId: timesheet.employeeId,
       })
-      .andWhere('request.requestStatus = :status', { status: 'APPROVED' })
-      .andWhere('request.requestType = :type', { type: 'OVERTIME' })
+      .andWhere('request.status = :status', { status: 'APPROVED' })
+      .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('detail.workDate >= :startDate', {
         startDate: startDate.toISOString().split('T')[0],
       })
@@ -706,12 +767,44 @@ export class TimesheetsService {
     const excuseRequests = await requestRepo.find({
       where: {
         employeeId: timesheet.employeeId,
-        requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+        requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
         startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
         endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
         isDeleted: false,
       },
+      relations: ['requestGroup'],
     });
+
+    // Fetch processed records (requestId per day) for UI linking
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity,
+    );
+    const processedRecords = await processedRepo
+      .createQueryBuilder('par')
+      .where('MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year', {
+        month: timesheet.month,
+        year: timesheet.year,
+      })
+      .andWhere('par.employeeId = :employeeId', { employeeId: timesheet.employeeId })
+      .getMany();
+
+    const requestIdByFormattedDate = new Map();
+    for (const r of processedRecords) {
+      if (!r.attendanceDate) continue;
+      let formattedDate = r.attendanceDate;
+      if (typeof r.attendanceDate === 'string') {
+        const parts = r.attendanceDate.split('-');
+        if (parts.length === 3) formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      } else if (r.attendanceDate instanceof Date) {
+        formattedDate = `${String(r.attendanceDate.getDate()).padStart(2, '0')}/${String(
+          r.attendanceDate.getMonth() + 1,
+        ).padStart(2, '0')}/${r.attendanceDate.getFullYear()}`;
+      }
+      requestIdByFormattedDate.set(formattedDate, r.requestId ?? null);
+    }
 
     // Build daily detail with on-the-fly computation
     const dailyDetails = this._buildDailyDetails(
@@ -735,6 +828,7 @@ export class TimesheetsService {
       shiftName: shift?.shiftName || null,
       shiftStartTime,
       shiftEndTime,
+      requestId: requestIdByFormattedDate.get(d.date) ?? null,
     }));
 
     return {
@@ -815,11 +909,12 @@ export class TimesheetsService {
       const excuseRequests = await requestRepo.find({
         where: {
           employeeId: employee.id,
-          requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+          requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
           startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
           endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
           isDeleted: false,
         },
+        relations: ['requestGroup'],
       });
 
       // Calculate daily details (minimal computed set)
@@ -916,11 +1011,12 @@ export class TimesheetsService {
     const otDetails = await otDetailRepo
       .createQueryBuilder('detail')
       .innerJoin('detail.request', 'request')
+      .innerJoin('request.requestGroup', 'requestGroup')
       .where('request.employeeId = :employeeId', {
         employeeId: timesheet.employeeId,
       })
-      .andWhere('request.requestStatus = :status', { status: 'APPROVED' })
-      .andWhere('request.requestType = :type', { type: 'OVERTIME' })
+      .andWhere('request.status = :status', { status: 'APPROVED' })
+      .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('detail.workDate >= :startDate', {
         startDate: startDate.toISOString().split('T')[0],
       })
@@ -935,12 +1031,13 @@ export class TimesheetsService {
     const excuseRequests = await requestRepo.find({
       where: {
         employeeId: timesheet.employeeId,
-        requestStatus: 'APPROVED',
-        requestType: In(['EXCUSE', 'LATE_EARLY_EXCUSE', 'FORGET_CHECKIN']),
+        status: 'APPROVED',
+        requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
         startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
         endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
         isDeleted: false,
       },
+      relations: ['requestGroup'],
     });
 
     let totalWorkingDays = 0;
@@ -1190,168 +1287,219 @@ export class TimesheetsService {
     return ExcelUtil.export(data, columns, `Bang cham cong T${month}-${year}`);
   }
 
-  async exportDetailed(month, year, employeeId, userContext) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+  async exportDetailed(month, year, employeeId, departmentId, search, userContext) {
+    // Export "giống như Ma trận dữ liệu chấm công" (processed_attendance_records),
+    // not raw attendance_records.
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-    // Access check for export
+    // Access check: EMPLOYEE-only can only export their own data
     if (userContext && this._isEmployee(userContext)) {
       const employee = await this._getEmployeeByUserId(userContext.id);
       employeeId = employee?.id;
+      departmentId = undefined;
+      search = undefined;
     }
 
-    const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
-    const query = attendanceRepo
-      .createQueryBuilder('att')
-      .leftJoinAndSelect('att.employee', 'employee')
-      .leftJoinAndSelect('employee.department', 'department')
-      .where('att.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('att.checkInTime >= :start', { start: startDate })
-      .andWhere('att.checkInTime <= :end', { end: endDate });
+    // 1) Load employees in scope (same filtering style as processed-matrix)
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const qb = employeeRepo
+      .createQueryBuilder('emp')
+      .leftJoinAndSelect('emp.department', 'dept')
+      .leftJoinAndSelect('emp.position', 'pos')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
 
     if (employeeId) {
-      query.andWhere('att.employeeId = :employeeId', { employeeId });
-    }
-
-    const records = await query
-      .orderBy('employee.fullName', 'ASC')
-      .addOrderBy('att.checkInTime', 'ASC')
-      .getMany();
-
-    // Group records by employee
-    const employeeMap = new Map();
-    records.forEach((r) => {
-      const empId = r.employeeId;
-      if (!employeeMap.has(empId)) {
-        employeeMap.set(empId, {
-          employee: r.employee,
-          records: [],
+      qb.andWhere('emp.id = :employeeId', { employeeId });
+    } else {
+      if (departmentId) {
+        qb.andWhere('emp.departmentId = :departmentId', { departmentId });
+      }
+      if (search) {
+        qb.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', {
+          search: `%${search}%`,
         });
       }
-      employeeMap.get(empId).records.push(r);
-    });
+    }
 
-    // Build multi-sheet Excel workbook
+    const employees = await qb.orderBy('emp.fullName', 'ASC').getMany();
+    if (employees.length === 0) {
+      // still return a valid empty workbook
+      const ExcelJS = await import('exceljs');
+      const wb = new ExcelJS.default.Workbook();
+      wb.addWorksheet('Ma_tran');
+      return await wb.xlsx.writeBuffer();
+    }
+    const empIds = employees.map((e) => e.id);
+
+    // 2) Load processed attendance records for these employees + month
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+    const processed = await processedRepo
+      .createQueryBuilder('par')
+      .select([
+        'par.id',
+        'par.employeeId',
+        'par.attendanceDate',
+        'par.checkInTime',
+        'par.checkOutTime',
+        'par.lateMinutes',
+        'par.earlyMinutes',
+        'par.attendanceStatus',
+        'par.workValue',
+        'par.requestId',
+      ])
+      .where('par.employeeId IN (:...empIds)', { empIds })
+      .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .getMany();
+
+    // Index records by empId|date (YYYY-MM-DD)
+    const byEmpDate = new Map();
+    for (const r of processed) {
+      const dateKey = String(r.attendanceDate).slice(0, 10);
+      byEmpDate.set(`${r.employeeId}|${dateKey}`, r);
+    }
+
+    // 3) Build Excel sheet like matrix (1 sheet, 1 row per employee)
     const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.default.Workbook();
-
-    const columns = [
-      { header: 'STT', key: 'index', width: 8 },
-      { header: 'Ngày', key: 'date', width: 15 },
-      { header: 'Thứ', key: 'dayOfWeek', width: 8 },
-      { header: 'Giờ vào', key: 'checkIn', width: 12 },
-      { header: 'Giờ ra', key: 'checkOut', width: 12 },
-      { header: 'Số giờ', key: 'hoursWorked', width: 10 },
-      { header: 'Trạng thái', key: 'attendanceStatus', width: 15 },
-      { header: 'Loại', key: 'attendanceType', width: 15 },
-    ];
+    const worksheet = workbook.addWorksheet('Ma_tran');
 
     const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    const dayHeaders = [];
+    let standardWorkingDays = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month - 1, day);
+      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+      if (!isWeekend) standardWorkingDays++;
+      const header = `${dayNames[d.getDay()]}\n(${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')})`;
+      dayHeaders.push({ day, isWeekend, header });
+    }
 
-    for (const [, { employee: emp, records: empRecords }] of employeeMap) {
-      // Sheet name: employee code or name (max 31 chars, no special chars)
-      const sheetName = (emp.employeeCode || emp.fullName || `NV${emp.id}`)
-        .replace(/[*?:\\/\[\]]/g, '')
-        .substring(0, 31);
+    const baseColumns = [
+      { header: 'STT', width: 6 },
+      { header: 'Họ tên', width: 26 },
+      { header: 'Mã NS', width: 14 },
+      { header: 'Chức danh', width: 18 },
+    ];
+    const tailColumns = [
+      { header: 'Tổng công', width: 10 },
+      { header: 'Công chuẩn', width: 10 },
+    ];
 
-      const worksheet = workbook.addWorksheet(sheetName);
+    worksheet.columns = [
+      ...baseColumns,
+      ...dayHeaders.map((h) => ({ header: h.header, width: 8 })),
+      ...tailColumns,
+    ];
 
-      // Employee info header
-      worksheet.mergeCells('A1:H1');
-      const titleCell = worksheet.getCell('A1');
-      titleCell.value = `Chi tiết chấm công - ${emp.fullName || ''} (${emp.employeeCode || ''})`;
-      titleCell.font = { bold: true, size: 14 };
-      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      worksheet.getRow(1).height = 30;
+    // Header style
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 32;
+    headerRow.eachCell((cell, colNumber) => {
+      cell.font = { bold: true, size: 10, color: { argb: 'FF1E293B' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+      // weekend header light amber
+      const isDayCol = colNumber > baseColumns.length && colNumber <= baseColumns.length + dayHeaders.length;
+      if (isDayCol) {
+        const dayIdx = colNumber - baseColumns.length - 1;
+        if (dayHeaders[dayIdx]?.isWeekend) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7ED' } };
+        } else {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        }
+      } else {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      }
+    });
 
-      worksheet.mergeCells('A2:H2');
-      const periodCell = worksheet.getCell('A2');
-      periodCell.value = `Kỳ: Tháng ${month}/${year} | Phòng ban: ${emp.department?.departmentName || '-'}`;
-      periodCell.font = { size: 11, italic: true };
-      periodCell.alignment = { horizontal: 'center' };
+    worksheet.views = [{ state: 'frozen', xSplit: baseColumns.length, ySplit: 1 }];
 
-      // Column headers at row 4
-      worksheet.columns = columns.map((col) => ({
-        key: col.key,
-        width: col.width,
-      }));
+    const matrixCellValue = (rec) => {
+      if (!rec) return '-';
+      const status = rec.attendanceStatus;
+      if (status === 'WEEKEND') return 'N';
+      if (['X', 'KL', 'ABSENT', '0'].includes(status)) {
+        return rec.workValue !== undefined && rec.workValue !== null ? Number(rec.workValue) : 0;
+      }
+      return status || '-';
+    };
 
-      const headerRow = worksheet.getRow(4);
-      columns.forEach((col, i) => {
-        const cell = headerRow.getCell(i + 1);
-        cell.value = col.header;
-        cell.font = { bold: true, size: 11, color: { argb: '000000' } };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFF00' },
-        };
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    const numberOrZero = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    employees.forEach((emp, index) => {
+      const rowValues = [];
+      rowValues.push(index + 1);
+      rowValues.push(emp.fullName || '');
+      rowValues.push(emp.employeeCode || '');
+      rowValues.push(emp.position?.positionName || '');
+
+      let total = 0;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const rec = byEmpDate.get(`${emp.id}|${dateStr}`);
+        rowValues.push(matrixCellValue(rec));
+        if (rec && rec.workValue !== undefined && rec.workValue !== null) {
+          total += numberOrZero(rec.workValue);
+        }
+      }
+      rowValues.push(Number(total.toFixed(2)));
+      rowValues.push(standardWorkingDays);
+
+      const row = worksheet.addRow(rowValues);
+      row.height = 20;
+      row.eachCell((cell, colNumber) => {
         cell.border = {
           top: { style: 'thin' },
           left: { style: 'thin' },
           bottom: { style: 'thin' },
           right: { style: 'thin' },
         };
-      });
-      headerRow.height = 25;
-
-      // Data rows starting at row 5
-      empRecords.forEach((r, idx) => {
-        const checkIn = r.checkInTime ? new Date(r.checkInTime) : null;
-        const checkOut = r.checkOutTime ? new Date(r.checkOutTime) : null;
-        const hoursWorked =
-          checkIn && checkOut
-            ? ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(2)
-            : 0;
-
-        const row = worksheet.getRow(5 + idx);
-        const values = [
-          idx + 1,
-          checkIn ? checkIn.toLocaleDateString('vi-VN') : '',
-          checkIn ? dayNames[checkIn.getDay()] : '',
-          checkIn ? checkIn.toLocaleTimeString('vi-VN') : '',
-          checkOut ? checkOut.toLocaleTimeString('vi-VN') : '',
-          hoursWorked,
-          r.attendanceStatus || '',
-          r.attendanceType || '',
-        ];
-        values.forEach((val, i) => {
-          const cell = row.getCell(i + 1);
-          cell.value = val;
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' },
-          };
-          cell.alignment = {
-            vertical: 'middle',
-            horizontal: 'left',
-            wrapText: true,
-          };
-        });
-      });
-
-      // Summary row
-      const summaryRowIdx = 5 + empRecords.length + 1;
-      const summaryRow = worksheet.getRow(summaryRowIdx);
-      summaryRow.getCell(1).value = 'Tổng cộng:';
-      summaryRow.getCell(1).font = { bold: true };
-      summaryRow.getCell(6).value = empRecords
-        .reduce((sum, r) => {
-          if (r.checkInTime && r.checkOutTime) {
-            return (
-              sum +
-              (new Date(r.checkOutTime) - new Date(r.checkInTime)) /
-                (1000 * 60 * 60)
-            );
+        const isNumeric = typeof cell.value === 'number';
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: colNumber <= 2 ? 'left' : 'center',
+          wrapText: true,
+        };
+        if (isNumeric) {
+          cell.numFmt = '0.##';
+        }
+        // weekend background for day columns
+        const isDayCol =
+          colNumber > baseColumns.length &&
+          colNumber <= baseColumns.length + dayHeaders.length;
+        if (isDayCol) {
+          const dayIdx = colNumber - baseColumns.length - 1;
+          if (dayHeaders[dayIdx]?.isWeekend) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
           }
-          return sum;
-        }, 0)
-        .toFixed(2);
-      summaryRow.getCell(6).font = { bold: true };
-    }
+        }
+        // totals background
+        const totalStartCol = baseColumns.length + dayHeaders.length + 1;
+        if (colNumber >= totalStartCol) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDFA' } };
+          cell.font = { bold: true, color: { argb: 'FF0F766E' } };
+        }
+      });
+    });
 
     return await workbook.xlsx.writeBuffer();
   }
@@ -1554,7 +1702,7 @@ export class TimesheetsService {
 
       if (leave) {
         detail.status = 'LEAVE';
-        detail.leaveType = leave.leaveType?.leaveTypeName || 'Nghỉ';
+        detail.leaveType = leave.requestType?.name || 'Nghỉ';
       }
 
       // Check if there is an excuse request for this date
@@ -1577,7 +1725,7 @@ export class TimesheetsService {
 
         detail.excuseRequest = {
           id: excuseRequest.id,
-          status: excuseRequest.requestStatus,
+          status: excuseRequest.status,
           content: parsedContent,
         };
       }
@@ -1716,231 +1864,535 @@ export class TimesheetsService {
   // NEW: Processed Attendance Synchronization
   // ──────────────────────────────────────
   async syncAttendance(month, year, departmentId, userContext) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
-
-    // 1. Get employees
-    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
-    const employeeQuery = employeeRepo.createQueryBuilder('employee')
-      .where('employee.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('employee.employmentStatus IN (:...statuses)', { statuses: ['ACTIVE', 'PROBATION'] });
-    if (departmentId) {
-      employeeQuery.andWhere('employee.departmentId = :departmentId', { departmentId });
-    }
-    const employees = await employeeQuery.getMany();
-    if (employees.length === 0) return { synced: 0 };
-
-    // 2. Fetch raw attendance records
-    const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
-    const rawRecords = await attendanceRepo.createQueryBuilder('att')
-      .where('att.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('att.checkInTime >= :start', { start: startDate })
-      .andWhere('att.checkInTime <= :end', { end: endDate })
-      .getMany();
-
-    const currentMonthData = new Map();
-    rawRecords.forEach(record => {
-      const d = new Date(record.checkInTime || record.checkOutTime);
-      if (!d || isNaN(d.getTime())) return;
-      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const empMap = currentMonthData.get(record.employeeId) || new Map();
-      
-      const existing = empMap.get(dateKey);
-      if (!existing) {
-        empMap.set(dateKey, record);
-      } else {
-        if (record.checkInTime && new Date(record.checkInTime) < new Date(existing.checkInTime)) existing.checkInTime = record.checkInTime;
-        if (record.checkOutTime && new Date(record.checkOutTime) > new Date(existing.checkOutTime)) existing.checkOutTime = record.checkOutTime;
-      }
-      currentMonthData.set(record.employeeId, empMap);
-    });
-
-    // 3. Fetch approved requests
-    const requestRepo = AppDataSource.getRepository(RequestEntity);
-    const requests = await requestRepo.find({
-        where: { requestStatus: 'APPROVED', isDeleted: false },
-        relations: ['leaveType']
-    });
-
-    // 4. Fetch holidays
-    const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
-    const holidays = await holidayRepo.find({ where: { isDeleted: false }});
-    const holidayDates = new Set();
-    holidays.forEach(h => {
-        const start = new Date(h.startDate);
-        const end = new Date(h.endDate || h.startDate);
-        if (start.getFullYear() === year && start.getMonth() + 1 === month) {
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                holidayDates.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-            }
-        }
-    });
-
-    // 5. Fetch Penalty Rules
-    const { PenaltyEntity } = await import('../models/entities/penalty.entity.js');
-    const penaltyRepo = AppDataSource.getRepository(PenaltyEntity);
-    const penaltyRules = await penaltyRepo.find({
-        where: { status: 'ACTIVE', isDeleted: false }
-    });
-
-    // 6. Delete old processed records
-    const { ProcessedAttendanceRecordEntity } = await import('../models/entities/processed-attendance-record.entity.js');
-    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
-    const deleteQuery = processedRepo.createQueryBuilder().delete()
-        .where('MONTH(attendance_date) = :month AND YEAR(attendance_date) = :year', { month, year });
-    if (departmentId) {
-        deleteQuery.andWhere('employee_id IN (SELECT id FROM employees WHERE department_id = :departmentId)', { departmentId });
-    }
-    await deleteQuery.execute();
-
-    // 7. Rebuild day by day
-    const recordsToBuild = [];
+    const monthStart = new Date(year, month - 1, 1);
+    const nextMonthStart = new Date(year, month, 1);
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    for (const emp of employees) {
-        const empRawMap = currentMonthData.get(emp.id) || new Map();
-        const empRequests = requests.filter(r => r.employeeId === emp.id);
-        const shift = await this._getEmployeeShift(emp.id, month, year);
-        const shiftStartStr = shift?.startTime || "08:00:00";
-        const shiftEndStr = shift?.endTime || "17:00:00";
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const dateObj = new Date(year, month - 1, day);
-            const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+    // 1) Get employees (scoped by department if provided)
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const employeeQuery = employeeRepo
+      .createQueryBuilder('employee')
+      .select(['employee.id'])
+      .where('employee.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('employee.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
+    if (departmentId) {
+      employeeQuery.andWhere('employee.departmentId = :departmentId', {
+        departmentId,
+      });
+    }
+    const employees = await employeeQuery.getMany();
+    const employeeIds = employees.map((e) => e.id);
+    if (employeeIds.length === 0) return { synced: 0 };
 
-            const raw = empRawMap.get(dateStr);
-            const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
-            const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
+    // 2) Fetch raw attendance records (ONLY for employees in scope)
+    //    Note: restrict by employeeIds early to avoid scanning whole table.
+    const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
+    const rawRecords = await attendanceRepo
+      .createQueryBuilder('att')
+      .select([
+        'att.id',
+        'att.employeeId',
+        'att.checkInTime',
+        'att.checkOutTime',
+      ])
+      .where('att.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('att.employeeId IN (:...employeeIds)', { employeeIds })
+      .andWhere('att.checkInTime >= :start', { start: monthStart })
+      .andWhere('att.checkInTime < :end', { end: nextMonthStart })
+      .getMany();
 
-            const shiftStart = new Date(`${dateStr}T${shiftStartStr}`);
-            const shiftEnd = new Date(`${dateStr}T${shiftEndStr}`);
-
-            let lateMins = 0;
-            let earlyMins = 0;
-            if (checkIn && checkIn > shiftStart) {
-                lateMins = Math.floor((checkIn - shiftStart) / 60000);
-            }
-            if (checkOut && checkOut < shiftEnd) {
-                earlyMins = Math.floor((shiftEnd - checkOut) / 60000);
-            }
-
-            let attendanceStatus = 'ABSENT';
-            let workValue = 0.0;
-            let reqId = null;
-
-            if (checkIn || checkOut) {
-                 attendanceStatus = 'X';
-                 workValue = 1.0;
-
-                 const validPenaltyRules = penaltyRules.filter(pr => {
-                     let from = null, to = null;
-                     if (pr.effectiveFrom) { from = new Date(pr.effectiveFrom); from.setHours(0,0,0,0); }
-                     if (pr.effectiveTo) { to = new Date(pr.effectiveTo); to.setHours(23,59,59,999); }
-                     return pr.status === 'ACTIVE' 
-                         && !pr.isDeleted
-                         && (!from || dateObj >= from)
-                         && (!to || dateObj <= to);
-                 });
-
-                 let totalPenaltyHours = 0;
-                 const latePenalty = validPenaltyRules.find(pr => pr.violationType === 'LATE' && lateMins >= pr.fromMinute && lateMins <= pr.toMinute);
-                 const earlyPenalty = validPenaltyRules.find(pr => pr.violationType === 'EARLY' && earlyMins >= pr.fromMinute && earlyMins <= pr.toMinute);
-
-                 if (latePenalty && latePenalty.convertedHours) {
-                     totalPenaltyHours += Number(latePenalty.convertedHours);
-                 }
-                 if (earlyPenalty && earlyPenalty.convertedHours) {
-                     totalPenaltyHours += Number(earlyPenalty.convertedHours);
-                 }
-
-                 if (totalPenaltyHours > 0) {
-                     workValue -= (totalPenaltyHours / 8);
-                     if (workValue <= 0) {
-                         workValue = 0;
-                         attendanceStatus = 'ABSENT';
-                     } else if (workValue < 1.0) {
-                         attendanceStatus = 'KL'; // Penalty Partial
-                     }
-                 }
-            }
-
-            const overlappingReq = empRequests.find(r => {
-                if (!r.startDate || !r.endDate) return false;
-                const rs = new Date(r.startDate);
-                const re = new Date(r.endDate);
-                return dateObj >= new Date(rs.getFullYear(), rs.getMonth(), rs.getDate()) &&
-                       dateObj <= new Date(re.getFullYear(), re.getMonth(), re.getDate());
-            });
-
-            if (overlappingReq) {
-                if (overlappingReq.requestType === 'LEAVE') {
-                    attendanceStatus = overlappingReq.leaveType?.code || 'P'; // Use leave code (e.g., P, V, S...)
-                    workValue = overlappingReq.leaveType?.isPaid ? 1.0 : 0.0;
-                } else if (overlappingReq.requestType === 'BUSINESS_TRIP') {
-                    attendanceStatus = 'CT';
-                    workValue = 1.0;
-                } else if (overlappingReq.requestType === 'EXCUSE') {
-                    attendanceStatus = 'X';
-                    lateMins = 0; earlyMins = 0;
-                    if(workValue === 0) workValue = 1.0;
-                }
-                reqId = overlappingReq.id;
-            } else if (holidayDates.has(dateStr)) {
-                if (isWeekend) {
-                   attendanceStatus = 'L';
-                   workValue = 1.0; // Holidays give 1 công even if weekend
-                } else {
-                   attendanceStatus = 'L';
-                   workValue = 1.0;
-                }
-            } else if (isWeekend && !checkIn && !checkOut) {
-                attendanceStatus = 'WEEKEND';
-                workValue = 0.0;
-            }
-
-            if (attendanceStatus === 'ABSENT' && !isWeekend && !holidayDates.has(dateStr)) {
-                attendanceStatus = 'ABSENT';
-                workValue = 0.0;
-            }
-
-            const record = processedRepo.create({
-                employeeId: emp.id,
-                attendanceDate: dateStr,
-                checkInTime: checkIn,
-                checkOutTime: checkOut,
-                shiftStartTime: shiftStartStr,
-                shiftEndTime: shiftEndStr,
-                lateMinutes: lateMins,
-                earlyMinutes: earlyMins,
-                attendanceStatus: attendanceStatus,
-                workValue: workValue,
-                sourceType: 1,
-                rawRecordId: raw?.id || null,
-                requestId: reqId
-            });
-            recordsToBuild.push(record);
+    // Build minimal map: employeeId -> dateKey -> { id, checkInTime, checkOutTime }
+    const currentMonthData = new Map();
+    for (const record of rawRecords) {
+      const d = new Date(record.checkInTime || record.checkOutTime);
+      if (!d || Number.isNaN(d.getTime())) continue;
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      let empMap = currentMonthData.get(record.employeeId);
+      if (!empMap) {
+        empMap = new Map();
+        currentMonthData.set(record.employeeId, empMap);
+      }
+      const existing = empMap.get(dateKey);
+      if (!existing) {
+        empMap.set(dateKey, {
+          id: record.id,
+          checkInTime: record.checkInTime || null,
+          checkOutTime: record.checkOutTime || null,
+        });
+      } else {
+        if (
+          record.checkInTime &&
+          (!existing.checkInTime ||
+            new Date(record.checkInTime) < new Date(existing.checkInTime))
+        ) {
+          existing.checkInTime = record.checkInTime;
         }
+        if (
+          record.checkOutTime &&
+          (!existing.checkOutTime ||
+            new Date(record.checkOutTime) > new Date(existing.checkOutTime))
+        ) {
+          existing.checkOutTime = record.checkOutTime;
+        }
+      }
     }
 
-    const chunkSize = 500;
-    for (let i = 0; i < recordsToBuild.length; i += chunkSize) {
-        await processedRepo.save(recordsToBuild.slice(i, i + chunkSize));
+    // 3) Approved requests used for sync (LEAVE/BUSINESS_TRIP/ATTENDANCE_CORRECTION) in one query
+    const requestRepo = AppDataSource.getRepository(RequestEntity);
+    const requests = await requestRepo
+      .createQueryBuilder('r')
+      .innerJoinAndSelect('r.requestGroup', 'requestGroup')
+      .leftJoinAndSelect('r.requestType', 'requestType')
+      .where('r.status = :status', { status: 'APPROVED' })
+      .andWhere('r.isDeleted = :isDel', { isDel: false })
+      .andWhere('r.employeeId IN (:...employeeIds)', { employeeIds })
+      .andWhere('requestGroup.code IN (:...codes)', {
+        codes: TIMESHEET_SYNC_REQUEST_GROUP_CODES,
+      })
+      .andWhere('r.startDate IS NOT NULL')
+      .andWhere('r.startDate <= :monthEnd', { monthEnd: monthEndStr })
+      .andWhere('COALESCE(r.endDate, r.startDate) >= :monthStart', {
+        monthStart: monthStartStr,
+      })
+      .getMany();
+
+    // Index requests by employeeId (avoid filter() inside main loop)
+    const requestsByEmployeeId = new Map();
+    for (const r of requests) {
+      const list = requestsByEmployeeId.get(r.employeeId) || [];
+      list.push(r);
+      requestsByEmployeeId.set(r.employeeId, list);
     }
+
+    // 4) Fetch holidays overlapping this month only
+    const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
+    const holidays = await holidayRepo.find({
+      where: [
+        {
+          startDate: Between(monthStartStr, monthEndStr),
+          isDeleted: false,
+        },
+        {
+          endDate: Between(monthStartStr, monthEndStr),
+          isDeleted: false,
+        },
+        {
+          startDate: LessThanOrEqual(monthStartStr),
+          endDate: MoreThanOrEqual(monthEndStr),
+          isDeleted: false,
+        },
+      ],
+    });
+    const holidayDates = new Set();
+    for (const h of holidays) {
+      const start = new Date(h.startDate);
+      const end = new Date(h.endDate || h.startDate);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (key >= monthStartStr && key <= monthEndStr) {
+          holidayDates.add(key);
+        }
+      }
+    }
+
+    // 5) Fetch penalty rules and precompute applicable lookups per day-of-month
+    const { PenaltyEntity } = await import('../models/entities/penalty.entity.js');
+    const penaltyRepo = AppDataSource.getRepository(PenaltyEntity);
+    const allPenaltyRules = await penaltyRepo.find({
+      where: { status: 'ACTIVE', isDeleted: false },
+    });
+    const rulesOverlappingMonth = allPenaltyRules.filter((pr) => {
+      const from = pr.effectiveFrom ? new Date(pr.effectiveFrom) : null;
+      const to = pr.effectiveTo ? new Date(pr.effectiveTo) : null;
+      if (from) from.setHours(0, 0, 0, 0);
+      if (to) to.setHours(23, 59, 59, 999);
+      return (!from || from < nextMonthStart) && (!to || to >= monthStart);
+    });
+
+    const penaltyLookupByDay = new Array(daysInMonth + 1);
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateObj = new Date(year, month - 1, day);
+      dateObj.setHours(12, 0, 0, 0); // safe mid-day to avoid DST edge
+      const applicable = rulesOverlappingMonth.filter((pr) => {
+        const from = pr.effectiveFrom ? new Date(pr.effectiveFrom) : null;
+        const to = pr.effectiveTo ? new Date(pr.effectiveTo) : null;
+        if (from) from.setHours(0, 0, 0, 0);
+        if (to) to.setHours(23, 59, 59, 999);
+        return (!from || dateObj >= from) && (!to || dateObj <= to);
+      });
+      penaltyLookupByDay[day] = {
+        late: applicable
+          .filter((pr) => pr.violationType === 'LATE')
+          .map((pr) => ({
+            fromMinute: pr.fromMinute,
+            toMinute: pr.toMinute,
+            convertedHours: Number(pr.convertedHours || 0),
+          })),
+        early: applicable
+          .filter((pr) => pr.violationType === 'EARLY')
+          .map((pr) => ({
+            fromMinute: pr.fromMinute,
+            toMinute: pr.toMinute,
+            convertedHours: Number(pr.convertedHours || 0),
+          })),
+      };
+    }
+    const penaltyHours = (ranges, mins) => {
+      if (!mins || mins <= 0) return 0;
+      for (const r of ranges) {
+        if (mins >= r.fromMinute && mins <= r.toMinute) return r.convertedHours;
+      }
+      return 0;
+    };
+
+    // 6) Batch load shift assignment (one query) and pick latest per employee
+    const assignmentRepo = AppDataSource.getRepository(ShiftAssignmentEntity);
+    const assignments = await assignmentRepo.find({
+      where: { employeeId: In(employeeIds), isDeleted: false },
+      relations: ['shift'],
+      order: { effectiveFrom: 'DESC' },
+    });
+    const shiftByEmployeeId = new Map();
+    for (const a of assignments) {
+      if (!shiftByEmployeeId.has(a.employeeId) && a.shift) {
+        shiftByEmployeeId.set(a.employeeId, a.shift);
+      }
+    }
+    const defaultShift = await this._getDefaultShift();
+
+    // 7) Delete old processed records fast (range scan), but KEEP manual/finalized records
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity
+    );
+
+    // Build protected keys (manual or finalized) so we don't overwrite them.
+    // Fast-path: if none exist for this month, skip this extra query and set work.
+    const maybeProtectedCount = await processedRepo
+      .createQueryBuilder('par')
+      .where('par.employeeId IN (:...employeeIds)', { employeeIds })
+      .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere('(par.sourceType = :manual OR par.isFinalized = :final)', {
+        manual: 2,
+        final: true,
+      })
+      .getCount();
+
+    const protectedKeySet = new Set();
+    if (maybeProtectedCount > 0) {
+      const protectedRows = await processedRepo
+        .createQueryBuilder('par')
+        .select(['par.employeeId', 'par.attendanceDate'])
+        .where('par.employeeId IN (:...employeeIds)', { employeeIds })
+        .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
+          start: monthStartStr,
+          end: monthEndStr,
+        })
+        .andWhere('(par.sourceType = :manual OR par.isFinalized = :final)', {
+          manual: 2,
+          final: true,
+        })
+        .getMany();
+
+      for (const r of protectedRows) {
+        protectedKeySet.add(
+          `${r.employeeId}|${String(r.attendanceDate).slice(0, 10)}`
+        );
+      }
+    }
+
+    await processedRepo
+      .createQueryBuilder()
+      .delete()
+      .where('employee_id IN (:...employeeIds)', { employeeIds })
+      .andWhere('attendance_date >= :start AND attendance_date <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere('source_type <> :manual', { manual: 2 })
+      .andWhere('is_finalized = :final', { final: false })
+      .execute();
+
+    // 8) Rebuild day-by-day using pure objects + bulk insert (faster than entity create/save)
+    const recordsToInsert = [];
+    for (const empId of employeeIds) {
+      const empRawMap = currentMonthData.get(empId) || new Map();
+      const empRequests = requestsByEmployeeId.get(empId) || [];
+      const shift = shiftByEmployeeId.get(empId) || defaultShift;
+      const shiftStartStr = shift?.startTime || '08:00:00';
+      const shiftEndStr = shift?.endTime || '17:00:00';
+      const workingShiftId = shift?.id || null;
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (protectedKeySet.has(`${empId}|${dateStr}`)) continue;
+
+        const dateObj = new Date(year, month - 1, day);
+        const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+
+        const raw = empRawMap.get(dateStr);
+        const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
+        const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
+
+        const shiftStart = new Date(`${dateStr}T${shiftStartStr}`);
+        const shiftEnd = new Date(`${dateStr}T${shiftEndStr}`);
+
+        let lateMins = 0;
+        let earlyMins = 0;
+        if (checkIn && checkIn > shiftStart) {
+          lateMins = Math.floor((checkIn - shiftStart) / 60000);
+        }
+        if (checkOut && checkOut < shiftEnd) {
+          earlyMins = Math.floor((shiftEnd - checkOut) / 60000);
+        }
+
+        let attendanceStatus = 'ABSENT';
+        let workValue = 0.0;
+        let reqId = null;
+
+        if (checkIn || checkOut) {
+          attendanceStatus = 'X';
+          workValue = 1.0;
+
+          const lookup = penaltyLookupByDay[day];
+          const lateHours = penaltyHours(lookup.late, lateMins);
+          const earlyHours = penaltyHours(lookup.early, earlyMins);
+          const totalPenaltyHours = lateHours + earlyHours;
+
+          if (totalPenaltyHours > 0) {
+            workValue -= totalPenaltyHours / 8;
+            if (workValue <= 0) {
+              workValue = 0;
+              attendanceStatus = 'ABSENT';
+            } else if (workValue < 1.0) {
+              attendanceStatus = 'KL';
+            }
+          }
+        }
+
+        const overlappingReq = _pickSyncRequestForDay(empRequests, dateStr);
+        if (overlappingReq) {
+          const groupCode = overlappingReq.requestGroup?.code;
+          if (groupCode === RequestGroupCode.LEAVE) {
+            attendanceStatus = 'LEAVE';
+            workValue = overlappingReq.isWorkedTime ? 1.0 : 0.0;
+          } else if (groupCode === RequestGroupCode.BUSINESS_TRIP) {
+            attendanceStatus = 'CT';
+            workValue = 1.0;
+          } else if (groupCode === RequestGroupCode.ATTENDANCE_CORRECTION) {
+            attendanceStatus = 'X';
+            lateMins = 0;
+            earlyMins = 0;
+            if (workValue === 0) workValue = 1.0;
+          }
+          reqId = overlappingReq.id;
+        } else if (holidayDates.has(dateStr)) {
+          attendanceStatus = 'L';
+          workValue = 1.0;
+        } else if (isWeekend && !checkIn && !checkOut) {
+          attendanceStatus = 'WEEKEND';
+          workValue = 0.0;
+        }
+
+        if (
+          attendanceStatus === 'ABSENT' &&
+          !isWeekend &&
+          !holidayDates.has(dateStr)
+        ) {
+          attendanceStatus = 'ABSENT';
+          workValue = 0.0;
+        }
+
+        recordsToInsert.push({
+          employeeId: empId,
+          attendanceDate: dateStr,
+          workingShiftId,
+          checkInTime: checkIn,
+          checkOutTime: checkOut,
+          shiftStartTime: shiftStartStr,
+          shiftEndTime: shiftEndStr,
+          lateMinutes: lateMins,
+          earlyMinutes: earlyMins,
+          attendanceStatus,
+          workValue,
+          sourceType: 1,
+          rawRecordId: raw?.id || null,
+          requestId: reqId,
+          isFinalized: false,
+          updatedBy: userContext?.id || null,
+        });
+      }
+    }
+
+    // Parallel inserts (controlled concurrency) to better utilize DB throughput.
+    // Tune via env if needed.
+    const chunkSize = parseInt(process.env.TIMESHEETS_SYNC_INSERT_CHUNK || '5000', 10);
+    const insertConcurrency = parseInt(process.env.TIMESHEETS_SYNC_INSERT_CONCURRENCY || '4', 10);
+
+    const chunks = [];
+    for (let i = 0; i < recordsToInsert.length; i += chunkSize) {
+      chunks.push(recordsToInsert.slice(i, i + chunkSize));
+    }
+
+    const runPool = async (items, worker, concurrency) => {
+      const c = Math.max(1, concurrency || 1);
+      let idx = 0;
+      const runners = new Array(Math.min(c, items.length)).fill(null).map(async () => {
+        while (idx < items.length) {
+          const current = idx++;
+          await worker(items[current], current);
+        }
+      });
+      await Promise.all(runners);
+    };
+
+    await runPool(
+      chunks,
+      async (chunk) => {
+        await processedRepo.insert(chunk);
+      },
+      insertConcurrency
+    );
 
     if (this.actionLogsService) {
-        await this.actionLogsService.log({
-          userId: userContext.id,
-          actionType: 'SYNC_ATTENDANCE',
-          targetTable: 'processed_attendance_records',
-          description: `Synced ${recordsToBuild.length} records for month ${month}/${year}`
-        });
+      await this.actionLogsService.log({
+        userId: userContext?.id,
+        actionType: 'SYNC_ATTENDANCE',
+        targetTable: 'processed_attendance_records',
+        description: `Synced ${recordsToInsert.length} records for month ${month}/${year}`,
+      });
     }
 
     return {
-        message: 'Sync completed successfully',
-        syncedRecords: recordsToBuild.length
+      message: 'Sync completed successfully',
+      syncedRecords: recordsToInsert.length,
+      keptManualOrFinalized: protectedKeySet.size,
     };
+  }
+
+  // ──────────────────────────────────────
+  // HR/Admin: Finalize / Unfinalize processed attendance (matrix lock)
+  // ──────────────────────────────────────
+  async finalizeProcessedMatrix(month, year, departmentId, search, userContext) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const empSub = employeeRepo
+      .createQueryBuilder('emp')
+      .select('emp.id')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
+
+    if (departmentId) {
+      empSub.andWhere('emp.departmentId = :departmentId', { departmentId });
+    }
+    if (search) {
+      empSub.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+
+    const updateQb = processedRepo
+      .createQueryBuilder()
+      .update()
+      .set({
+        isFinalized: true,
+        updatedBy: userContext?.id || null,
+      })
+      .where('attendance_date >= :start AND attendance_date <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere(`employee_id IN (${empSub.getQuery()})`)
+      .setParameters(empSub.getParameters());
+
+    const result = await updateQb.execute();
+
+    if (this.actionLogsService) {
+      await this.actionLogsService.log({
+        userId: userContext?.id,
+        actionType: 'FINALIZE',
+        targetTable: 'processed_attendance_records',
+        description: `Chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+      });
+    }
+
+    return { affected: result.affected || 0 };
+  }
+
+  async unfinalizeProcessedMatrix(month, year, departmentId, search, userContext) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const empSub = employeeRepo
+      .createQueryBuilder('emp')
+      .select('emp.id')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
+
+    if (departmentId) {
+      empSub.andWhere('emp.departmentId = :departmentId', { departmentId });
+    }
+    if (search) {
+      empSub.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+
+    const updateQb = processedRepo
+      .createQueryBuilder()
+      .update()
+      .set({
+        isFinalized: false,
+        updatedBy: userContext?.id || null,
+      })
+      .where('attendance_date >= :start AND attendance_date <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere(`employee_id IN (${empSub.getQuery()})`)
+      .setParameters(empSub.getParameters());
+
+    const result = await updateQb.execute();
+
+    if (this.actionLogsService) {
+      await this.actionLogsService.log({
+        userId: userContext?.id,
+        actionType: 'UNFINALIZE',
+        targetTable: 'processed_attendance_records',
+        description: `Bỏ chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+      });
+    }
+
+    return { affected: result.affected || 0 };
   }
 
   // ──────────────────────────────────────
@@ -1953,6 +2405,9 @@ export class TimesheetsService {
     const record = await repo.findOneBy({ id });
     if (!record) {
       throw new NotFoundException('Không tìm thấy bản ghi chấm công đã xử lý.');
+    }
+    if (record.isFinalized) {
+      throw new BadRequestException('Bản ghi đã được chốt công, không thể chỉnh sửa.');
     }
 
     const oldValue = record.workValue;

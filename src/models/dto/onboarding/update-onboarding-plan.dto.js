@@ -3,6 +3,7 @@ import {
   IsString,
   IsInt,
   IsBoolean,
+  IsIn,
   Min,
   IsNotEmpty,
   Allow,
@@ -10,7 +11,6 @@ import {
 import { Type } from 'class-transformer';
 
 export class UpdateOnboardingPlanDto {
-  
   @IsOptional()
   @IsString()
   @IsNotEmpty()
@@ -35,6 +35,11 @@ export class UpdateOnboardingPlanDto {
   @IsOptional()
   @IsBoolean()
   isTemplate;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['ACTIVE', 'DRAFT'])
+  status;
 
   @IsOptional()
   @Allow()

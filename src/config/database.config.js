@@ -53,6 +53,9 @@ import { RequestGroupWorkflowEntity } from '../models/entities/request-group-wor
 import { RequestTypeEntity } from '../models/entities/request-type.entity.js';
 import { RequestTypePolicyEntity } from '../models/entities/request-type-policy.entity.js';
 import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
+import { AiChatConversationEntity } from '../models/entities/ai-chat-conversation.entity.js';
+import { AiChatMessageEntity } from '../models/entities/ai-chat-message.entity.js';
+import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -130,6 +133,9 @@ export const databaseConfig = {
     AttendanceAllowedIpEntity,
     AttendanceBlockingConfigEntity,
     AttendanceSecurityStatusEntity,
+    AiChatConversationEntity,
+    AiChatMessageEntity,
+    AiConfigurationEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

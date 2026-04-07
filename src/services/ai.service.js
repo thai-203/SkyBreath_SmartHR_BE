@@ -2,36 +2,50 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/env.config.js';
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { AiChatConversationRepository } from '../repositories/ai-chat-conversations.repository.js';
+import { AiChatMessageRepository } from '../repositories/ai-chat-messages.repository.js';
+import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
 import fs from 'fs';
 import path from 'path';
 
 // ============================================================================
 // KEYWORD → TABLE RELEVANCE MAP
-// Maps Vietnamese/English keywords to the tables needed to answer the question.
-// Always ensure 'employees' and 'departments' are included as base JOIN tables.
 // ============================================================================
 const KEYWORD_TABLE_MAP = [
-  { keywords: ['phép', 'nghỉ phép', 'leave', 'ngày phép', 'phep'], tables: ['leave_balances', 'leave_types', 'leave_policies'] },
-  { keywords: ['đơn', 'đơn từ', 'yêu cầu', 'request', 'đơn nghỉ', 'don'], tables: ['requests', 'request_types', 'request_groups'] },
-  { keywords: ['lương', 'salary', 'thu nhập', 'luong', 'phụ cấp', 'allowance'], tables: ['employee_salaries', 'job_grades'] },
-  { keywords: ['bảng lương', 'payroll', 'tính lương', 'net salary', 'bang luong'], tables: ['payrolls', 'payroll_details'] },
-  { keywords: ['chấm công', 'điểm danh', 'check in', 'check out', 'muộn', 'trễ', 'về sớm', 'cham cong', 'diem danh', 'attendance'], tables: ['processed_attendance_records', 'attendance_records', 'working_shifts'] },
-  { keywords: ['ot', 'tăng ca', 'overtime', 'tang ca', 'làm thêm'], tables: ['time_sheets', 'overtime_request_details', 'overtime_rules', 'overtime_types'] },
-  { keywords: ['công', 'ngày công', 'timesheet', 'time sheet', 'cong', 'tháng này'], tables: ['time_sheets', 'processed_attendance_records'] },
-  { keywords: ['hợp đồng', 'contract', 'hop dong'], tables: ['contracts'] },
-  { keywords: ['ngân hàng', 'bank', 'tài khoản', 'ngan hang'], tables: ['employee_bank_accounts'] },
-  { keywords: ['phạt', 'vi phạm', 'penalty', 'phat'], tables: ['penalties'] },
-  { keywords: ['kỳ nghỉ', 'holiday', 'lễ', 'ngày lễ', 'holiday_list'], tables: ['holiday_list', 'holiday_groups'] },
-  { keywords: ['onboarding', 'thử việc', 'thu viec', 'gia nhập'], tables: ['onboarding_plans', 'onboarding_progress', 'onboarding_tasks'] },
-  { keywords: ['ca làm', 'ca làm việc', 'shift', 'ca trực', 'lịch ca'], tables: ['working_shifts', 'shift_assignments', 'shift_schedules'] },
-  { keywords: ['nhân viên', 'nhan vien', 'employee', 'người', 'ai', 'staff', 'họ tên', 'phòng ban', 'department'], tables: ['employees', 'departments', 'positions'] },
+  // Lương, phụ cấp
+  { keywords: ['lương', 'salary', 'thu nhập', 'luong', 'phụ cấp', 'allowance', 'lương cơ bản', 'kiếm', 'bảng lương cơ bản'], tables: ['employee_salaries', 'job_grades', 'employees'] },
+  // Payroll tổng hợp
+  { keywords: ['payroll', 'bảng lương', 'quyết toán lương', 'bảng tính lương', 'net salary'], tables: ['payrolls', 'payroll_details', 'employee_salaries'] },
+  // Phép, nghỉ phép
+  { keywords: ['phép', 'nghỉ phép', 'leave', 'ngày phép', 'phép còn', 'nghỉ', 'còn bao nhiêu ngày'], tables: ['leave_balances', 'leave_types', 'leave_policies', 'employees'] },
+  // Đơn từ
+  { keywords: ['đơn', 'đơn từ', 'yêu cầu', 'request', 'đơn nghỉ', 'nộp đơn', 'phê duyệt', 'đơn chờ'], tables: ['requests', 'request_types', 'request_groups'] },
+  // Chấm công - truy vấn tổng quát
+  { keywords: ['chấm công', 'điểm danh', 'check in', 'check out', 'muộn', 'trễ', 'về sớm', 'vắng', 'có mặt', 'buổi', 'attendance', 'bảng cấm công'], tables: ['processed_attendance_records', 'attendance_records', 'employees'] },
+  // Liệt kê ngày cụ thể - "những ngày nào", "các ngày"
+  { keywords: ['những ngày nào', 'ngày nào', 'các ngày', 'ngày làm việc', 'danh sách ngày', 'liệt kê ngày', 'danh sách công', 'công'], tables: ['processed_attendance_records', 'attending_records', 'employees'] },
+  // Tổng công tháng (timesheet)
+  { keywords: ['tổng công', 'ngày công', 'timesheet', 'time sheet', 'tháng này', 'cả tháng', 'chấm bao nhiêu', 'bảng cấm công'], tables: ['time_sheets', 'processed_attendance_records', 'employees'] },
+  // Tăng ca, OT
+  { keywords: ['ot', 'tăng ca', 'overtime', 'làm thêm', 'ngoài giờ'], tables: ['overtime_request_details', 'overtime_rules', 'overtime_types', 'requests'] },
+  // Hợp đồng
+  { keywords: ['hợp đồng', 'contract', 'loại hợp đồng', 'kƹ hợp đồng'], tables: ['contracts', 'employees'] },
+  // Ngân hàng
+  { keywords: ['ngân hàng', 'bank', 'tài khoản', 'stk'], tables: ['employee_bank_accounts', 'employees'] },
+  // Phạt, vi phạm
+  { keywords: ['đi muộn', 'về sớm', 'phạt', 'vi phạm', 'penalty', 'trừ công', 'bị trừ', 'tiếng công'], tables: ['penalties'] },
+  // Ngày lễ
+  { keywords: ['nghỉ lễ', 'lịch lễ', 'holiday', 'lễ', 'ngày lễ', 'ngày tết', 'tết'], tables: ['holiday_list', 'holiday_groups'] },
+  // Ca làm việc, lịch ca
+  { keywords: ['ca làm', 'ca làm việc', 'shift', 'ca trực', 'lịch ca', 'giờ vào', 'giờ ra', 'giờ làm', 'phân ca'], tables: ['working_shifts', 'shift_assignments', 'shift_schedules', 'shift_groups', 'employees'] },
+  // Nhân viên / phòng ban
+  { keywords: ['nhân viên', 'nhân sự', 'employee', 'staff', 'người', 'ai', 'họ tên', 'phòng ban', 'department', 'chức danh', 'vị trí'], tables: ['employees', 'departments', 'positions', 'job_grades'] },
 ];
 
-// BASE TABLES are always included — they're needed for JOINs
 const BASE_TABLES = ['employees', 'departments'];
 
 // ============================================================================
-// SCHEMA PARSER — reads databsedescription.txt and parses CREATE TABLE blocks
+// SCHEMA PARSER
 // ============================================================================
 function parseSchemaFile() {
   const schemaFilePath = path.resolve(__dirname, '../../databsedescription.txt');
@@ -43,30 +57,46 @@ function parseSchemaFile() {
   const content = fs.readFileSync(schemaFilePath, 'utf-8');
   const tableDict = {};
 
-  // Split by CREATE TABLE blocks
-  const tableRegex = /CREATE TABLE `([^`]+)` \(([\s\S]*?)\) ENGINE=/g;
-  let match;
-  while ((match = tableRegex.exec(content)) !== null) {
-    const tableName = match[1];
-    const columnBlock = match[2];
+  // Split into segments by CREATE TABLE
+  const segments = content.split(/(?=CREATE TABLE)/g);
 
-    // Extract only column definitions (lines starting with backtick)
-    const columns = columnBlock
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.startsWith('`') && !line.startsWith('`id`') === false || line.startsWith('`'))
-      .filter(line => !line.startsWith('PRIMARY') && !line.startsWith('KEY') && !line.startsWith('CONSTRAINT') && !line.startsWith('UNIQUE'))
-      .map(line => {
-        // Extract column name and type
-        const colMatch = line.match(/`([^`]+)`\s+(\w+(?:\(\d+(?:,\d+)?\))?)/);
-        if (colMatch) return `  ${colMatch[1]} (${colMatch[2]})`;
-        return null;
-      })
-      .filter(Boolean)
-      .slice(0, 15); // Cap at 15 columns per table to save tokens
+  for (const segment of segments) {
+    // Find CREATE TABLE header
+    const tableMatch = segment.match(/CREATE TABLE `([^`]+)`/);
+    if (!tableMatch) continue;
+    const tableName = tableMatch[1];
 
-    if (columns.length > 0) {
-      tableDict[tableName] = `Table \`${tableName}\`:\n${columns.join('\n')}`;
+    // Capture -- comment lines before CREATE TABLE (description block)
+    const commentLines = [];
+    const lines = segment.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('CREATE TABLE')) break;
+      if (trimmed.startsWith('--')) commentLines.push(trimmed);
+    }
+
+    // Capture column definitions with inline comments
+    const columnLines = [];
+    let insideCreate = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('CREATE TABLE')) { insideCreate = true; continue; }
+      if (!insideCreate) continue;
+      if (trimmed.startsWith('PRIMARY') || trimmed.startsWith('KEY') || trimmed.startsWith('CONSTRAINT') || trimmed.startsWith('UNIQUE') || trimmed.startsWith(') ENGINE')) break;
+      if (!trimmed.startsWith('`')) continue;
+      const colMatch = trimmed.match(/`([^`]+)`\s+(\w+(?:\([\d,]+\))?)/);
+      if (!colMatch) continue;
+      const colName = colMatch[1];
+      const colType = colMatch[2];
+      // Extract inline comment
+      const commentMatch = trimmed.match(/--\s*(.+)$/);
+      const colComment = commentMatch ? ` -- ${commentMatch[1]}` : '';
+      columnLines.push(`  ${colName} (${colType})${colComment}`);
+    }
+
+    if (columnLines.length > 0) {
+      const commentBlock = commentLines.length > 0 ? commentLines.join('\n') + '\n' : '';
+      tableDict[tableName] = `${commentBlock}Bảng \`${tableName}\`:\n${columnLines.join('\n')}`;
     }
   }
 
@@ -74,9 +104,6 @@ function parseSchemaFile() {
   return tableDict;
 }
 
-// ============================================================================
-// RELEVANCE ENGINE — finds which tables are needed for a given question
-// ============================================================================
 function getRelevantTables(question) {
   const q = question.toLowerCase();
   const relevantTables = new Set(BASE_TABLES);
@@ -95,9 +122,6 @@ function getRelevantTables(question) {
 // ============================================================================
 export class AiService {
   constructor() {
-    this.genAI = new GoogleGenerativeAI(config.gemini.apiKey);
-    this.modelName = config.gemini.model || 'gemini-2.5-flash';
-    // Parse schema ONCE at startup and cache it
     this.schemaDict = parseSchemaFile();
   }
 
@@ -109,10 +133,6 @@ export class AiService {
     });
   }
 
-  /**
-   * Returns a minimal schema string containing only the tables relevant to the question.
-   * This is the core optimization — instead of ~3000 tokens, we send ~150-300 tokens.
-   */
   getRelevantSchema(question) {
     const relevantTableNames = getRelevantTables(question);
     const parts = [];
@@ -124,24 +144,69 @@ export class AiService {
     }
 
     if (parts.length === 0) {
-      // Fallback: return a list of all table names so AI at least knows what exists
       return `Các bảng trong hệ thống: ${Object.keys(this.schemaDict).join(', ')}`;
     }
 
     return parts.join('\n\n');
   }
 
-  async handleChat(userId, roles, messages) {
+  // ── Conversation management ──────────────────────────────────────────────
+
+  async getConversations(userId) {
+    return AiChatConversationRepository.findByUserId(userId);
+  }
+
+  async createConversation(userId, title = 'Cuộc hội thoại mới') {
+    const conv = AiChatConversationRepository.create({ userId, title, isActive: 1 });
+    return AiChatConversationRepository.save(conv);
+  }
+
+  async deleteConversation(conversationId, userId) {
+    const conv = await AiChatConversationRepository.findByIdAndUserId(conversationId, userId);
+    if (!conv) throw new Error('Conversation not found or unauthorized.');
+    await AiChatConversationRepository.softDelete(conversationId);
+  }
+
+  async getMessages(conversationId, userId) {
+    // Validate ownership
+    const conv = await AiChatConversationRepository.findByIdAndUserId(conversationId, userId);
+    if (!conv) throw new Error('Conversation not found or unauthorized.');
+    return AiChatMessageRepository.findByConversationId(conversationId);
+  }
+
+  // ── Main chat handler ────────────────────────────────────────────────────
+
+  async handleChat(userId, roles, content, conversationId) {
     const employee = await this.getEmployeeInfo(userId);
     if (!employee) {
       throw new Error('Employee not found for the given user.');
     }
 
-    // Get the relevant schema for THIS specific question (token optimization)
-    const lastMessage = messages[messages.length - 1];
-    const schemaText = this.getRelevantSchema(lastMessage.content);
+    // Resolve or create conversation
+    let conversation;
+    if (conversationId) {
+      conversation = await AiChatConversationRepository.findByIdAndUserId(conversationId, userId);
+      if (!conversation) throw new Error('Conversation not found or unauthorized.');
+    } else {
+      // Auto-create a new conversation
+      const title = content.substring(0, 50) || 'Cuộc hội thoại mới';
+      conversation = await this.createConversation(userId, title);
+    }
 
-    // Text-to-SQL Tool
+    // Save user message to DB
+    await AiChatMessageRepository.saveMessage({
+      conversationId: conversation.id,
+      role: 'user',
+      content,
+    });
+
+    // Load complete history from DB (excluding the just-saved user msg for history building)
+    const allMessages = await AiChatMessageRepository.findByConversationId(conversation.id);
+
+    // Schema optimization — based on the current user question
+    const schemaText = this.getRelevantSchema(content);
+
+    // Tools
     const tools = [
       {
         functionDeclarations: [
@@ -161,7 +226,7 @@ export class AiService {
       },
     ];
 
-    const systemInstruction = `Bạn là Trợ lý AI Nhân sự thông minh của SkyBreath SmartHR. Nhiệm vụ của bạn là trả lời câu hỏi về dữ liệu nội bộ bằng cách TỰ VIẾT CÂU LỆNH SQL và QUERY VÀO DATABASE, sau đó trả lời bằng tiếng Việt thân thiện.
+    const systemInstruction = `Bạn là Trợ lý AI Nhân sự thông minh của SkyBreath SmartHR. Nhiệm vụ: nhận câu hỏi tiếng Việt → tự sinh câu SQL → query vào database → trả lời bằng tiếng Việt thân thiện.
 
 THÔNG TIN NGƯỜI DÙNG:
 - Tên: ${employee.fullName}
@@ -170,35 +235,58 @@ THÔNG TIN NGƯỜI DÙNG:
 - Vai trò: ${roles.join(', ')}
 - Ngày hiện tại: ${new Date().toISOString().split('T')[0]}
 
-CÁC BẢNG LIÊN QUAN ĐẾN CÂU HỎI NÀY:
+CÁC BẢNG SCHEMA LIÊN QUAN ĐẾN CÂU HỎI NÀY:
 ${schemaText}
 
-QUY TẮC SQL:
-- Luôn thêm điều kiện \`is_deleted = 0\` trong mỗi mệnh đề WHERE.
-- Luôn JOIN bảng \`employees\` (qua employee_id) để lấy full_name khi cần hiển thị tên.
-- Với câu hỏi về "tháng này": dùng MONTH(CURDATE()) và YEAR(CURDATE()).
-- QUAN TRỌNG: Bảng \`requests\` dùng cột \`request_status\` (không phải \`status\`), cột \`request_content\` (không phải \`content\`).
-- QUAN TRỌNG: Bảng \`leave_balances\` KHÔNG có cột \`total_days\`. Tổng phép = lấy từ bảng \`leave_policies\` (cột \`days_per_year\`).
+--- QUY TẮC SQL BẮT BUỘC ---
+1. LUÔN thêm \`is_deleted = 0\` vào mọi bảng query.
+2. Tìm kiếm nhân viên theo tên: dùng \`e.full_name LIKE '%Tên%'\` (tìm gần đúng).
+3. Lương hiện tại: JOIN employee_salaries với \`salary_status = 'ACTIVE'\`.
+4. Ngày phép còn lại = lp.days_per_year - lb.used_days (JOIN leave_balances → leave_types → leave_policies).
+5. Bảng \`leave_balances\` KHÔNG có cột \`total_days\`. Lấy tổng phép từ \`leave_policies.days_per_year\`.
+6. Bảng \`requests\` dùng cột \`status\` (DRAFT/SUBMITTED/APPROVED/REJECTED/CANCELLED).
+7. Tổng công tháng: \`processed_attendance_records\` (SUM(work_value)) hoặc \`time_sheets\` (total_working_days).
+8. Ca làm việc của nhân viên: JOIN shift_assignments (employee_id) => working_shifts.
+9. Phạt đi muộn: Bảng \`penalties\` - tìm theo \`violation_type='LATE'\`, \`from_minute <= X AND to_minute >= X\`, \`status='ACTIVE'\`.
+10. Dùng MONTH() và YEAR() để lọc theo tháng/năm. Tháng này: MONTH(CURDATE()), YEAR(CURDATE()).
+11. Bảo mật: TUYỆT ĐỐI KHÔNG query bảng \`ai_configurations\`, \`users\` (cột password/refresh_token).
+12. Chỉ dùng SELECT, KHÔNG dùng INSERT/UPDATE/DELETE.
 
-PHÂN QUYỀN:
-- Nếu vai trò là EMPLOYEE: BẮT BUỘC chỉ truy vấn dữ liệu của chính họ (thêm \`employee_id = ${employee.id}\`).
-- Nếu vai trò là HR hoặc ADMIN: Có thể xem toàn bộ, thực hiện aggregation phức tạp.
+--- PHÂN QUYỀN ---
+- EMPLOYEE: CHỈ được xem dữ liệu của chính họ (thêm \`AND e.id = ${employee.id}\` hoặc \`employee_id = ${employee.id}\`).
+- HR/ADMIN: Xem toàn bộ, JOIN bất kỳ bảng nào cần thiết.
 
-Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằng tiếng Việt. Không lộ câu SQL gốc.`;
+--- MẪU JOIN PHỔ BIẾN ---
+Lương: FROM employees e JOIN employee_salaries es ON es.employee_id = e.id AND es.salary_status='ACTIVE' AND es.is_deleted=0
+Phép còn: FROM employees e JOIN leave_balances lb ON lb.employee_id=e.id AND lb.year=YEAR(CURDATE()) AND lb.is_deleted=0 JOIN leave_types lt ON lt.id=lb.leave_type_id AND lt.is_deleted=0 JOIN leave_policies lp ON lp.leave_type_id=lt.id AND lp.is_deleted=0
+Công tháng: FROM employees e JOIN processed_attendance_records par ON par.employee_id=e.id AND par.is_deleted=0 WHERE MONTH(par.work_date)=M AND YEAR(par.work_date)=Y
+Phòng ban: FROM employees e JOIN departments d ON d.id=e.department_id AND d.is_deleted=0 JOIN positions p ON p.id=e.position_id AND p.is_deleted=0
+Ca làm việc: FROM employees e JOIN shift_assignments sa ON sa.employee_id=e.id AND sa.is_deleted=0 AND (sa.effective_to IS NULL OR sa.effective_to>=CURDATE()) JOIN working_shifts ws ON ws.id=sa.shift_id AND ws.is_deleted=0
+Phạt muộn: FROM penalties WHERE violation_type='LATE' AND status='ACTIVE' AND is_deleted=0 AND from_minute<=X AND to_minute>=X AND effective_from<=CURDATE() AND (effective_to IS NULL OR effective_to>=CURDATE())
 
-    const model = this.genAI.getGenerativeModel({
-      model: this.modelName,
+Sau khi nhận kết quả SQL, trình bày ngắn gọn, dễ hiểu bằng tiếng Việt. Không lộ câu SQL gốc.`;
+
+    const activeConfig = await AppDataSource.getRepository(AiConfigurationEntity).findOne({ where: { status: 'ACTIVE' } });
+    if (!activeConfig || !activeConfig.configValue) {
+      throw new Error('Cấu hình AI chưa được thiết lập, vui lòng báo quản trị viên.');
+    }
+
+    const genAI = new GoogleGenerativeAI(activeConfig.configValue);
+    const modelToUse = activeConfig.aiModel || 'gemini-2.5-flash';
+    
+    const model = genAI.getGenerativeModel({
+      model: modelToUse,
       systemInstruction: systemInstruction,
       tools: tools,
     });
 
-    const historyMessages = messages.slice(0, -1);
-    let historyData = historyMessages.map(msg => ({
+    // Build history for Gemini (all messages except the last user message)
+    const historyData = allMessages.slice(0, -1).map(msg => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }],
     }));
 
-    // Gemini API requires the first message in the history to be 'user'
+    // Gemini requires history to start with 'user'
     while (historyData.length > 0 && historyData[0].role === 'model') {
       historyData.shift();
     }
@@ -207,7 +295,7 @@ Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằn
 
     let result;
     try {
-      result = await chatSession.sendMessage(lastMessage.content);
+      result = await chatSession.sendMessage(content);
     } catch (err) {
       console.error('Lỗi gửi message:', err);
       throw err;
@@ -215,10 +303,16 @@ Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằn
 
     let finalResponseText = result.response.text();
     let functionCalls = result.response.functionCalls();
+    let functionCallName = null;
+    let functionArgs = null;
+    let functionResponse = null;
 
     if (functionCalls && functionCalls.length > 0) {
       const call = functionCalls[0];
+      functionCallName = call.name;
+      functionArgs = call.args;
       const toolResult = await this.executeTool(call);
+      functionResponse = toolResult;
 
       const functionResponseResult = await chatSession.sendMessage([{
         functionResponse: {
@@ -232,8 +326,23 @@ Sau khi nhận kết quả SQL, hãy trình bày ngắn gọn, dễ hiểu bằn
       finalResponseText = functionResponseResult.response.text();
     }
 
+    // Save assistant message to DB
+    await AiChatMessageRepository.saveMessage({
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: finalResponseText,
+      functionCallName,
+      functionArgs,
+      functionResponse,
+    });
+
+    // Update conversation timestamp
+    await AiChatConversationRepository.update(conversation.id, { updatedAt: new Date() });
+
     return {
       content: finalResponseText,
+      conversationId: conversation.id,
+      conversationTitle: conversation.title,
       action: null,
     };
   }

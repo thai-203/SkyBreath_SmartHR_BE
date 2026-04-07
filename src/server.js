@@ -38,6 +38,7 @@ import { uploadRoutes } from './routes/upload.routes.js';
 import { requestGroupsRoutes } from './routes/request-groups.routes.js';
 import { requestTypesRoutes } from './routes/request-types.routes.js';
 import { aiRoutes } from './routes/ai.routes.js';
+import { aiConfigurationsRoutes } from './routes/ai-configurations.routes.js';
 import { ContractsService } from './services/contracts.service.js';
 import { startTimesheetAutoGenerateJob } from './jobs/timesheet-auto-generate.job.js';
 import { startAttendanceSyncJob } from './jobs/attendance-sync.job.js';
@@ -109,6 +110,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/upload`, uploadRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-groups`, requestGroupsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-types`, requestTypesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai`, aiRoutes);
+app.use(`/${API_PREFIX}/${API_VERSION}/ai-configurations`, aiConfigurationsRoutes);
 
 app.use(
   `/${API_PREFIX}/${API_VERSION}/face-recognition-config`,

@@ -18,7 +18,12 @@ export class TimesheetsController {
                 return ResponseUtil.sendResponse(res, message, null, 400);
             }
             const result = await this.timesheetsService.generate(dto, req.user);
-            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.GENERATED, result);
+            const failed = result?.failed || 0;
+            const msg =
+                failed > 0
+                    ? `${AppMessages.Success.Timesheet.GENERATED} (thất bại ${failed})`
+                    : AppMessages.Success.Timesheet.GENERATED;
+            ResponseUtil.sendResponse(res, msg, result);
         } catch (error) {
             next(error);
         }
@@ -213,9 +218,14 @@ export class TimesheetsController {
 
     exportDetailed = async (req, res, next) => {
         try {
-            const { month, year, employeeId } = req.query;
+            const { month, year, employeeId, departmentId, search } = req.query;
             const buffer = await this.timesheetsService.exportDetailed(
-                parseInt(month), parseInt(year), employeeId ? parseInt(employeeId) : undefined, req.user
+                parseInt(month),
+                parseInt(year),
+                employeeId ? parseInt(employeeId) : undefined,
+                departmentId ? parseInt(departmentId) : undefined,
+                search ? String(search) : undefined,
+                req.user
             );
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename=attendance_detail_${month}_${year}.xlsx`);
@@ -235,6 +245,44 @@ export class TimesheetsController {
             }
             const result = await this.timesheetsService.updateProcessedRecord(id, parseFloat(workValue), note, req.user);
             ResponseUtil.sendResponse(res, 'Cập nhật ngày công thành công', result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    finalizeProcessedMatrix = async (req, res, next) => {
+        try {
+            const { month, year, departmentId, search } = req.body;
+            if (!month || !year) {
+                return ResponseUtil.sendResponse(res, "Month and Year are required", null, 400);
+            }
+            const result = await this.timesheetsService.finalizeProcessedMatrix(
+                parseInt(month, 10),
+                parseInt(year, 10),
+                departmentId ? parseInt(departmentId, 10) : undefined,
+                search ? String(search) : undefined,
+                req.user
+            );
+            ResponseUtil.sendResponse(res, "Chốt công thành công", result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    unfinalizeProcessedMatrix = async (req, res, next) => {
+        try {
+            const { month, year, departmentId, search } = req.body;
+            if (!month || !year) {
+                return ResponseUtil.sendResponse(res, "Month and Year are required", null, 400);
+            }
+            const result = await this.timesheetsService.unfinalizeProcessedMatrix(
+                parseInt(month, 10),
+                parseInt(year, 10),
+                departmentId ? parseInt(departmentId, 10) : undefined,
+                search ? String(search) : undefined,
+                req.user
+            );
+            ResponseUtil.sendResponse(res, "Bỏ chốt công thành công", result);
         } catch (error) {
             next(error);
         }
