@@ -97,6 +97,16 @@ export class RequestsController {
         }
     };
 
+    // GET /requests/estimate-quantity
+    estimateQuantity = async (req, res, next) => {
+        try {
+            const result = await this.service.estimateQuantity(req.query);
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     // POST /requests/draft — Lưu nháp
     saveDraft = async (req, res, next) => {
         try {

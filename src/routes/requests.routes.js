@@ -24,6 +24,9 @@ router.get('/workflow-preview', authMiddleware, permissionsMiddleware('REQUEST_R
 // GET /requests/quota-status — Kiểm tra hạn mức policy
 router.get('/quota-status', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getQuotaStatus);
 
+// GET /requests/estimate-quantity — Ước tính số lượng ngày/giờ xin phép dựa trên ca làm việc
+router.get('/estimate-quantity', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.estimateQuantity);
+
 // GET /requests — Tất cả (HR/Admin)
 router.get('/', authMiddleware, permissionsMiddleware('REQUEST_VIEW_ALL'), requestsController.getAllRequests);
 
