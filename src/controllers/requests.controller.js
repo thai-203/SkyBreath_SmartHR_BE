@@ -35,10 +35,20 @@ export class RequestsController {
         }
     };
 
-    // GET /requests/excuses — Danh sách đơn giải trình (request_type_id = 2)
+    // GET /requests/excuses — Đơn giải trình (nhóm LATE_EARLY / ATTENDANCE_CORRECTION)
     getExcuseRequests = async (req, res, next) => {
         try {
             const result = await this.service.getExcuseRequests(req.query, req.user);
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    // GET /requests/overtime-detail — Bảng tăng ca chi tiết (request_group_id = 1)
+    getOvertimeDetailRequests = async (req, res, next) => {
+        try {
+            const result = await this.service.getOvertimeDetailRequests(req.query, req.user);
             res.json({ success: true, data: result });
         } catch (error) {
             next(error);

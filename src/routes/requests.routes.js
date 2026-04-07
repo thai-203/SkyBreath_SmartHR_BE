@@ -6,8 +6,11 @@ import { permissionsMiddleware } from '../common/middleware/permissions.middlewa
 const router = Router();
 const requestsController = new RequestsController();
 
-// GET /requests/excuses — Danh sách đơn giải trình (request_type_id = 2)
+// GET /requests/excuses — Đơn giải trình (nhóm LATE_EARLY / ATTENDANCE_CORRECTION)
 router.get('/excuses', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getExcuseRequests);
+
+// GET /requests/overtime-detail — Bảng tăng ca chi tiết (nhóm OVERTIME + dòng chi tiết hoặc tổng hợp từ đơn)
+router.get('/overtime-detail', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getOvertimeDetailRequests);
 
 // GET /requests/my — Đơn của tôi
 router.get('/my', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getMyRequests);
