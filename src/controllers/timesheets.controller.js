@@ -249,4 +249,42 @@ export class TimesheetsController {
             next(error);
         }
     };
+
+    finalizeProcessedMatrix = async (req, res, next) => {
+        try {
+            const { month, year, departmentId, search } = req.body;
+            if (!month || !year) {
+                return ResponseUtil.sendResponse(res, "Month and Year are required", null, 400);
+            }
+            const result = await this.timesheetsService.finalizeProcessedMatrix(
+                parseInt(month, 10),
+                parseInt(year, 10),
+                departmentId ? parseInt(departmentId, 10) : undefined,
+                search ? String(search) : undefined,
+                req.user
+            );
+            ResponseUtil.sendResponse(res, "Chốt công thành công", result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    unfinalizeProcessedMatrix = async (req, res, next) => {
+        try {
+            const { month, year, departmentId, search } = req.body;
+            if (!month || !year) {
+                return ResponseUtil.sendResponse(res, "Month and Year are required", null, 400);
+            }
+            const result = await this.timesheetsService.unfinalizeProcessedMatrix(
+                parseInt(month, 10),
+                parseInt(year, 10),
+                departmentId ? parseInt(departmentId, 10) : undefined,
+                search ? String(search) : undefined,
+                req.user
+            );
+            ResponseUtil.sendResponse(res, "Bỏ chốt công thành công", result);
+        } catch (error) {
+            next(error);
+        }
+    };
 }

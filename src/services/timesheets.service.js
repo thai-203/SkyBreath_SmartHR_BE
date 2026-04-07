@@ -625,6 +625,7 @@ export class TimesheetsService {
                 attendanceStatus: r.attendanceStatus,
                 workingHours: r.workValue,
                 requestId: r.requestId ?? null,
+                isFinalized: !!r.isFinalized,
             };
         });
 
@@ -2280,6 +2281,121 @@ export class TimesheetsService {
   }
 
   // ──────────────────────────────────────
+  // HR/Admin: Finalize / Unfinalize processed attendance (matrix lock)
+  // ──────────────────────────────────────
+  async finalizeProcessedMatrix(month, year, departmentId, search, userContext) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const empSub = employeeRepo
+      .createQueryBuilder('emp')
+      .select('emp.id')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
+
+    if (departmentId) {
+      empSub.andWhere('emp.departmentId = :departmentId', { departmentId });
+    }
+    if (search) {
+      empSub.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+
+    const updateQb = processedRepo
+      .createQueryBuilder()
+      .update()
+      .set({
+        isFinalized: true,
+        updatedBy: userContext?.id || null,
+      })
+      .where('attendance_date >= :start AND attendance_date <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere(`employee_id IN (${empSub.getQuery()})`)
+      .setParameters(empSub.getParameters());
+
+    const result = await updateQb.execute();
+
+    if (this.actionLogsService) {
+      await this.actionLogsService.log({
+        userId: userContext?.id,
+        actionType: 'FINALIZE',
+        targetTable: 'processed_attendance_records',
+        description: `Chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+      });
+    }
+
+    return { affected: result.affected || 0 };
+  }
+
+  async unfinalizeProcessedMatrix(month, year, departmentId, search, userContext) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const empSub = employeeRepo
+      .createQueryBuilder('emp')
+      .select('emp.id')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
+
+    if (departmentId) {
+      empSub.andWhere('emp.departmentId = :departmentId', { departmentId });
+    }
+    if (search) {
+      empSub.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+
+    const updateQb = processedRepo
+      .createQueryBuilder()
+      .update()
+      .set({
+        isFinalized: false,
+        updatedBy: userContext?.id || null,
+      })
+      .where('attendance_date >= :start AND attendance_date <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .andWhere(`employee_id IN (${empSub.getQuery()})`)
+      .setParameters(empSub.getParameters());
+
+    const result = await updateQb.execute();
+
+    if (this.actionLogsService) {
+      await this.actionLogsService.log({
+        userId: userContext?.id,
+        actionType: 'UNFINALIZE',
+        targetTable: 'processed_attendance_records',
+        description: `Bỏ chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+      });
+    }
+
+    return { affected: result.affected || 0 };
+  }
+
+  // ──────────────────────────────────────
   // HR: Update a single processed record's work_value
   // ──────────────────────────────────────
   async updateProcessedRecord(id, workValue, note, userContext) {
@@ -2289,6 +2405,9 @@ export class TimesheetsService {
     const record = await repo.findOneBy({ id });
     if (!record) {
       throw new NotFoundException('Không tìm thấy bản ghi chấm công đã xử lý.');
+    }
+    if (record.isFinalized) {
+      throw new BadRequestException('Bản ghi đã được chốt công, không thể chỉnh sửa.');
     }
 
     const oldValue = record.workValue;
