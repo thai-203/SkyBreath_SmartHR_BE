@@ -1,8 +1,9 @@
 import { RequestsRepository } from '../repositories/requests.repository.js';
 import { RequestGroupWorkflowsRepository } from '../repositories/request-group-workflows.repository.js';
 import { RequestTypesRepository } from '../repositories/request-types.repository.js';
+import { RequestGroupsRepository } from '../repositories/request-groups.repository.js';
 import { NotFoundException, BadRequestException, ForbiddenException } from '../common/exceptions/index.js';
-import { RequestStatus, ApprovalLevelStatus, ApproverType } from '../common/enums/request.enum.js';
+import { RequestStatus, ApprovalLevelStatus, ApproverType, RequestGroupCode } from '../common/enums/request.enum.js';
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { NotificationsService } from './notifications.service.js';
@@ -12,6 +13,7 @@ export class RequestsService {
         this.repo = new RequestsRepository();
         this.workflowRepo = new RequestGroupWorkflowsRepository();
         this.typeRepo = new RequestTypesRepository();
+        this.requestGroupsRepo = new RequestGroupsRepository();
         this.notificationService = new NotificationsService();
     }
 
@@ -595,7 +597,7 @@ export class RequestsService {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Timesheets/Excuses page: Danh sách đơn giải trình (request_type_id = 2)
+    // Timesheets/Excuses page: đơn nhóm LATE_EARLY / ATTENDANCE_CORRECTION
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     async getExcuseRequests(query, reqUser) {
         const {
@@ -619,7 +621,45 @@ export class RequestsService {
         }
 
         return await this.repo.findExcuseRequests({
-            requestTypeId: 2,
+            month: month ? parseInt(month) : undefined,
+            year: year ? parseInt(year) : undefined,
+            departmentId: departmentId ? parseInt(departmentId) : undefined,
+            search: search ? String(search) : undefined,
+            status: status ? String(status) : undefined,
+            employeeId,
+            skip,
+            limit: parseInt(limit),
+        });
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Timesheets: Bảng tăng ca chi tiết — nhóm OVERTIME (theo code request_groups)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    async getOvertimeDetailRequests(query, reqUser) {
+        const {
+            month,
+            year,
+            departmentId,
+            search,
+            status,
+            page = 1,
+            limit = 20,
+        } = query;
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        let employeeId;
+        const hasViewAll = reqUser?.permissions?.includes('REQUEST_VIEW_ALL');
+        if (!hasViewAll) {
+            const employee = await this._getEmployeeByUserId(reqUser.id);
+            employeeId = employee?.id;
+        }
+
+        const otGroup = await this.requestGroupsRepo.findByCode(RequestGroupCode.OVERTIME);
+        const requestGroupId = otGroup?.id ?? 1;
+
+        return await this.repo.findOvertimeDetailLinesForGroup({
+            requestGroupId,
             month: month ? parseInt(month) : undefined,
             year: year ? parseInt(year) : undefined,
             departmentId: departmentId ? parseInt(departmentId) : undefined,
