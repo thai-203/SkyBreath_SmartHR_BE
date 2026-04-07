@@ -1286,168 +1286,219 @@ export class TimesheetsService {
     return ExcelUtil.export(data, columns, `Bang cham cong T${month}-${year}`);
   }
 
-  async exportDetailed(month, year, employeeId, userContext) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+  async exportDetailed(month, year, employeeId, departmentId, search, userContext) {
+    // Export "giống như Ma trận dữ liệu chấm công" (processed_attendance_records),
+    // not raw attendance_records.
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-    // Access check for export
+    // Access check: EMPLOYEE-only can only export their own data
     if (userContext && this._isEmployee(userContext)) {
       const employee = await this._getEmployeeByUserId(userContext.id);
       employeeId = employee?.id;
+      departmentId = undefined;
+      search = undefined;
     }
 
-    const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
-    const query = attendanceRepo
-      .createQueryBuilder('att')
-      .leftJoinAndSelect('att.employee', 'employee')
-      .leftJoinAndSelect('employee.department', 'department')
-      .where('att.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('att.checkInTime >= :start', { start: startDate })
-      .andWhere('att.checkInTime <= :end', { end: endDate });
+    // 1) Load employees in scope (same filtering style as processed-matrix)
+    const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+    const qb = employeeRepo
+      .createQueryBuilder('emp')
+      .leftJoinAndSelect('emp.department', 'dept')
+      .leftJoinAndSelect('emp.position', 'pos')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', {
+        statuses: ['ACTIVE', 'PROBATION'],
+      });
 
     if (employeeId) {
-      query.andWhere('att.employeeId = :employeeId', { employeeId });
-    }
-
-    const records = await query
-      .orderBy('employee.fullName', 'ASC')
-      .addOrderBy('att.checkInTime', 'ASC')
-      .getMany();
-
-    // Group records by employee
-    const employeeMap = new Map();
-    records.forEach((r) => {
-      const empId = r.employeeId;
-      if (!employeeMap.has(empId)) {
-        employeeMap.set(empId, {
-          employee: r.employee,
-          records: [],
+      qb.andWhere('emp.id = :employeeId', { employeeId });
+    } else {
+      if (departmentId) {
+        qb.andWhere('emp.departmentId = :departmentId', { departmentId });
+      }
+      if (search) {
+        qb.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', {
+          search: `%${search}%`,
         });
       }
-      employeeMap.get(empId).records.push(r);
-    });
+    }
 
-    // Build multi-sheet Excel workbook
+    const employees = await qb.orderBy('emp.fullName', 'ASC').getMany();
+    if (employees.length === 0) {
+      // still return a valid empty workbook
+      const ExcelJS = await import('exceljs');
+      const wb = new ExcelJS.default.Workbook();
+      wb.addWorksheet('Ma_tran');
+      return await wb.xlsx.writeBuffer();
+    }
+    const empIds = employees.map((e) => e.id);
+
+    // 2) Load processed attendance records for these employees + month
+    const { ProcessedAttendanceRecordEntity } = await import(
+      '../models/entities/processed-attendance-record.entity.js'
+    );
+    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+    const processed = await processedRepo
+      .createQueryBuilder('par')
+      .select([
+        'par.id',
+        'par.employeeId',
+        'par.attendanceDate',
+        'par.checkInTime',
+        'par.checkOutTime',
+        'par.lateMinutes',
+        'par.earlyMinutes',
+        'par.attendanceStatus',
+        'par.workValue',
+        'par.requestId',
+      ])
+      .where('par.employeeId IN (:...empIds)', { empIds })
+      .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
+        start: monthStartStr,
+        end: monthEndStr,
+      })
+      .getMany();
+
+    // Index records by empId|date (YYYY-MM-DD)
+    const byEmpDate = new Map();
+    for (const r of processed) {
+      const dateKey = String(r.attendanceDate).slice(0, 10);
+      byEmpDate.set(`${r.employeeId}|${dateKey}`, r);
+    }
+
+    // 3) Build Excel sheet like matrix (1 sheet, 1 row per employee)
     const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.default.Workbook();
-
-    const columns = [
-      { header: 'STT', key: 'index', width: 8 },
-      { header: 'Ngày', key: 'date', width: 15 },
-      { header: 'Thứ', key: 'dayOfWeek', width: 8 },
-      { header: 'Giờ vào', key: 'checkIn', width: 12 },
-      { header: 'Giờ ra', key: 'checkOut', width: 12 },
-      { header: 'Số giờ', key: 'hoursWorked', width: 10 },
-      { header: 'Trạng thái', key: 'attendanceStatus', width: 15 },
-      { header: 'Loại', key: 'attendanceType', width: 15 },
-    ];
+    const worksheet = workbook.addWorksheet('Ma_tran');
 
     const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    const dayHeaders = [];
+    let standardWorkingDays = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month - 1, day);
+      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+      if (!isWeekend) standardWorkingDays++;
+      const header = `${dayNames[d.getDay()]}\n(${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')})`;
+      dayHeaders.push({ day, isWeekend, header });
+    }
 
-    for (const [, { employee: emp, records: empRecords }] of employeeMap) {
-      // Sheet name: employee code or name (max 31 chars, no special chars)
-      const sheetName = (emp.employeeCode || emp.fullName || `NV${emp.id}`)
-        .replace(/[*?:\\/\[\]]/g, '')
-        .substring(0, 31);
+    const baseColumns = [
+      { header: 'STT', width: 6 },
+      { header: 'Họ tên', width: 26 },
+      { header: 'Mã NS', width: 14 },
+      { header: 'Chức danh', width: 18 },
+    ];
+    const tailColumns = [
+      { header: 'Tổng công', width: 10 },
+      { header: 'Công chuẩn', width: 10 },
+    ];
 
-      const worksheet = workbook.addWorksheet(sheetName);
+    worksheet.columns = [
+      ...baseColumns,
+      ...dayHeaders.map((h) => ({ header: h.header, width: 8 })),
+      ...tailColumns,
+    ];
 
-      // Employee info header
-      worksheet.mergeCells('A1:H1');
-      const titleCell = worksheet.getCell('A1');
-      titleCell.value = `Chi tiết chấm công - ${emp.fullName || ''} (${emp.employeeCode || ''})`;
-      titleCell.font = { bold: true, size: 14 };
-      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      worksheet.getRow(1).height = 30;
+    // Header style
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 32;
+    headerRow.eachCell((cell, colNumber) => {
+      cell.font = { bold: true, size: 10, color: { argb: 'FF1E293B' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+      // weekend header light amber
+      const isDayCol = colNumber > baseColumns.length && colNumber <= baseColumns.length + dayHeaders.length;
+      if (isDayCol) {
+        const dayIdx = colNumber - baseColumns.length - 1;
+        if (dayHeaders[dayIdx]?.isWeekend) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7ED' } };
+        } else {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        }
+      } else {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      }
+    });
 
-      worksheet.mergeCells('A2:H2');
-      const periodCell = worksheet.getCell('A2');
-      periodCell.value = `Kỳ: Tháng ${month}/${year} | Phòng ban: ${emp.department?.departmentName || '-'}`;
-      periodCell.font = { size: 11, italic: true };
-      periodCell.alignment = { horizontal: 'center' };
+    worksheet.views = [{ state: 'frozen', xSplit: baseColumns.length, ySplit: 1 }];
 
-      // Column headers at row 4
-      worksheet.columns = columns.map((col) => ({
-        key: col.key,
-        width: col.width,
-      }));
+    const matrixCellValue = (rec) => {
+      if (!rec) return '-';
+      const status = rec.attendanceStatus;
+      if (status === 'WEEKEND') return 'N';
+      if (['X', 'KL', 'ABSENT', '0'].includes(status)) {
+        return rec.workValue !== undefined && rec.workValue !== null ? Number(rec.workValue) : 0;
+      }
+      return status || '-';
+    };
 
-      const headerRow = worksheet.getRow(4);
-      columns.forEach((col, i) => {
-        const cell = headerRow.getCell(i + 1);
-        cell.value = col.header;
-        cell.font = { bold: true, size: 11, color: { argb: '000000' } };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFF00' },
-        };
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    const numberOrZero = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    employees.forEach((emp, index) => {
+      const rowValues = [];
+      rowValues.push(index + 1);
+      rowValues.push(emp.fullName || '');
+      rowValues.push(emp.employeeCode || '');
+      rowValues.push(emp.position?.positionName || '');
+
+      let total = 0;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const rec = byEmpDate.get(`${emp.id}|${dateStr}`);
+        rowValues.push(matrixCellValue(rec));
+        if (rec && rec.workValue !== undefined && rec.workValue !== null) {
+          total += numberOrZero(rec.workValue);
+        }
+      }
+      rowValues.push(Number(total.toFixed(2)));
+      rowValues.push(standardWorkingDays);
+
+      const row = worksheet.addRow(rowValues);
+      row.height = 20;
+      row.eachCell((cell, colNumber) => {
         cell.border = {
           top: { style: 'thin' },
           left: { style: 'thin' },
           bottom: { style: 'thin' },
           right: { style: 'thin' },
         };
-      });
-      headerRow.height = 25;
-
-      // Data rows starting at row 5
-      empRecords.forEach((r, idx) => {
-        const checkIn = r.checkInTime ? new Date(r.checkInTime) : null;
-        const checkOut = r.checkOutTime ? new Date(r.checkOutTime) : null;
-        const hoursWorked =
-          checkIn && checkOut
-            ? ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(2)
-            : 0;
-
-        const row = worksheet.getRow(5 + idx);
-        const values = [
-          idx + 1,
-          checkIn ? checkIn.toLocaleDateString('vi-VN') : '',
-          checkIn ? dayNames[checkIn.getDay()] : '',
-          checkIn ? checkIn.toLocaleTimeString('vi-VN') : '',
-          checkOut ? checkOut.toLocaleTimeString('vi-VN') : '',
-          hoursWorked,
-          r.attendanceStatus || '',
-          r.attendanceType || '',
-        ];
-        values.forEach((val, i) => {
-          const cell = row.getCell(i + 1);
-          cell.value = val;
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' },
-          };
-          cell.alignment = {
-            vertical: 'middle',
-            horizontal: 'left',
-            wrapText: true,
-          };
-        });
-      });
-
-      // Summary row
-      const summaryRowIdx = 5 + empRecords.length + 1;
-      const summaryRow = worksheet.getRow(summaryRowIdx);
-      summaryRow.getCell(1).value = 'Tổng cộng:';
-      summaryRow.getCell(1).font = { bold: true };
-      summaryRow.getCell(6).value = empRecords
-        .reduce((sum, r) => {
-          if (r.checkInTime && r.checkOutTime) {
-            return (
-              sum +
-              (new Date(r.checkOutTime) - new Date(r.checkInTime)) /
-                (1000 * 60 * 60)
-            );
+        const isNumeric = typeof cell.value === 'number';
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: colNumber <= 2 ? 'left' : 'center',
+          wrapText: true,
+        };
+        if (isNumeric) {
+          cell.numFmt = '0.##';
+        }
+        // weekend background for day columns
+        const isDayCol =
+          colNumber > baseColumns.length &&
+          colNumber <= baseColumns.length + dayHeaders.length;
+        if (isDayCol) {
+          const dayIdx = colNumber - baseColumns.length - 1;
+          if (dayHeaders[dayIdx]?.isWeekend) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
           }
-          return sum;
-        }, 0)
-        .toFixed(2);
-      summaryRow.getCell(6).font = { bold: true };
-    }
+        }
+        // totals background
+        const totalStartCol = baseColumns.length + dayHeaders.length + 1;
+        if (colNumber >= totalStartCol) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDFA' } };
+          cell.font = { bold: true, color: { argb: 'FF0F766E' } };
+        }
+      });
+    });
 
     return await workbook.xlsx.writeBuffer();
   }

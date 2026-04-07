@@ -218,9 +218,14 @@ export class TimesheetsController {
 
     exportDetailed = async (req, res, next) => {
         try {
-            const { month, year, employeeId } = req.query;
+            const { month, year, employeeId, departmentId, search } = req.query;
             const buffer = await this.timesheetsService.exportDetailed(
-                parseInt(month), parseInt(year), employeeId ? parseInt(employeeId) : undefined, req.user
+                parseInt(month),
+                parseInt(year),
+                employeeId ? parseInt(employeeId) : undefined,
+                departmentId ? parseInt(departmentId) : undefined,
+                search ? String(search) : undefined,
+                req.user
             );
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename=attendance_detail_${month}_${year}.xlsx`);
