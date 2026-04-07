@@ -577,69 +577,69 @@ export class TimesheetsService {
 
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const qb = employeeRepo.createQueryBuilder('emp')
-        .leftJoinAndSelect('emp.department', 'dept')
-        .leftJoinAndSelect('emp.position', 'pos')
-        .where('emp.isDeleted = :isDeleted', { isDeleted: false })
-        .andWhere('emp.employmentStatus IN (:...statuses)', { statuses: ['ACTIVE', 'PROBATION'] });
-    
+      .leftJoinAndSelect('emp.department', 'dept')
+      .leftJoinAndSelect('emp.position', 'pos')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', { statuses: ['ACTIVE', 'PROBATION'] });
+
     if (departmentId) {
-        qb.andWhere('emp.departmentId = :departmentId', { departmentId });
+      qb.andWhere('emp.departmentId = :departmentId', { departmentId });
     }
     if (search) {
-        qb.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', { search: `%${search}%` });
+      qb.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', { search: `%${search}%` });
     }
 
     const [employees, total] = await qb.skip(skip).take(limit).getManyAndCount();
 
     if (employees.length === 0) {
-        return { items: [], total, page, limit, totalPages: 0, month, year };
+      return { items: [], total, page, limit, totalPages: 0, month, year };
     }
-    
+
     const empIds = employees.map(e => e.id);
 
     const { ProcessedAttendanceRecordEntity } = await import('../models/entities/processed-attendance-record.entity.js');
     const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
     const records = await processedRepo.createQueryBuilder('par')
-        .where('MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year', { month, year })
-        .andWhere('par.employeeId IN (:...empIds)', { empIds })
-        .getMany();
+      .where('MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year', { month, year })
+      .andWhere('par.employeeId IN (:...empIds)', { empIds })
+      .getMany();
 
     const items = employees.map(emp => {
-        const empRecords = records.filter(r => r.employeeId === emp.id);
-        const dailyDetails = empRecords.map(r => {
-            let formattedDate = r.attendanceDate;
-            if (typeof r.attendanceDate === 'string') {
-                const parts = r.attendanceDate.split('-');
-                if (parts.length === 3) formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
-            } else if (r.attendanceDate instanceof Date) {
-                formattedDate = `${String(r.attendanceDate.getDate()).padStart(2, '0')}/${String(r.attendanceDate.getMonth() + 1).padStart(2, '0')}/${r.attendanceDate.getFullYear()}`;
-            }
-
-            return {
-                recordId: r.id,
-                date: formattedDate,
-                checkIn: r.checkInTime,
-                checkOut: r.checkOutTime,
-                lateMinutes: r.lateMinutes,
-                earlyLeaveMinutes: r.earlyMinutes,
-                attendanceStatus: r.attendanceStatus,
-                workingHours: r.workValue,
-                requestId: r.requestId ?? null,
-                isFinalized: !!r.isFinalized,
-            };
-        });
-
-        const totalWorkingDays = empRecords.reduce((sum, r) => sum + Number(r.workValue), 0);
+      const empRecords = records.filter(r => r.employeeId === emp.id);
+      const dailyDetails = empRecords.map(r => {
+        let formattedDate = r.attendanceDate;
+        if (typeof r.attendanceDate === 'string') {
+          const parts = r.attendanceDate.split('-');
+          if (parts.length === 3) formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        } else if (r.attendanceDate instanceof Date) {
+          formattedDate = `${String(r.attendanceDate.getDate()).padStart(2, '0')}/${String(r.attendanceDate.getMonth() + 1).padStart(2, '0')}/${r.attendanceDate.getFullYear()}`;
+        }
 
         return {
-            id: emp.id,
-            employeeCode: emp.employeeCode,
-            fullName: emp.fullName,
-            department: emp?.department?.departmentName,
-            position: emp?.position?.positionName,
-            totalWorkingDays: totalWorkingDays,
-            dailyDetails
+          recordId: r.id,
+          date: formattedDate,
+          checkIn: r.checkInTime,
+          checkOut: r.checkOutTime,
+          lateMinutes: r.lateMinutes,
+          earlyLeaveMinutes: r.earlyMinutes,
+          attendanceStatus: r.attendanceStatus,
+          workingHours: r.workValue,
+          requestId: r.requestId ?? null,
+          isFinalized: !!r.isFinalized,
         };
+      });
+
+      const totalWorkingDays = empRecords.reduce((sum, r) => sum + Number(r.workValue), 0);
+
+      return {
+        id: emp.id,
+        employeeCode: emp.employeeCode,
+        fullName: emp.fullName,
+        department: emp?.department?.departmentName,
+        position: emp?.position?.positionName,
+        totalWorkingDays: totalWorkingDays,
+        dailyDetails
+      };
     });
 
     return {
@@ -863,7 +863,7 @@ export class TimesheetsService {
   async getLateEarlyRecords(query, userContext) {
     const { month, year, departmentId } = query;
     const isHR = userContext.roles.includes('HR') || userContext.roles.includes('ADMIN');
-    
+
     // 1. Get employees to process
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const empQuery = employeeRepo.createQueryBuilder('employee')
@@ -934,9 +934,9 @@ export class TimesheetsService {
       // For HR, only show if has excuseRequest (pending or approved) or specifically filtered by status
       // For Employee, show if late/early OR if has excuseRequest
       if (isHR) {
-          filtered = dailyDetails.filter(d => d.excuseRequest);
+        filtered = dailyDetails.filter(d => d.excuseRequest);
       } else {
-          filtered = dailyDetails.filter(d => (d.lateMinutes > 0 || d.earlyLeaveMinutes > 0) || d.excuseRequest);
+        filtered = dailyDetails.filter(d => (d.lateMinutes > 0 || d.earlyLeaveMinutes > 0) || d.excuseRequest);
       }
 
       // Add employee info to each record
@@ -1721,7 +1721,7 @@ export class TimesheetsService {
             typeof excuseRequest.requestContent === 'string'
               ? JSON.parse(excuseRequest.requestContent)
               : excuseRequest.requestContent;
-        } catch (e) {}
+        } catch (e) { }
 
         detail.excuseRequest = {
           id: excuseRequest.id,
@@ -1772,9 +1772,13 @@ export class TimesheetsService {
         detail.check_out = detail.checkOut;
 
         detail.attendanceType = dayRecords[0].attendanceType;
-        detail.status = 'PRESENT';
 
-        if (checkOut) {
+        const hasBothCheckInOut = checkIn && checkOut;
+
+        if (hasBothCheckInOut) {
+          // Có cả check-in lẫn check-out → tính công bình thường
+          detail.status = 'PRESENT';
+
           const actualHours = this._calcActualHours(checkIn, checkOut, shift);
           detail.workingHours = parseFloat(actualHours.toFixed(2));
           detail.working_hours = detail.workingHours;
@@ -1804,30 +1808,46 @@ export class TimesheetsService {
             detail.overtimeHours = parseFloat(countedOtHours.toFixed(2));
             detail.overtime_hours = detail.overtimeHours;
           }
-        }
 
-        // Late = check-in after shift start
-        const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
-        if (checkInMinutes > shiftStart) {
-          detail.lateMinutes = checkInMinutes - shiftStart;
-          detail.late_minutes = detail.lateMinutes;
-        }
+          // Late = check-in after shift start
+          const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+          if (checkInMinutes > shiftStart) {
+            detail.lateMinutes = checkInMinutes - shiftStart;
+            detail.late_minutes = detail.lateMinutes;
+          }
 
-        // Early leave = check-out before shift end
-        if (checkOut) {
+          // Early leave = check-out before shift end
           const checkOutMinutes =
             checkOut.getHours() * 60 + checkOut.getMinutes();
           if (checkOutMinutes < shiftEnd) {
             detail.earlyLeaveMinutes = shiftEnd - checkOutMinutes;
             detail.early_leave_minutes = detail.earlyLeaveMinutes;
           }
+        } else {
+          // Chỉ có check-in HOẶC check-out → thiếu chấm công, không tính công
+          detail.status = 'INCOMPLETE';
+          detail.workingHours = 0;
+          detail.working_hours = 0;
+          detail.workingDayValue = 0;
+          detail.working_day_value = 0;
+
+          // Vẫn tính late nếu có checkIn
+          if (checkIn) {
+            const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+            if (checkInMinutes > shiftStart) {
+              detail.lateMinutes = checkInMinutes - shiftStart;
+              detail.late_minutes = detail.lateMinutes;
+            }
+          }
         }
 
         // --- Waive penalties if Excuse Request is APPROVED ---
+        // Nếu có đơn giải trình chấm công (ATTENDANCE_CORRECTION) APPROVED → tính lại thành công đủ
         if (
           detail.excuseRequest &&
           detail.excuseRequest.status === 'APPROVED'
         ) {
+          detail.status = 'PRESENT';
           detail.lateMinutes = 0;
           detail.late_minutes = 0;
           detail.earlyLeaveMinutes = 0;
@@ -1841,16 +1861,20 @@ export class TimesheetsService {
         }
 
         // Set attendanceStatus based on calculated late/early values
-        const isLate = detail.lateMinutes > 0;
-        const isEarly = detail.earlyLeaveMinutes > 0;
-        if (isLate && isEarly) {
-          detail.attendanceStatus = 'LATE_AND_EARLY_LEAVE';
-        } else if (isLate) {
-          detail.attendanceStatus = 'LATE';
-        } else if (isEarly) {
-          detail.attendanceStatus = 'EARLY_LEAVE';
+        if (detail.status === 'INCOMPLETE' && !(detail.excuseRequest?.status === 'APPROVED')) {
+          detail.attendanceStatus = 'INCOMPLETE';
         } else {
-          detail.attendanceStatus = 'ON_TIME';
+          const isLate = detail.lateMinutes > 0;
+          const isEarly = detail.earlyLeaveMinutes > 0;
+          if (isLate && isEarly) {
+            detail.attendanceStatus = 'LATE_AND_EARLY_LEAVE';
+          } else if (isLate) {
+            detail.attendanceStatus = 'LATE';
+          } else if (isEarly) {
+            detail.attendanceStatus = 'EARLY_LEAVE';
+          } else {
+            detail.attendanceStatus = 'ON_TIME';
+          }
         }
       }
 
@@ -2160,7 +2184,11 @@ export class TimesheetsService {
         let workValue = 0.0;
         let reqId = null;
 
-        if (checkIn || checkOut) {
+        const hasBothCheckInOut = checkIn && checkOut;
+        const hasOnlyPartial = (checkIn || checkOut) && !hasBothCheckInOut;
+
+        if (hasBothCheckInOut) {
+          // Có cả check-in lẫn check-out → tính công bình thường
           attendanceStatus = 'X';
           workValue = 1.0;
 
@@ -2178,6 +2206,11 @@ export class TimesheetsService {
               attendanceStatus = 'KL';
             }
           }
+        } else if (hasOnlyPartial) {
+          attendanceStatus = 'X';   // Vắng (thiếu chấm công)
+          workValue = 0.0;
+          lateMins = 0;
+          earlyMins = 0;
         }
 
         const overlappingReq = _pickSyncRequestForDay(empRequests, dateStr);
