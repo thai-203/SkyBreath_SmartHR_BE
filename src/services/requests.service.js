@@ -224,6 +224,57 @@ export class RequestsService {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Ước tính số lượng ngày/giờ dựa trên ca làm việc (dành cho màn hình Tạo/Sửa UI)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    async estimateQuantity(query) {
+        const { employeeId, startDate, endDate, startTime, endTime, unit } = query;
+        if (!employeeId || !startDate || !endDate || !unit) {
+            throw new BadRequestException('Thiếu tham số (employeeId, startDate, endDate, unit)');
+        }
+
+        const reqStart = new Date(startDate);
+        const reqEnd = new Date(endDate);
+        if (reqStart > reqEnd) {
+            throw new BadRequestException('Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc');
+        }
+
+        let requestedQty = 0;
+        
+        if (unit === 'DAY') {
+            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource);
+        } else if (unit === 'HOUR') {
+            if (startTime && endTime) {
+                const startD = new Date(startDate);
+                const endD = new Date(endDate);
+                const [startH, startM] = startTime.split(':').map(Number);
+                const [endH, endM] = endTime.split(':').map(Number);
+                startD.setHours(startH, startM, 0, 0);
+                endD.setHours(endH, endM, 0, 0);
+                const diff = (endD - startD) / (1000 * 60 * 60);
+                if (diff > 0) {
+                    requestedQty = diff;
+                }
+            } else {
+                const cursor = new Date(reqStart);
+                cursor.setHours(0, 0, 0, 0);
+                while (cursor <= reqEnd) {
+                    requestedQty += await getWorkingHoursForDay(cursor, employeeId, AppDataSource);
+                    cursor.setDate(cursor.getDate() + 1);
+                }
+            }
+        } else if (unit === 'HALF_DAY') {
+            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource) * 2;
+        } else {
+            requestedQty = 1; // TIME unit
+        }
+
+        return {
+            unit,
+            estimatedQuantity: Math.round(requestedQty * 100) / 100
+        };
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // UC-REQ-03: Gửi duyệt
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     async submitRequest(requestId, body, reqUser) {
