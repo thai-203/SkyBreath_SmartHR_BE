@@ -79,6 +79,24 @@ export class RequestsController {
         }
     };
 
+    // GET /requests/quota-status?requestTypeId=&employeeId=&excludeRequestId
+    getQuotaStatus = async (req, res, next) => {
+        try {
+            const { requestTypeId, employeeId, excludeRequestId } = req.query;
+            if (!requestTypeId || !employeeId) {
+                return res.status(400).json({ success: false, message: 'Thiếu requestTypeId hoặc employeeId' });
+            }
+            const result = await this.service.getQuotaStatus(
+                parseInt(requestTypeId),
+                parseInt(employeeId),
+                excludeRequestId ? parseInt(excludeRequestId) : null
+            );
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     // POST /requests/draft — Lưu nháp
     saveDraft = async (req, res, next) => {
         try {

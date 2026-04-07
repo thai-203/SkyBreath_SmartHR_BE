@@ -8,7 +8,7 @@ export class UpdateRequestTypePolicyDto {
 
     @IsOptional()
     @IsString({ message: 'Đơn vị tính phải là chuỗi ký tự' })
-    @IsIn(['DAY', 'HOUR', 'MINUTE', 'TIME'], { message: 'Đơn vị tính không hợp lệ (DAY, HOUR, MINUTE, TIME)' })
+    @IsIn(['DAY', 'HOUR', 'TIME'], { message: 'Đơn vị tính không hợp lệ (DAY, HOUR, TIME)' })
     unit;
 
     @IsOptional()
@@ -19,4 +19,8 @@ export class UpdateRequestTypePolicyDto {
     @IsOptional()
     @IsBoolean({ message: 'Tính công phải là kiểu boolean (true/false)' })
     isWorkedTime;
+
+    @IsOptional()
+    @IsBoolean()
+    isUnlimited;
 }

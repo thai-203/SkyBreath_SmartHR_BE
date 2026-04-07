@@ -518,6 +518,17 @@ const seed = async () => {
         description: 'View all requests regardless of ownership',
         module: 'Request',
       },
+      // Notifications
+      {
+        permissionCode: 'SEND_MANUAL_NOTIFICATION',
+        description: 'Create and send manual notifications',
+        module: 'Notification',
+      },
+      {
+        permissionCode: 'VIEW_NOTIFICATION_HISTORY',
+        description: 'View notification history',
+        module: 'Notification',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -724,6 +735,9 @@ const seed = async () => {
       'REQUEST_APPROVE',
       'REQUEST_REVOKE',
       'REQUEST_VIEW_ALL',
+      // Notifications
+      'SEND_MANUAL_NOTIFICATION',
+      'VIEW_NOTIFICATION_HISTORY',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);

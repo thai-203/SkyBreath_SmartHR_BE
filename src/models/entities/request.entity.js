@@ -3,6 +3,7 @@ import { BaseEntity } from '../../common/entities/base.entity.js';
 import { EmployeeEntity } from './employee.entity.js';
 import { RequestTypeEntity } from './request-type.entity.js';
 import { RequestGroupEntity } from './request-group.entity.js';
+import { OvertimeTypeEntity } from './overtime-type.entity.js';
 
 @Entity('requests')
 export class RequestEntity extends BaseEntity {
@@ -14,6 +15,9 @@ export class RequestEntity extends BaseEntity {
 
     @Column({ name: 'request_type_id', type: 'int' })
     requestTypeId; // Lý do / loại đơn
+
+    @Column({ name: 'overtime_type_id', type: 'int', nullable: true })
+    overtimeTypeId; // Loại tăng ca (chỉ dùng cho nhóm OVERTIME)
 
     // Tracking số cấp duyệt thay cho workflow_id lock tại thời điểm submit
     @Column({ name: 'total_approval_levels', type: 'int', default: 0 })
@@ -98,4 +102,8 @@ export class RequestEntity extends BaseEntity {
     @ManyToOne(() => EmployeeEntity)
     @JoinColumn({ name: 'current_approver_id' })
     currentApprover;
+
+    @ManyToOne(() => OvertimeTypeEntity, { nullable: true, createForeignKeyConstraints: false })
+    @JoinColumn({ name: 'overtime_type_id' })
+    overtimeType;
 }

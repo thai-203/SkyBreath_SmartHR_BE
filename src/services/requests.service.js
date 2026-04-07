@@ -7,6 +7,7 @@ import { RequestStatus, ApprovalLevelStatus, ApproverType, RequestGroupCode } fr
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { NotificationsService } from './notifications.service.js';
+import { countWorkingDays, getWorkingHoursForDay } from '../common/helpers/working-days.helper.js';
 
 export class RequestsService {
     constructor() {
@@ -67,7 +68,7 @@ export class RequestsService {
         const creatorEmployee = await this._getEmployeeByUserId(reqUser.id);
         if (!creatorEmployee) throw new NotFoundException('Không tìm thấy thông tin nhân viên của bạn');
 
-        const { employeeId, requestTypeId, startDate, endDate, startTime, endTime, description, requestId } = body;
+        const { employeeId, requestTypeId, startDate, endDate, startTime, endTime, description, requestId, overtimeTypeId } = body;
 
         const targetEmployeeId = employeeId || creatorEmployee.id;
 
@@ -88,6 +89,7 @@ export class RequestsService {
             createdByEmployeeId: creatorEmployee.id,
             requestTypeId,
             requestGroupId: requestType.requestGroupId,
+            overtimeTypeId: overtimeTypeId || null,
             status: RequestStatus.DRAFT,
             startDate: startDate || null,
             endDate: endDate || null,
@@ -113,6 +115,115 @@ export class RequestsService {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // QUOTA: Tính hạn mức đã dùng
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    /**
+     * Lấy thông tin hạn mức sử dụng cho một loại đơn của nhân viên
+     * @param {number} requestTypeId
+     * @param {number} employeeId
+     * @param {number|null} excludeRequestId - loại trừ đơn đang edit
+     */
+    async getQuotaStatus(requestTypeId, employeeId, excludeRequestId = null) {
+        const requestType = await this.typeRepo.findById(requestTypeId);
+        if (!requestType) throw new NotFoundException('Không tìm thấy loại đơn');
+
+        const policy = requestType.policy;
+        // Nếu không có policy hoặc không giới hạn → trả về không giới hạn
+        if (!policy || !policy.maxQuantity || parseFloat(policy.maxQuantity) === 0 || policy.isUnlimited) {
+            return { hasQuota: false, maxQuantity: null, usedQuantity: 0, remainingQuantity: null, unit: policy?.unit || 'DAY', trackingCycle: policy?.trackingCycle || 'YEAR' };
+        }
+
+        const { maxQuantity, trackingCycle, unit } = policy;
+        const now = new Date();
+
+        // Xác định khoảng thời gian theo chu kỳ
+        let periodStart, periodEnd;
+        if (trackingCycle === 'YEAR') {
+            periodStart = new Date(now.getFullYear(), 0, 1);
+            periodEnd = new Date(now.getFullYear(), 11, 31);
+        } else if (trackingCycle === 'MONTH') {
+            periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (trackingCycle === 'WEEK') {
+            const dayOfWeek = now.getDay() || 7; // Mon=1..Sun=7
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - dayOfWeek + 1);
+            periodEnd = new Date(periodStart);
+            periodEnd.setDate(periodStart.getDate() + 6);
+        } else {
+            // DAY: chỉ tính hôm nay
+            periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            periodEnd = new Date(periodStart);
+        }
+
+        // Lấy các đơn đã dùng trong chu kỳ
+        const usedRequests = await this.repo.findUsedRequests({
+            employeeId,
+            requestTypeId,
+            periodStart,
+            periodEnd,
+            excludeRequestId: excludeRequestId ? parseInt(excludeRequestId) : null,
+        });
+
+        // Tính tổng số lượng đã dùng dựa trên unit
+        let usedQuantity = 0;
+        for (const req of usedRequests) {
+            const reqStart = new Date(req.startDate);
+            const reqEnd = new Date(req.endDate);
+            // Clip vào trong chu kỳ
+            const clipStart = reqStart < periodStart ? periodStart : reqStart;
+            const clipEnd = reqEnd > periodEnd ? periodEnd : reqEnd;
+
+            if (unit === 'DAY') {
+                // Tính số ngày làm việc
+                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource);
+                usedQuantity += days;
+            } else if (unit === 'HOUR') {
+                if (req.startTime && req.endTime) {
+                    const startD = new Date(req.startDate);
+                    const endD = new Date(req.endDate);
+                    const [startH, startM] = req.startTime.split(':').map(Number);
+                    const [endH, endM] = req.endTime.split(':').map(Number);
+                    startD.setHours(startH, startM, 0, 0);
+                    endD.setHours(endH, endM, 0, 0);
+                    const diff = (endD - startD) / (1000 * 60 * 60);
+                    if (diff > 0) {
+                        usedQuantity += diff;
+                    }
+                } else {
+                    // Tính số giờ dựa trên ca làm việc
+                    const cursor = new Date(clipStart);
+                    cursor.setHours(0, 0, 0, 0);
+                    while (cursor <= clipEnd) {
+                        const hoursInDay = await getWorkingHoursForDay(cursor, employeeId, AppDataSource);
+                        usedQuantity += hoursInDay;
+                        cursor.setDate(cursor.getDate() + 1);
+                    }
+                }
+            } else if (unit === 'HALF_DAY') {
+                // Tính số nửa ngày (1 ngày = 2 nửa ngày)
+                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource);
+                usedQuantity += days * 2;
+            } else {
+                // TIME/OTHER: tính số lần (1 đơn = 1 lần)
+                usedQuantity += 1;
+            }
+        }
+
+        const remainingQuantity = Math.max(0, parseFloat(maxQuantity) - usedQuantity);
+        return {
+            hasQuota: true,
+            maxQuantity: parseFloat(maxQuantity),
+            usedQuantity: Math.round(usedQuantity * 100) / 100,
+            remainingQuantity: Math.round(remainingQuantity * 100) / 100,
+            unit,
+            trackingCycle,
+            periodStart: periodStart.toISOString().slice(0, 10),
+            periodEnd: periodEnd.toISOString().slice(0, 10),
+        };
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // UC-REQ-03: Gửi duyệt
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     async submitRequest(requestId, body, reqUser) {
@@ -125,6 +236,54 @@ export class RequestsService {
         if (!request.endDate) throw new BadRequestException('Thiếu thông tin ngày kết thúc');
         if (new Date(request.startDate) > new Date(request.endDate)) {
             throw new BadRequestException('Ngày bắt đầu không được lớn hơn ngày kết thúc');
+        }
+
+        // ✅ Kiểm tra hạn mức policy (server-side validation)
+        try {
+            const quota = await this.getQuotaStatus(request.requestTypeId, request.employeeId, request.id);
+            if (quota.hasQuota) {
+                const reqStart = new Date(request.startDate);
+                const reqEnd = new Date(request.endDate);
+                let requestedQty = 0;
+
+                if (quota.unit === 'DAY') {
+                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource);
+                } else if (quota.unit === 'HOUR') {
+                    if (request.startTime && request.endTime) {
+                        const startD = new Date(request.startDate);
+                        const endD = new Date(request.endDate);
+                        const [startH, startM] = request.startTime.split(':').map(Number);
+                        const [endH, endM] = request.endTime.split(':').map(Number);
+                        startD.setHours(startH, startM, 0, 0);
+                        endD.setHours(endH, endM, 0, 0);
+                        const diff = (endD - startD) / (1000 * 60 * 60);
+                        if (diff > 0) {
+                            requestedQty = diff;
+                        }
+                    } else {
+                        const cursor = new Date(reqStart);
+                        cursor.setHours(0, 0, 0, 0);
+                        while (cursor <= reqEnd) {
+                            requestedQty += await getWorkingHoursForDay(cursor, request.employeeId, AppDataSource);
+                            cursor.setDate(cursor.getDate() + 1);
+                        }
+                    }
+                } else if (quota.unit === 'HALF_DAY') {
+                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource) * 2;
+                } else {
+                    requestedQty = 1;
+                }
+
+                if (requestedQty > quota.remainingQuantity) {
+                    const unitLabel = { DAY: 'ngày', HOUR: 'giờ', HALF_DAY: 'nửa ngày', TIME: 'lần' }[quota.unit] || quota.unit;
+                    throw new BadRequestException(
+                        `Vượt hạn mức cho phép! Bạn chỉ còn ${quota.remainingQuantity} ${unitLabel} trong ${quota.trackingCycle === 'YEAR' ? 'năm' : quota.trackingCycle === 'MONTH' ? 'tháng' : 'tuần'} này (tối đa ${quota.maxQuantity} ${unitLabel}).`
+                    );
+                }
+            }
+        } catch (err) {
+            if (err.statusCode === 400) throw err;
+            console.error('[Quota] Lỗi kiểm tra hạn mức:', err);
         }
 
         const workflows = await this.workflowRepo.findByGroupId(request.requestGroupId);
