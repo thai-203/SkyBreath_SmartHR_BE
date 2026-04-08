@@ -830,12 +830,15 @@ export class RequestsService {
             employeeId = employee?.id;
         }
 
+        // Mặc định chỉ đơn đã duyệt (trang đơn giải trình)
+        const statusFilter = status ? String(status) : 'APPROVED';
+
         return await this.repo.findExcuseRequests({
             month: month ? parseInt(month) : undefined,
             year: year ? parseInt(year) : undefined,
             departmentId: departmentId ? parseInt(departmentId) : undefined,
             search: search ? String(search) : undefined,
-            status: status ? String(status) : undefined,
+            status: statusFilter,
             employeeId,
             skip,
             limit: parseInt(limit),
@@ -868,13 +871,16 @@ export class RequestsService {
         const otGroup = await this.requestGroupsRepo.findByCode(RequestGroupCode.OVERTIME);
         const requestGroupId = otGroup?.id ?? 1;
 
+        // Mặc định chỉ đơn đã duyệt (bảng tăng ca chi tiết)
+        const statusFilter = status ? String(status) : 'APPROVED';
+
         return await this.repo.findOvertimeDetailLinesForGroup({
             requestGroupId,
             month: month ? parseInt(month) : undefined,
             year: year ? parseInt(year) : undefined,
             departmentId: departmentId ? parseInt(departmentId) : undefined,
             search: search ? String(search) : undefined,
-            status: status ? String(status) : undefined,
+            status: statusFilter,
             employeeId,
             skip,
             limit: parseInt(limit),

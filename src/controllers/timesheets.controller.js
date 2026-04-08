@@ -31,11 +31,27 @@ export class TimesheetsController {
 
     syncData = async (req, res, next) => {
         try {
-            const { month, year, departmentId } = req.body;
+            const { month, year, employeeIds } = req.body;
             if (!month || !year) {
                 return ResponseUtil.sendResponse(res, "Month and Year are required for sync", null, 400);
             }
-            const result = await this.timesheetsService.syncAttendance(parseInt(month), parseInt(year), departmentId ? parseInt(departmentId) : null, req.user);
+            const normalizedEmployeeIds = Array.isArray(employeeIds)
+                ? employeeIds.map(n => parseInt(n)).filter(n => !isNaN(n))
+                : [];
+            if (normalizedEmployeeIds.length === 0) {
+                return ResponseUtil.sendResponse(
+                    res,
+                    "employeeIds is required (non-empty array) for sync",
+                    null,
+                    400
+                );
+            }
+            const result = await this.timesheetsService.syncAttendance(
+                parseInt(month),
+                parseInt(year),
+                normalizedEmployeeIds,
+                req.user
+            );
             ResponseUtil.sendResponse(res, "Timesheet data synchronized successfully", result);
         } catch (error) {
             next(error);
@@ -78,10 +94,12 @@ export class TimesheetsController {
 
     getPeriods = async (req, res, next) => {
         try {
-            const { month, year } = req.query;
+            const { month, year, groupByDepartment, departmentId } = req.query;
             const queryDto = {};
             if (month && !isNaN(parseInt(month))) queryDto.month = parseInt(month, 10);
             if (year && !isNaN(parseInt(year))) queryDto.year = parseInt(year, 10);
+            if (departmentId && !isNaN(parseInt(departmentId))) queryDto.departmentId = parseInt(departmentId, 10);
+            if (groupByDepartment !== undefined) queryDto.groupByDepartment = groupByDepartment === 'true' || groupByDepartment === true;
             const result = await this.timesheetsService.getPeriods(queryDto);
             ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED_ALL, result);
         } catch (error) {
