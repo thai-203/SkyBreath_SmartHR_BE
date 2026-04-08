@@ -65,6 +65,8 @@ export class TimesheetsRepository {
             .addSelect('timesheet.year', 'year')
             .addSelect('COUNT(timesheet.id)', 'totalEmployees')
             .addSelect('SUM(CASE WHEN timesheet.isLocked = 1 THEN 1 ELSE 0 END)', 'lockedEmployees')
+            .leftJoin('timesheet.employee', 'employee')
+            .leftJoin('employee.department', 'department')
             .where('timesheet.isDeleted = :isDeleted', { isDeleted: false });
 
         if (options.year && !isNaN(options.year)) {
@@ -73,10 +75,24 @@ export class TimesheetsRepository {
         if (options.month && !isNaN(options.month)) {
             query.andWhere('timesheet.month = :month', { month: options.month });
         }
+        if (options.departmentId && !isNaN(options.departmentId)) {
+            query.andWhere('employee.departmentId = :departmentId', { departmentId: options.departmentId });
+        }
 
-        query.groupBy('timesheet.year, timesheet.month')
-             .orderBy('timesheet.year', 'DESC')
+        const groupByDepartment = options.groupByDepartment === true || options.groupByDepartment === 'true';
+        if (groupByDepartment) {
+            query.addSelect('department.id', 'departmentId')
+                 .addSelect('department.departmentName', 'departmentName')
+                 .groupBy('timesheet.year, timesheet.month, department.id, department.departmentName');
+        } else {
+            query.groupBy('timesheet.year, timesheet.month');
+        }
+
+        query.orderBy('timesheet.year', 'DESC')
              .addOrderBy('timesheet.month', 'DESC');
+        if (groupByDepartment) {
+            query.addOrderBy('department.departmentName', 'ASC');
+        }
 
         const rawData = await query.getRawMany();
         return rawData.map(item => ({
@@ -84,6 +100,8 @@ export class TimesheetsRepository {
             year: parseInt(item.year),
             totalEmployees: parseInt(item.totalEmployees),
             lockedEmployees: parseInt(item.lockedEmployees),
+            departmentId: item.departmentId !== null && item.departmentId !== undefined ? parseInt(item.departmentId) : null,
+            departmentName: item.departmentName || null,
         }));
     }
 

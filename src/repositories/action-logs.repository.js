@@ -2,6 +2,23 @@ import { In } from 'typeorm';
 import { AppDataSource } from '../database/data-source.js';
 import { ActionLogEntity } from '../models/entities/action-log.entity.js';
 
+/** Cho phép lọc theo một hoặc nhiều bảng (query: targetTable=a,b) */
+const KNOWN_TARGET_TABLES = new Set([
+  'timesheets',
+  'processed_attendance_records',
+]);
+
+function resolveTargetTables(targetTable) {
+  if (targetTable == null || targetTable === '') return null;
+  const raw = String(targetTable)
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const allowed = raw.filter((t) => KNOWN_TARGET_TABLES.has(t));
+  if (allowed.length === 0) return null;
+  return allowed;
+}
+
 export class ActionLogsRepository {
   get repo() {
     return AppDataSource.getRepository(ActionLogEntity);
@@ -35,9 +52,14 @@ export class ActionLogsRepository {
     if (userId) {
       baseQuery.andWhere('actionLog.userId = :userId', { userId });
     }
-    if (targetTable) {
+    const targetTables = resolveTargetTables(targetTable);
+    if (targetTables?.length === 1) {
       baseQuery.andWhere('actionLog.targetTable = :targetTable', {
-        targetTable,
+        targetTable: targetTables[0],
+      });
+    } else if (targetTables?.length > 1) {
+      baseQuery.andWhere('actionLog.targetTable IN (:...targetTables)', {
+        targetTables,
       });
     }
     if (status) {
@@ -55,8 +77,9 @@ export class ActionLogsRepository {
         toDate: `${y}-${m}-${d} 23:59:59`,
       });
     }
+    const order = paginationDto.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     baseQuery
-      .orderBy('actionLog.createdAt', 'DESC')
+      .orderBy('actionLog.createdAt', order)
       .skip(skip || 0)
       .take(limit || 10);
     const [data, total] = await baseQuery.getManyAndCount();
