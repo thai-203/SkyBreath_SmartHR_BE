@@ -446,5 +446,29 @@ export class RequestsRepository {
 
         return await query.getMany();
     }
+
+    /**
+     * Tìm các đơn từ khác trong cùng nhóm bị trùng lặp thời gian
+     */
+    async findOverlappingRequests({ employeeId, requestGroupId, startDate, endDate, excludeRequestId = null }) {
+        const query = this.repository
+            .createQueryBuilder('r')
+            .where('r.isDeleted = false')
+            .andWhere('r.employeeId = :employeeId', { employeeId })
+            .andWhere('r.requestGroupId = :requestGroupId', { requestGroupId })
+            // Chỉ bắt trùng với những đơn đã gửi duyệt hoặc đã duyệt
+            .andWhere('r.status IN (:...statuses)', { statuses: ['PENDING', 'APPROVED'] })
+            .andWhere('r.startDate IS NOT NULL')
+            .andWhere('r.endDate IS NOT NULL')
+            // Điều kiện trùng lặp: start1 <= end2 AND end1 >= start2
+            .andWhere('r.startDate <= :endDate', { endDate: endDate.toISOString().slice(0, 10) })
+            .andWhere('r.endDate >= :startDate', { startDate: startDate.toISOString().slice(0, 10) });
+
+        if (excludeRequestId) {
+            query.andWhere('r.id != :excludeId', { excludeId: excludeRequestId });
+        }
+
+        return await query.getMany();
+    }
 }
 

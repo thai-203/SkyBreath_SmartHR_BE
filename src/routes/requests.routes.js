@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { RequestsController } from '../controllers/requests.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
+import { uploadCloud } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
 const requestsController = new RequestsController();
@@ -50,5 +51,8 @@ router.post('/:id/reject', authMiddleware, permissionsMiddleware('REQUEST_APPROV
 
 // POST /requests/:id/revoke
 router.post('/:id/revoke', authMiddleware, permissionsMiddleware('REQUEST_REVOKE'), requestsController.revoke);
+
+// POST /requests/:id/attachments — Upload tài liệu đính kèm
+router.post('/:id/attachments', authMiddleware, uploadCloud.array('files', 10), requestsController.uploadAttachments);
 
 export const requestsRoutes = router;

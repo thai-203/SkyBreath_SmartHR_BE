@@ -1,7 +1,53 @@
 /* eslint-disable */
+
+/**
+ * Helper nội bộ: Kiểm tra nhân viên có TỪNG được gán ca chính (non-OT) hay chưa.
+ * Dùng để phân biệt "chưa bao giờ gán ca" vs "có ca nhưng tuần này trống".
+ */
+async function isShiftBasedEmployee(employeeId, departmentId, dataSource) {
+    const count = await dataSource.getRepository('ShiftAssignmentEntity')
+        .createQueryBuilder('sa')
+        .leftJoin('sa.shift', 'shift')
+        .where('sa.isDeleted = false')
+        .andWhere('(sa.employeeId = :empId OR sa.departmentId = :deptId)',
+            { empId: employeeId, deptId: departmentId || 0 })
+        .getCount();
+
+    if (count === 0) return false;
+
+    // Kiểm tra xem có ít nhất 1 ca KHÔNG phải OT không
+    const regularCount = await dataSource.getRepository('ShiftAssignmentEntity')
+        .createQueryBuilder('sa')
+        .leftJoin('sa.shift', 'shift')
+        .where('sa.isDeleted = false')
+        .andWhere('(sa.employeeId = :empId OR sa.departmentId = :deptId)',
+            { empId: employeeId, deptId: departmentId || 0 })
+        .andWhere("(shift.shiftName NOT REGEXP :otPattern OR shift.shiftName IS NULL)",
+            { otPattern: '(^|[^a-zA-Z])(OT|overtime|over time|tăng ca)([^a-zA-Z]|$)' })
+        .getCount();
+
+    return regularCount > 0;
+}
+
+/**
+ * Helper nội bộ: Lọc bỏ ca OT khỏi danh sách assignments
+ */
+function filterOutOTAssignments(assignments) {
+    return assignments.filter(sa => {
+        const name = (sa.shift?.shiftName || sa.assignmentName || '').toLowerCase();
+        const isOT = /\bot\b|tăng ca|overtime|over time/i.test(name);
+        return !isOT;
+    });
+}
+
 /**
  * Helper: Tính số ngày làm việc trong khoảng [startDate, endDate]
  * dựa trên shift assignments của nhân viên.
+ * 
+ * Logic:
+ * - Nếu NV chưa bao giờ được gán ca chính → fallback T2-T6
+ * - Nếu NV đã từng được gán ca chính → chỉ tính ngày có ca cover
+ *   (tuần nào trống ca = 0 ngày, không cộng thêm)
  * 
  * @param {Date} start - ngày bắt đầu
  * @param {Date} end - ngày kết thúc
@@ -10,17 +56,20 @@
  * @returns {Promise<number>} số ngày làm việc
  */
 export async function countWorkingDays(start, end, employeeId, dataSource) {
-    // Lấy tất cả shift assignments đang hiệu lực của nhân viên hoặc phòng ban
     const employee = await dataSource.getRepository('EmployeeEntity').findOne({
         where: { id: employeeId, isDeleted: false },
     });
     if (!employee) return 0;
 
+    // Bước 1: Xác định nhân viên có phải "nhân viên theo ca" không
+    const isShiftBased = await isShiftBasedEmployee(employeeId, employee.departmentId, dataSource);
+
     const ShiftAssignment = dataSource.getRepository('ShiftAssignmentEntity');
 
-    // Lấy shift assignments áp dụng cho nhân viên
-    const assignments = await ShiftAssignment
+    // Bước 2: Lấy ca chồng lấn với khoảng ngày yêu cầu
+    const allAssignments = await ShiftAssignment
         .createQueryBuilder('sa')
+        .leftJoinAndSelect('sa.shift', 'shift')
         .where('sa.isDeleted = false')
         .andWhere(
             '(sa.employeeId = :empId OR sa.departmentId = :deptId)',
@@ -36,9 +85,11 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
         )
         .getMany();
 
-    // Nếu không tìm thấy assignment → fallback: chỉ tính T2-T6 (weekday 1-5)
-    const hasAssignments = assignments.length > 0;
+    // Lọc bỏ ca OT
+    const regularAssignments = filterOutOTAssignments(allAssignments);
+    const hasAssignmentsInRange = regularAssignments.length > 0;
 
+    // Bước 3: Duyệt từng ngày và đếm
     let count = 0;
     const cursor = new Date(start);
     cursor.setHours(0, 0, 0, 0);
@@ -46,26 +97,26 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
     endNorm.setHours(23, 59, 59, 999);
 
     while (cursor <= endNorm) {
-        // JS getDay(): 0=Sun, 1=Mon, ..., 6=Sat
-        // Our weekdays convention: 1=Mon, 2=Tue,..., 6=Sat, 7=Sun
         const jsDay = cursor.getDay();
-        const ourDay = jsDay === 0 ? 7 : jsDay; // convert to 1-7 (Mon-Sun)
+        const ourDay = jsDay === 0 ? 7 : jsDay;
 
-        if (hasAssignments) {
-            // Kiểm tra từng assignment xem ngày này có nằm trong weekdays không
-            const cursorStr = cursor.toISOString().slice(0, 10);
-            const isWorking = assignments.some(sa => {
-                const from = sa.effectiveFrom ? new Date(sa.effectiveFrom) : null;
-                const to = sa.effectiveTo ? new Date(sa.effectiveTo) : null;
-                const inRange = (!from || from <= cursor) && (!to || to >= cursor);
-                const weekdays = Array.isArray(sa.weekdays)
-                    ? sa.weekdays.map(Number)
-                    : (sa.weekdays ? String(sa.weekdays).split(',').map(Number) : [1,2,3,4,5]);
-                return inRange && weekdays.includes(ourDay);
-            });
-            if (isWorking) count++;
+        if (isShiftBased) {
+            // NV theo ca → chỉ đếm ngày có ca chính cover
+            if (hasAssignmentsInRange) {
+                const isWorking = regularAssignments.some(sa => {
+                    const from = sa.effectiveFrom ? new Date(sa.effectiveFrom) : null;
+                    const to = sa.effectiveTo ? new Date(sa.effectiveTo) : null;
+                    const inRange = (!from || from <= cursor) && (!to || to >= cursor);
+                    const weekdays = Array.isArray(sa.weekdays)
+                        ? sa.weekdays.map(Number)
+                        : (sa.weekdays ? String(sa.weekdays).split(',').map(Number) : [1,2,3,4,5]);
+                    return inRange && weekdays.includes(ourDay);
+                });
+                if (isWorking) count++;
+            }
+            // Nếu tuần này trống ca → count += 0 (đúng nghiệp vụ)
         } else {
-            // Fallback: Thứ 2-6 (ourDay 1-5)
+            // NV chưa bao giờ gán ca → fallback T2-T6
             if (ourDay >= 1 && ourDay <= 5) count++;
         }
 
@@ -78,7 +129,11 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
 /**
  * Helper: Tính số giờ làm việc trong một ngày dựa trên ca làm việc
  * (startTime-endTime trừ breakTime).
- * Fall back to 8h nếu không có ca.
+ * 
+ * Logic:
+ * - NV chưa bao giờ gán ca → fallback 8h
+ * - NV theo ca nhưng ngày đó trống → 0h
+ * - NV theo ca và ngày đó có ca → tính theo ca
  * 
  * @param {Date} date - ngày cần tính
  * @param {number} employeeId
@@ -91,10 +146,12 @@ export async function getWorkingHoursForDay(date, employeeId, dataSource) {
     });
     if (!employee) return 8;
 
+    const isShiftBased = await isShiftBasedEmployee(employeeId, employee.departmentId, dataSource);
+
     const ShiftAssignment = dataSource.getRepository('ShiftAssignmentEntity');
     const dateStr = date.toISOString().slice(0, 10);
 
-    const assignments = await ShiftAssignment
+    const allAssignments = await ShiftAssignment
         .createQueryBuilder('sa')
         .leftJoinAndSelect('sa.shift', 'shift')
         .where('sa.isDeleted = false')
@@ -104,22 +161,29 @@ export async function getWorkingHoursForDay(date, employeeId, dataSource) {
         .andWhere('(sa.effectiveTo IS NULL OR sa.effectiveTo >= :d)', { d: dateStr })
         .getMany();
 
-    if (!assignments.length) return 8;
+    const regularAssignments = filterOutOTAssignments(allAssignments);
+
+    if (!regularAssignments.length) {
+        // Không có ca chính cover ngày này
+        return isShiftBased ? 0 : 8; // Theo ca → 0h | Chưa gán ca → mặc định 8h
+    }
 
     const jsDay = date.getDay();
     const ourDay = jsDay === 0 ? 7 : jsDay;
 
-    const match = assignments.find(sa => {
+    const match = regularAssignments.find(sa => {
         const weekdays = Array.isArray(sa.weekdays)
             ? sa.weekdays.map(Number)
             : (sa.weekdays ? String(sa.weekdays).split(',').map(Number) : [1,2,3,4,5]);
         return weekdays.includes(ourDay);
     });
 
-    if (!match?.shift) return 8;
+    if (!match?.shift) {
+        return isShiftBased ? 0 : 8;
+    }
 
     const shift = match.shift;
-    if (!shift.startTime || !shift.endTime) return 8;
+    if (!shift.startTime || !shift.endTime) return isShiftBased ? 0 : 8;
 
     const toMinutes = (timeStr) => {
         const [h, m] = timeStr.split(':').map(Number);
