@@ -75,7 +75,7 @@ export class TimesheetsService {
   // ──────────────────────────────────────
 
   async generate(generateDto, userContext) {
-    const { month, year, departmentId, regenerate = false } = generateDto;
+    const { month, year, departmentId, employeeIds, regenerate = false } = generateDto;
 
     // Get month boundaries
     const startDate = new Date(year, month - 1, 1);
@@ -90,6 +90,12 @@ export class TimesheetsService {
       .andWhere('employee.employmentStatus IN (:...statuses)', {
         statuses: ['ACTIVE', 'PROBATION'],
       });
+
+    if (Array.isArray(employeeIds) && employeeIds.length > 0) {
+      employeeQuery.andWhere('employee.id IN (:...employeeIds)', {
+        employeeIds: employeeIds.map((id) => parseInt(id, 10)).filter((n) => !Number.isNaN(n)),
+      });
+    }
 
     if (departmentId) {
       employeeQuery.andWhere('employee.departmentId = :departmentId', {
@@ -519,8 +525,8 @@ export class TimesheetsService {
   }
 
   async getPeriods(queryDto) {
-    const { month, year } = queryDto;
-    const periods = await this.timesheetsRepository.getPeriods({ month, year });
+    const { month, year, groupByDepartment, departmentId } = queryDto;
+    const periods = await this.timesheetsRepository.getPeriods({ month, year, groupByDepartment, departmentId });
     return periods;
   }
 
@@ -577,69 +583,69 @@ export class TimesheetsService {
 
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const qb = employeeRepo.createQueryBuilder('emp')
-        .leftJoinAndSelect('emp.department', 'dept')
-        .leftJoinAndSelect('emp.position', 'pos')
-        .where('emp.isDeleted = :isDeleted', { isDeleted: false })
-        .andWhere('emp.employmentStatus IN (:...statuses)', { statuses: ['ACTIVE', 'PROBATION'] });
-    
+      .leftJoinAndSelect('emp.department', 'dept')
+      .leftJoinAndSelect('emp.position', 'pos')
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('emp.employmentStatus IN (:...statuses)', { statuses: ['ACTIVE', 'PROBATION'] });
+
     if (departmentId) {
-        qb.andWhere('emp.departmentId = :departmentId', { departmentId });
+      qb.andWhere('emp.departmentId = :departmentId', { departmentId });
     }
     if (search) {
-        qb.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', { search: `%${search}%` });
+      qb.andWhere('(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)', { search: `%${search}%` });
     }
 
     const [employees, total] = await qb.skip(skip).take(limit).getManyAndCount();
 
     if (employees.length === 0) {
-        return { items: [], total, page, limit, totalPages: 0, month, year };
+      return { items: [], total, page, limit, totalPages: 0, month, year };
     }
-    
+
     const empIds = employees.map(e => e.id);
 
     const { ProcessedAttendanceRecordEntity } = await import('../models/entities/processed-attendance-record.entity.js');
     const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
     const records = await processedRepo.createQueryBuilder('par')
-        .where('MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year', { month, year })
-        .andWhere('par.employeeId IN (:...empIds)', { empIds })
-        .getMany();
+      .where('MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year', { month, year })
+      .andWhere('par.employeeId IN (:...empIds)', { empIds })
+      .getMany();
 
     const items = employees.map(emp => {
-        const empRecords = records.filter(r => r.employeeId === emp.id);
-        const dailyDetails = empRecords.map(r => {
-            let formattedDate = r.attendanceDate;
-            if (typeof r.attendanceDate === 'string') {
-                const parts = r.attendanceDate.split('-');
-                if (parts.length === 3) formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
-            } else if (r.attendanceDate instanceof Date) {
-                formattedDate = `${String(r.attendanceDate.getDate()).padStart(2, '0')}/${String(r.attendanceDate.getMonth() + 1).padStart(2, '0')}/${r.attendanceDate.getFullYear()}`;
-            }
-
-            return {
-                recordId: r.id,
-                date: formattedDate,
-                checkIn: r.checkInTime,
-                checkOut: r.checkOutTime,
-                lateMinutes: r.lateMinutes,
-                earlyLeaveMinutes: r.earlyMinutes,
-                attendanceStatus: r.attendanceStatus,
-                workingHours: r.workValue,
-                requestId: r.requestId ?? null,
-                isFinalized: !!r.isFinalized,
-            };
-        });
-
-        const totalWorkingDays = empRecords.reduce((sum, r) => sum + Number(r.workValue), 0);
+      const empRecords = records.filter(r => r.employeeId === emp.id);
+      const dailyDetails = empRecords.map(r => {
+        let formattedDate = r.attendanceDate;
+        if (typeof r.attendanceDate === 'string') {
+          const parts = r.attendanceDate.split('-');
+          if (parts.length === 3) formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        } else if (r.attendanceDate instanceof Date) {
+          formattedDate = `${String(r.attendanceDate.getDate()).padStart(2, '0')}/${String(r.attendanceDate.getMonth() + 1).padStart(2, '0')}/${r.attendanceDate.getFullYear()}`;
+        }
 
         return {
-            id: emp.id,
-            employeeCode: emp.employeeCode,
-            fullName: emp.fullName,
-            department: emp?.department?.departmentName,
-            position: emp?.position?.positionName,
-            totalWorkingDays: totalWorkingDays,
-            dailyDetails
+          recordId: r.id,
+          date: formattedDate,
+          checkIn: r.checkInTime,
+          checkOut: r.checkOutTime,
+          lateMinutes: r.lateMinutes,
+          earlyLeaveMinutes: r.earlyMinutes,
+          attendanceStatus: r.attendanceStatus,
+          workingHours: r.workValue,
+          requestId: r.requestId ?? null,
+          isFinalized: !!r.isFinalized,
         };
+      });
+
+      const totalWorkingDays = empRecords.reduce((sum, r) => sum + Number(r.workValue), 0);
+
+      return {
+        id: emp.id,
+        employeeCode: emp.employeeCode,
+        fullName: emp.fullName,
+        department: emp?.department?.departmentName,
+        position: emp?.position?.positionName,
+        totalWorkingDays: totalWorkingDays,
+        dailyDetails
+      };
     });
 
     return {
@@ -863,7 +869,7 @@ export class TimesheetsService {
   async getLateEarlyRecords(query, userContext) {
     const { month, year, departmentId } = query;
     const isHR = userContext.roles.includes('HR') || userContext.roles.includes('ADMIN');
-    
+
     // 1. Get employees to process
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const empQuery = employeeRepo.createQueryBuilder('employee')
@@ -934,9 +940,9 @@ export class TimesheetsService {
       // For HR, only show if has excuseRequest (pending or approved) or specifically filtered by status
       // For Employee, show if late/early OR if has excuseRequest
       if (isHR) {
-          filtered = dailyDetails.filter(d => d.excuseRequest);
+        filtered = dailyDetails.filter(d => d.excuseRequest);
       } else {
-          filtered = dailyDetails.filter(d => (d.lateMinutes > 0 || d.earlyLeaveMinutes > 0) || d.excuseRequest);
+        filtered = dailyDetails.filter(d => (d.lateMinutes > 0 || d.earlyLeaveMinutes > 0) || d.excuseRequest);
       }
 
       // Add employee info to each record
@@ -1721,7 +1727,7 @@ export class TimesheetsService {
             typeof excuseRequest.requestContent === 'string'
               ? JSON.parse(excuseRequest.requestContent)
               : excuseRequest.requestContent;
-        } catch (e) {}
+        } catch (e) { }
 
         detail.excuseRequest = {
           id: excuseRequest.id,
@@ -1772,9 +1778,13 @@ export class TimesheetsService {
         detail.check_out = detail.checkOut;
 
         detail.attendanceType = dayRecords[0].attendanceType;
-        detail.status = 'PRESENT';
 
-        if (checkOut) {
+        const hasBothCheckInOut = checkIn && checkOut;
+
+        if (hasBothCheckInOut) {
+          // Có cả check-in lẫn check-out → tính công bình thường
+          detail.status = 'PRESENT';
+
           const actualHours = this._calcActualHours(checkIn, checkOut, shift);
           detail.workingHours = parseFloat(actualHours.toFixed(2));
           detail.working_hours = detail.workingHours;
@@ -1804,30 +1814,46 @@ export class TimesheetsService {
             detail.overtimeHours = parseFloat(countedOtHours.toFixed(2));
             detail.overtime_hours = detail.overtimeHours;
           }
-        }
 
-        // Late = check-in after shift start
-        const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
-        if (checkInMinutes > shiftStart) {
-          detail.lateMinutes = checkInMinutes - shiftStart;
-          detail.late_minutes = detail.lateMinutes;
-        }
+          // Late = check-in after shift start
+          const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+          if (checkInMinutes > shiftStart) {
+            detail.lateMinutes = checkInMinutes - shiftStart;
+            detail.late_minutes = detail.lateMinutes;
+          }
 
-        // Early leave = check-out before shift end
-        if (checkOut) {
+          // Early leave = check-out before shift end
           const checkOutMinutes =
             checkOut.getHours() * 60 + checkOut.getMinutes();
           if (checkOutMinutes < shiftEnd) {
             detail.earlyLeaveMinutes = shiftEnd - checkOutMinutes;
             detail.early_leave_minutes = detail.earlyLeaveMinutes;
           }
+        } else {
+          // Chỉ có check-in HOẶC check-out → thiếu chấm công, không tính công
+          detail.status = 'INCOMPLETE';
+          detail.workingHours = 0;
+          detail.working_hours = 0;
+          detail.workingDayValue = 0;
+          detail.working_day_value = 0;
+
+          // Vẫn tính late nếu có checkIn
+          if (checkIn) {
+            const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+            if (checkInMinutes > shiftStart) {
+              detail.lateMinutes = checkInMinutes - shiftStart;
+              detail.late_minutes = detail.lateMinutes;
+            }
+          }
         }
 
         // --- Waive penalties if Excuse Request is APPROVED ---
+        // Nếu có đơn giải trình chấm công (ATTENDANCE_CORRECTION) APPROVED → tính lại thành công đủ
         if (
           detail.excuseRequest &&
           detail.excuseRequest.status === 'APPROVED'
         ) {
+          detail.status = 'PRESENT';
           detail.lateMinutes = 0;
           detail.late_minutes = 0;
           detail.earlyLeaveMinutes = 0;
@@ -1841,16 +1867,20 @@ export class TimesheetsService {
         }
 
         // Set attendanceStatus based on calculated late/early values
-        const isLate = detail.lateMinutes > 0;
-        const isEarly = detail.earlyLeaveMinutes > 0;
-        if (isLate && isEarly) {
-          detail.attendanceStatus = 'LATE_AND_EARLY_LEAVE';
-        } else if (isLate) {
-          detail.attendanceStatus = 'LATE';
-        } else if (isEarly) {
-          detail.attendanceStatus = 'EARLY_LEAVE';
+        if (detail.status === 'INCOMPLETE' && !(detail.excuseRequest?.status === 'APPROVED')) {
+          detail.attendanceStatus = 'INCOMPLETE';
         } else {
-          detail.attendanceStatus = 'ON_TIME';
+          const isLate = detail.lateMinutes > 0;
+          const isEarly = detail.earlyLeaveMinutes > 0;
+          if (isLate && isEarly) {
+            detail.attendanceStatus = 'LATE_AND_EARLY_LEAVE';
+          } else if (isLate) {
+            detail.attendanceStatus = 'LATE';
+          } else if (isEarly) {
+            detail.attendanceStatus = 'EARLY_LEAVE';
+          } else {
+            detail.attendanceStatus = 'ON_TIME';
+          }
         }
       }
 
@@ -1863,7 +1893,7 @@ export class TimesheetsService {
   // ──────────────────────────────────────
   // NEW: Processed Attendance Synchronization
   // ──────────────────────────────────────
-  async syncAttendance(month, year, departmentId, userContext) {
+  async syncAttendance(month, year, employeeIds, userContext) {
     const monthStart = new Date(year, month - 1, 1);
     const nextMonthStart = new Date(year, month, 1);
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -1871,7 +1901,7 @@ export class TimesheetsService {
     const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
     const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-    // 1) Get employees (scoped by department if provided)
+    // 1) Get employees (scoped by employeeIds only)
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const employeeQuery = employeeRepo
       .createQueryBuilder('employee')
@@ -1880,36 +1910,39 @@ export class TimesheetsService {
       .andWhere('employee.employmentStatus IN (:...statuses)', {
         statuses: ['ACTIVE', 'PROBATION'],
       });
-    if (departmentId) {
-      employeeQuery.andWhere('employee.departmentId = :departmentId', {
-        departmentId,
-      });
-    }
+    employeeQuery.andWhere('employee.id IN (:...employeeIds)', {
+      employeeIds,
+    });
     const employees = await employeeQuery.getMany();
-    const employeeIds = employees.map((e) => e.id);
-    if (employeeIds.length === 0) return { synced: 0 };
+    const scopedEmployeeIds = employees.map((e) => e.id);
+    if (scopedEmployeeIds.length === 0) return { synced: 0 };
 
     // 2) Fetch raw attendance records (ONLY for employees in scope)
-    //    Note: restrict by employeeIds early to avoid scanning whole table.
+    //    IMPORTANT: lấy ca làm theo từng ngày từ attendance_records.shift_schedule_id
+    //    (join shift_schedules -> working_shifts) để tính late/early đúng và lưu shift_start_time/end_time.
     const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
     const rawRecords = await attendanceRepo
       .createQueryBuilder('att')
       .select([
         'att.id',
         'att.employeeId',
+        'att.workDate',
+        'att.shiftScheduleId',
         'att.checkInTime',
         'att.checkOutTime',
       ])
       .where('att.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('att.employeeId IN (:...employeeIds)', { employeeIds })
-      .andWhere('att.checkInTime >= :start', { start: monthStart })
-      .andWhere('att.checkInTime < :end', { end: nextMonthStart })
+      .andWhere('att.employeeId IN (:...employeeIds)', { employeeIds: scopedEmployeeIds })
+      .andWhere('att.workDate >= :start', { start: monthStartStr })
+      .andWhere('att.workDate <= :end', { end: monthEndStr })
+      .leftJoinAndSelect('att.shiftSchedule', 'shiftSchedule')
+      .leftJoinAndSelect('shiftSchedule.shift', 'workingShift')
       .getMany();
 
-    // Build minimal map: employeeId -> dateKey -> { id, checkInTime, checkOutTime }
+    // Build minimal map: employeeId -> dateKey -> { id, checkInTime, checkOutTime, shiftStartTime, shiftEndTime, workingShiftId }
     const currentMonthData = new Map();
     for (const record of rawRecords) {
-      const d = new Date(record.checkInTime || record.checkOutTime);
+      const d = record.workDate ? new Date(record.workDate) : null;
       if (!d || Number.isNaN(d.getTime())) continue;
       const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       let empMap = currentMonthData.get(record.employeeId);
@@ -1918,11 +1951,18 @@ export class TimesheetsService {
         currentMonthData.set(record.employeeId, empMap);
       }
       const existing = empMap.get(dateKey);
+      const shift = record.shiftSchedule?.shift ?? null;
+      const shiftStartTime = shift?.startTime || '08:00:00';
+      const shiftEndTime = shift?.endTime || '17:00:00';
+      const workingShiftId = shift?.id ?? null;
       if (!existing) {
         empMap.set(dateKey, {
           id: record.id,
           checkInTime: record.checkInTime || null,
           checkOutTime: record.checkOutTime || null,
+          shiftStartTime,
+          shiftEndTime,
+          workingShiftId,
         });
       } else {
         if (
@@ -1939,6 +1979,13 @@ export class TimesheetsService {
         ) {
           existing.checkOutTime = record.checkOutTime;
         }
+
+        // Nếu có ca theo schedule thì giữ lại để tính đúng (ưu tiên record có schedule)
+        if (workingShiftId && !existing.workingShiftId) {
+          existing.workingShiftId = workingShiftId;
+          existing.shiftStartTime = shiftStartTime;
+          existing.shiftEndTime = shiftEndTime;
+        }
       }
     }
 
@@ -1950,7 +1997,7 @@ export class TimesheetsService {
       .leftJoinAndSelect('r.requestType', 'requestType')
       .where('r.status = :status', { status: 'APPROVED' })
       .andWhere('r.isDeleted = :isDel', { isDel: false })
-      .andWhere('r.employeeId IN (:...employeeIds)', { employeeIds })
+      .andWhere('r.employeeId IN (:...employeeIds)', { employeeIds: scopedEmployeeIds })
       .andWhere('requestGroup.code IN (:...codes)', {
         codes: TIMESHEET_SYNC_REQUEST_GROUP_CODES,
       })
@@ -2050,22 +2097,7 @@ export class TimesheetsService {
       return 0;
     };
 
-    // 6) Batch load shift assignment (one query) and pick latest per employee
-    const assignmentRepo = AppDataSource.getRepository(ShiftAssignmentEntity);
-    const assignments = await assignmentRepo.find({
-      where: { employeeId: In(employeeIds), isDeleted: false },
-      relations: ['shift'],
-      order: { effectiveFrom: 'DESC' },
-    });
-    const shiftByEmployeeId = new Map();
-    for (const a of assignments) {
-      if (!shiftByEmployeeId.has(a.employeeId) && a.shift) {
-        shiftByEmployeeId.set(a.employeeId, a.shift);
-      }
-    }
-    const defaultShift = await this._getDefaultShift();
-
-    // 7) Delete old processed records fast (range scan), but KEEP manual/finalized records
+    // 6) Delete old processed records fast (range scan); chỉ GIỮ bản ghi đã chốt công (is_finalized = true)
     const { ProcessedAttendanceRecordEntity } = await import(
       '../models/entities/processed-attendance-record.entity.js'
     );
@@ -2073,19 +2105,16 @@ export class TimesheetsService {
       ProcessedAttendanceRecordEntity
     );
 
-    // Build protected keys (manual or finalized) so we don't overwrite them.
-    // Fast-path: if none exist for this month, skip this extra query and set work.
+    // Chỉ giữ ngày đã chốt công (isFinalized). Mọi bản ghi khác (kể cả chỉnh tay trước đó)
+    // sẽ bị xóa và tính lại khi đồng bộ lại — đúng kỳ vọng "đồng bộ = ghi đè theo dữ liệu nguồn".
     const maybeProtectedCount = await processedRepo
       .createQueryBuilder('par')
-      .where('par.employeeId IN (:...employeeIds)', { employeeIds })
+      .where('par.employeeId IN (:...employeeIds)', { employeeIds: scopedEmployeeIds })
       .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
         start: monthStartStr,
         end: monthEndStr,
       })
-      .andWhere('(par.sourceType = :manual OR par.isFinalized = :final)', {
-        manual: 2,
-        final: true,
-      })
+      .andWhere('par.isFinalized = :final', { final: true })
       .getCount();
 
     const protectedKeySet = new Set();
@@ -2093,15 +2122,12 @@ export class TimesheetsService {
       const protectedRows = await processedRepo
         .createQueryBuilder('par')
         .select(['par.employeeId', 'par.attendanceDate'])
-        .where('par.employeeId IN (:...employeeIds)', { employeeIds })
+        .where('par.employeeId IN (:...employeeIds)', { employeeIds: scopedEmployeeIds })
         .andWhere('par.attendanceDate >= :start AND par.attendanceDate <= :end', {
           start: monthStartStr,
           end: monthEndStr,
         })
-        .andWhere('(par.sourceType = :manual OR par.isFinalized = :final)', {
-          manual: 2,
-          final: true,
-        })
+        .andWhere('par.isFinalized = :final', { final: true })
         .getMany();
 
       for (const r of protectedRows) {
@@ -2114,24 +2140,19 @@ export class TimesheetsService {
     await processedRepo
       .createQueryBuilder()
       .delete()
-      .where('employee_id IN (:...employeeIds)', { employeeIds })
+      .where('employee_id IN (:...employeeIds)', { employeeIds: scopedEmployeeIds })
       .andWhere('attendance_date >= :start AND attendance_date <= :end', {
         start: monthStartStr,
         end: monthEndStr,
       })
-      .andWhere('source_type <> :manual', { manual: 2 })
       .andWhere('is_finalized = :final', { final: false })
       .execute();
 
-    // 8) Rebuild day-by-day using pure objects + bulk insert (faster than entity create/save)
+    // 7) Rebuild day-by-day using pure objects + bulk insert (faster than entity create/save)
     const recordsToInsert = [];
-    for (const empId of employeeIds) {
+    for (const empId of scopedEmployeeIds) {
       const empRawMap = currentMonthData.get(empId) || new Map();
       const empRequests = requestsByEmployeeId.get(empId) || [];
-      const shift = shiftByEmployeeId.get(empId) || defaultShift;
-      const shiftStartStr = shift?.startTime || '08:00:00';
-      const shiftEndStr = shift?.endTime || '17:00:00';
-      const workingShiftId = shift?.id || null;
 
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -2141,6 +2162,9 @@ export class TimesheetsService {
         const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
 
         const raw = empRawMap.get(dateStr);
+        const shiftStartStr = raw?.shiftStartTime || '08:00:00';
+        const shiftEndStr = raw?.shiftEndTime || '17:00:00';
+        const workingShiftId = raw?.workingShiftId ?? null;
         const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
         const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
 
@@ -2160,24 +2184,52 @@ export class TimesheetsService {
         let workValue = 0.0;
         let reqId = null;
 
-        if (checkIn || checkOut) {
+        const hasBothCheckInOut = checkIn && checkOut;
+        const hasOnlyPartial = (checkIn || checkOut) && !hasBothCheckInOut;
+
+        if (hasBothCheckInOut) {
+          // Có cả check-in lẫn check-out → tính công theo số giờ thực làm / giờ ca
+          // (tránh trường hợp chấm 2 phút nhưng vẫn ra 1 công).
           attendanceStatus = 'X';
-          workValue = 1.0;
 
-          const lookup = penaltyLookupByDay[day];
-          const lateHours = penaltyHours(lookup.late, lateMins);
-          const earlyHours = penaltyHours(lookup.early, earlyMins);
-          const totalPenaltyHours = lateHours + earlyHours;
+          // Build a minimal "shift" object for hour calculation (supports break time if present later)
+          const shiftForCalc = {
+            startTime: shiftStartStr,
+            endTime: shiftEndStr,
+          };
+          const shiftHours = this._calcShiftHours(shiftForCalc);
+          const actualHours = this._calcActualHours(checkIn, checkOut, null);
+          workValue = this._calcWorkingDay(actualHours, shiftHours);
 
-          if (totalPenaltyHours > 0) {
-            workValue -= totalPenaltyHours / 8;
-            if (workValue <= 0) {
-              workValue = 0;
-              attendanceStatus = 'ABSENT';
-            } else if (workValue < 1.0) {
-              attendanceStatus = 'KL';
+          // Apply penalty conversion rules (late/early) on top of hour-based value.
+          // This only reduces value further when policy requires.
+          if (workValue > 0) {
+            const lookup = penaltyLookupByDay[day];
+            const lateHours = penaltyHours(lookup.late, lateMins);
+            const earlyHours = penaltyHours(lookup.early, earlyMins);
+            const totalPenaltyHours = lateHours + earlyHours;
+
+            if (totalPenaltyHours > 0) {
+              workValue -= totalPenaltyHours / (shiftHours || 8);
+              if (workValue <= 0) {
+                workValue = 0;
+                attendanceStatus = 'ABSENT';
+              } else if (workValue < 1.0) {
+                attendanceStatus = 'KL';
+              }
             }
           }
+
+          if (workValue === 0) {
+            attendanceStatus = 'ABSENT';
+          } else if (workValue < 1.0) {
+            attendanceStatus = 'KL';
+          }
+        } else if (hasOnlyPartial) {
+          attendanceStatus = 'X';   // Vắng (thiếu chấm công)
+          workValue = 0.0;
+          lateMins = 0;
+          earlyMins = 0;
         }
 
         const overlappingReq = _pickSyncRequestForDay(empRequests, dateStr);
@@ -2276,7 +2328,7 @@ export class TimesheetsService {
     return {
       message: 'Sync completed successfully',
       syncedRecords: recordsToInsert.length,
-      keptManualOrFinalized: protectedKeySet.size,
+      keptFinalizedDays: protectedKeySet.size,
     };
   }
 
