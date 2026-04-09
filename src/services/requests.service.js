@@ -102,6 +102,23 @@ export class RequestsService {
             totalApprovalLevels: 0,
         };
 
+        if (startDate && endDate) {
+            const startD = new Date(startDate);
+            const endD = new Date(endDate);
+            if (startD > endD) throw new BadRequestException('Ngày bắt đầu không được lớn hơn ngày kết thúc');
+            
+            const overlaps = await this.repo.findOverlappingRequests({
+                employeeId: targetEmployeeId,
+                requestGroupId: requestType.requestGroupId,
+                startDate: startD,
+                endDate: endD,
+                excludeRequestId: requestId || null
+            });
+            if (overlaps.length > 0) {
+                throw new BadRequestException('Thời gian lưu đơn bị trùng lặp với một đơn khác đang có hiệu lực trong hệ thống.');
+            }
+        }
+
         if (requestId) {
             const existing = await this._findRequestOrFail(requestId);
             if (existing.status !== RequestStatus.DRAFT) {
@@ -239,7 +256,7 @@ export class RequestsService {
         }
 
         let requestedQty = 0;
-        
+
         if (unit === 'DAY') {
             requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource);
         } else if (unit === 'HOUR') {
@@ -287,6 +304,18 @@ export class RequestsService {
         if (!request.endDate) throw new BadRequestException('Thiếu thông tin ngày kết thúc');
         if (new Date(request.startDate) > new Date(request.endDate)) {
             throw new BadRequestException('Ngày bắt đầu không được lớn hơn ngày kết thúc');
+        }
+
+        // ✅ Kiểm tra Overlap trước khi submit
+        const overlaps = await this.repo.findOverlappingRequests({
+            employeeId: request.employeeId,
+            requestGroupId: request.requestGroupId,
+            startDate: new Date(request.startDate),
+            endDate: new Date(request.endDate),
+            excludeRequestId: request.id
+        });
+        if (overlaps.length > 0) {
+            throw new BadRequestException('Thời gian gửi duyệt của đơn bị trùng lặp với một đơn khác đang có hiệu lực.');
         }
 
         // ✅ Kiểm tra hạn mức policy (server-side validation)
