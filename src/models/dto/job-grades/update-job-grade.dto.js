@@ -1,21 +1,20 @@
+import { Type } from 'class-transformer';
 import { IsString, IsNumber, IsOptional, Min } from 'class-validator';
 
 export class UpdateJobGradeDto {
   @IsString()
   @IsOptional()
-  name;
+  gradeName;
 
-  @IsString()
-  @IsOptional()
-  description;
-
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   @IsOptional()
-  baseSalary;
+  minSalary;
 
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   @IsOptional()
-  allowance;
+  maxSalary;
 }
