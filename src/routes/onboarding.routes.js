@@ -6,7 +6,7 @@ import { TaskAssignmentsController } from '../controllers/task-assignments.contr
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
-import { upload } from '../common/middleware/upload.middleware.js';
+import { uploadCloud } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
 
@@ -183,7 +183,7 @@ router.post(
 );
 router.put(
   '/assignments/:id',
-  upload.single('evidence'),
+  uploadCloud.single('evidence'),
   assignmentsController.update,
 );
 router.put(

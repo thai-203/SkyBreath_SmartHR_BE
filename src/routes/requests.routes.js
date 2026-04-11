@@ -2,9 +2,16 @@ import { Router } from 'express';
 import { RequestsController } from '../controllers/requests.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
+import { uploadCloud } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
 const requestsController = new RequestsController();
+
+// GET /requests/excuses — Đơn giải trình (nhóm LATE_EARLY / ATTENDANCE_CORRECTION)
+router.get('/excuses', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getExcuseRequests);
+
+// GET /requests/overtime-detail — Bảng tăng ca chi tiết (nhóm OVERTIME + dòng chi tiết hoặc tổng hợp từ đơn)
+router.get('/overtime-detail', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getOvertimeDetailRequests);
 
 // GET /requests/my — Đơn của tôi
 router.get('/my', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getMyRequests);
@@ -14,6 +21,12 @@ router.get('/pending', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'),
 
 // GET /requests/workflow-preview
 router.get('/workflow-preview', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getWorkflowPreview);
+
+// GET /requests/quota-status — Kiểm tra hạn mức policy
+router.get('/quota-status', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getQuotaStatus);
+
+// GET /requests/estimate-quantity — Ước tính số lượng ngày/giờ xin phép dựa trên ca làm việc
+router.get('/estimate-quantity', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.estimateQuantity);
 
 // GET /requests — Tất cả (HR/Admin)
 router.get('/', authMiddleware, permissionsMiddleware('REQUEST_VIEW_ALL'), requestsController.getAllRequests);
@@ -38,5 +51,8 @@ router.post('/:id/reject', authMiddleware, permissionsMiddleware('REQUEST_APPROV
 
 // POST /requests/:id/revoke
 router.post('/:id/revoke', authMiddleware, permissionsMiddleware('REQUEST_REVOKE'), requestsController.revoke);
+
+// POST /requests/:id/attachments — Upload tài liệu đính kèm
+router.post('/:id/attachments', authMiddleware, uploadCloud.array('files', 10), requestsController.uploadAttachments);
 
 export const requestsRoutes = router;

@@ -1,17 +1,20 @@
 import { RequestsRepository } from '../repositories/requests.repository.js';
 import { RequestGroupWorkflowsRepository } from '../repositories/request-group-workflows.repository.js';
 import { RequestTypesRepository } from '../repositories/request-types.repository.js';
+import { RequestGroupsRepository } from '../repositories/request-groups.repository.js';
 import { NotFoundException, BadRequestException, ForbiddenException } from '../common/exceptions/index.js';
-import { RequestStatus, ApprovalLevelStatus, ApproverType } from '../common/enums/request.enum.js';
+import { RequestStatus, ApprovalLevelStatus, ApproverType, RequestGroupCode } from '../common/enums/request.enum.js';
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { NotificationsService } from './notifications.service.js';
+import { countWorkingDays, getWorkingHoursForDay } from '../common/helpers/working-days.helper.js';
 
 export class RequestsService {
     constructor() {
         this.repo = new RequestsRepository();
         this.workflowRepo = new RequestGroupWorkflowsRepository();
         this.typeRepo = new RequestTypesRepository();
+        this.requestGroupsRepo = new RequestGroupsRepository();
         this.notificationService = new NotificationsService();
     }
 
@@ -65,7 +68,7 @@ export class RequestsService {
         const creatorEmployee = await this._getEmployeeByUserId(reqUser.id);
         if (!creatorEmployee) throw new NotFoundException('Không tìm thấy thông tin nhân viên của bạn');
 
-        const { employeeId, requestTypeId, startDate, endDate, startTime, endTime, description, requestId } = body;
+        const { employeeId, requestTypeId, startDate, endDate, startTime, endTime, description, requestId, overtimeTypeId } = body;
 
         const targetEmployeeId = employeeId || creatorEmployee.id;
 
@@ -86,6 +89,7 @@ export class RequestsService {
             createdByEmployeeId: creatorEmployee.id,
             requestTypeId,
             requestGroupId: requestType.requestGroupId,
+            overtimeTypeId: overtimeTypeId || null,
             status: RequestStatus.DRAFT,
             startDate: startDate || null,
             endDate: endDate || null,
@@ -98,6 +102,23 @@ export class RequestsService {
             totalApprovalLevels: 0,
         };
 
+        if (startDate && endDate) {
+            const startD = new Date(startDate);
+            const endD = new Date(endDate);
+            if (startD > endD) throw new BadRequestException('Ngày bắt đầu không được lớn hơn ngày kết thúc');
+            
+            const overlaps = await this.repo.findOverlappingRequests({
+                employeeId: targetEmployeeId,
+                requestGroupId: requestType.requestGroupId,
+                startDate: startD,
+                endDate: endD,
+                excludeRequestId: requestId || null
+            });
+            if (overlaps.length > 0) {
+                throw new BadRequestException('Thời gian lưu đơn bị trùng lặp với một đơn khác đang có hiệu lực trong hệ thống.');
+            }
+        }
+
         if (requestId) {
             const existing = await this._findRequestOrFail(requestId);
             if (existing.status !== RequestStatus.DRAFT) {
@@ -108,6 +129,166 @@ export class RequestsService {
             const requestCode = await this.repo.generateRequestCode();
             return await this.repo.create({ ...data, requestCode });
         }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // QUOTA: Tính hạn mức đã dùng
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    /**
+     * Lấy thông tin hạn mức sử dụng cho một loại đơn của nhân viên
+     * @param {number} requestTypeId
+     * @param {number} employeeId
+     * @param {number|null} excludeRequestId - loại trừ đơn đang edit
+     */
+    async getQuotaStatus(requestTypeId, employeeId, excludeRequestId = null) {
+        const requestType = await this.typeRepo.findById(requestTypeId);
+        if (!requestType) throw new NotFoundException('Không tìm thấy loại đơn');
+
+        const policy = requestType.policy;
+        // Nếu không có policy hoặc không giới hạn → trả về không giới hạn
+        if (!policy || !policy.maxQuantity || parseFloat(policy.maxQuantity) === 0 || policy.isUnlimited) {
+            return { hasQuota: false, maxQuantity: null, usedQuantity: 0, remainingQuantity: null, unit: policy?.unit || 'DAY', trackingCycle: policy?.trackingCycle || 'YEAR' };
+        }
+
+        const { maxQuantity, trackingCycle, unit } = policy;
+        const now = new Date();
+
+        // Xác định khoảng thời gian theo chu kỳ
+        let periodStart, periodEnd;
+        if (trackingCycle === 'YEAR') {
+            periodStart = new Date(now.getFullYear(), 0, 1);
+            periodEnd = new Date(now.getFullYear(), 11, 31);
+        } else if (trackingCycle === 'MONTH') {
+            periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (trackingCycle === 'WEEK') {
+            const dayOfWeek = now.getDay() || 7; // Mon=1..Sun=7
+            periodStart = new Date(now);
+            periodStart.setDate(now.getDate() - dayOfWeek + 1);
+            periodEnd = new Date(periodStart);
+            periodEnd.setDate(periodStart.getDate() + 6);
+        } else {
+            // DAY: chỉ tính hôm nay
+            periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            periodEnd = new Date(periodStart);
+        }
+
+        // Lấy các đơn đã dùng trong chu kỳ
+        const usedRequests = await this.repo.findUsedRequests({
+            employeeId,
+            requestTypeId,
+            periodStart,
+            periodEnd,
+            excludeRequestId: excludeRequestId ? parseInt(excludeRequestId) : null,
+        });
+
+        // Tính tổng số lượng đã dùng dựa trên unit
+        let usedQuantity = 0;
+        for (const req of usedRequests) {
+            const reqStart = new Date(req.startDate);
+            const reqEnd = new Date(req.endDate);
+            // Clip vào trong chu kỳ
+            const clipStart = reqStart < periodStart ? periodStart : reqStart;
+            const clipEnd = reqEnd > periodEnd ? periodEnd : reqEnd;
+
+            if (unit === 'DAY') {
+                // Tính số ngày làm việc
+                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource);
+                usedQuantity += days;
+            } else if (unit === 'HOUR') {
+                if (req.startTime && req.endTime) {
+                    const startD = new Date(req.startDate);
+                    const endD = new Date(req.endDate);
+                    const [startH, startM] = req.startTime.split(':').map(Number);
+                    const [endH, endM] = req.endTime.split(':').map(Number);
+                    startD.setHours(startH, startM, 0, 0);
+                    endD.setHours(endH, endM, 0, 0);
+                    const diff = (endD - startD) / (1000 * 60 * 60);
+                    if (diff > 0) {
+                        usedQuantity += diff;
+                    }
+                } else {
+                    // Tính số giờ dựa trên ca làm việc
+                    const cursor = new Date(clipStart);
+                    cursor.setHours(0, 0, 0, 0);
+                    while (cursor <= clipEnd) {
+                        const hoursInDay = await getWorkingHoursForDay(cursor, employeeId, AppDataSource);
+                        usedQuantity += hoursInDay;
+                        cursor.setDate(cursor.getDate() + 1);
+                    }
+                }
+            } else if (unit === 'HALF_DAY') {
+                // Tính số nửa ngày (1 ngày = 2 nửa ngày)
+                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource);
+                usedQuantity += days * 2;
+            } else {
+                // TIME/OTHER: tính số lần (1 đơn = 1 lần)
+                usedQuantity += 1;
+            }
+        }
+
+        const remainingQuantity = Math.max(0, parseFloat(maxQuantity) - usedQuantity);
+        return {
+            hasQuota: true,
+            maxQuantity: parseFloat(maxQuantity),
+            usedQuantity: Math.round(usedQuantity * 100) / 100,
+            remainingQuantity: Math.round(remainingQuantity * 100) / 100,
+            unit,
+            trackingCycle,
+            periodStart: periodStart.toISOString().slice(0, 10),
+            periodEnd: periodEnd.toISOString().slice(0, 10),
+        };
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Ước tính số lượng ngày/giờ dựa trên ca làm việc (dành cho màn hình Tạo/Sửa UI)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    async estimateQuantity(query) {
+        const { employeeId, startDate, endDate, startTime, endTime, unit } = query;
+        if (!employeeId || !startDate || !endDate || !unit) {
+            throw new BadRequestException('Thiếu tham số (employeeId, startDate, endDate, unit)');
+        }
+
+        const reqStart = new Date(startDate);
+        const reqEnd = new Date(endDate);
+        if (reqStart > reqEnd) {
+            throw new BadRequestException('Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc');
+        }
+
+        let requestedQty = 0;
+
+        if (unit === 'DAY') {
+            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource);
+        } else if (unit === 'HOUR') {
+            if (startTime && endTime) {
+                const startD = new Date(startDate);
+                const endD = new Date(endDate);
+                const [startH, startM] = startTime.split(':').map(Number);
+                const [endH, endM] = endTime.split(':').map(Number);
+                startD.setHours(startH, startM, 0, 0);
+                endD.setHours(endH, endM, 0, 0);
+                const diff = (endD - startD) / (1000 * 60 * 60);
+                if (diff > 0) {
+                    requestedQty = diff;
+                }
+            } else {
+                const cursor = new Date(reqStart);
+                cursor.setHours(0, 0, 0, 0);
+                while (cursor <= reqEnd) {
+                    requestedQty += await getWorkingHoursForDay(cursor, employeeId, AppDataSource);
+                    cursor.setDate(cursor.getDate() + 1);
+                }
+            }
+        } else if (unit === 'HALF_DAY') {
+            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource) * 2;
+        } else {
+            requestedQty = 1; // TIME unit
+        }
+
+        return {
+            unit,
+            estimatedQuantity: Math.round(requestedQty * 100) / 100
+        };
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -123,6 +304,66 @@ export class RequestsService {
         if (!request.endDate) throw new BadRequestException('Thiếu thông tin ngày kết thúc');
         if (new Date(request.startDate) > new Date(request.endDate)) {
             throw new BadRequestException('Ngày bắt đầu không được lớn hơn ngày kết thúc');
+        }
+
+        // ✅ Kiểm tra Overlap trước khi submit
+        const overlaps = await this.repo.findOverlappingRequests({
+            employeeId: request.employeeId,
+            requestGroupId: request.requestGroupId,
+            startDate: new Date(request.startDate),
+            endDate: new Date(request.endDate),
+            excludeRequestId: request.id
+        });
+        if (overlaps.length > 0) {
+            throw new BadRequestException('Thời gian gửi duyệt của đơn bị trùng lặp với một đơn khác đang có hiệu lực.');
+        }
+
+        // ✅ Kiểm tra hạn mức policy (server-side validation)
+        try {
+            const quota = await this.getQuotaStatus(request.requestTypeId, request.employeeId, request.id);
+            if (quota.hasQuota) {
+                const reqStart = new Date(request.startDate);
+                const reqEnd = new Date(request.endDate);
+                let requestedQty = 0;
+
+                if (quota.unit === 'DAY') {
+                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource);
+                } else if (quota.unit === 'HOUR') {
+                    if (request.startTime && request.endTime) {
+                        const startD = new Date(request.startDate);
+                        const endD = new Date(request.endDate);
+                        const [startH, startM] = request.startTime.split(':').map(Number);
+                        const [endH, endM] = request.endTime.split(':').map(Number);
+                        startD.setHours(startH, startM, 0, 0);
+                        endD.setHours(endH, endM, 0, 0);
+                        const diff = (endD - startD) / (1000 * 60 * 60);
+                        if (diff > 0) {
+                            requestedQty = diff;
+                        }
+                    } else {
+                        const cursor = new Date(reqStart);
+                        cursor.setHours(0, 0, 0, 0);
+                        while (cursor <= reqEnd) {
+                            requestedQty += await getWorkingHoursForDay(cursor, request.employeeId, AppDataSource);
+                            cursor.setDate(cursor.getDate() + 1);
+                        }
+                    }
+                } else if (quota.unit === 'HALF_DAY') {
+                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource) * 2;
+                } else {
+                    requestedQty = 1;
+                }
+
+                if (requestedQty > quota.remainingQuantity) {
+                    const unitLabel = { DAY: 'ngày', HOUR: 'giờ', HALF_DAY: 'nửa ngày', TIME: 'lần' }[quota.unit] || quota.unit;
+                    throw new BadRequestException(
+                        `Vượt hạn mức cho phép! Bạn chỉ còn ${quota.remainingQuantity} ${unitLabel} trong ${quota.trackingCycle === 'YEAR' ? 'năm' : quota.trackingCycle === 'MONTH' ? 'tháng' : 'tuần'} này (tối đa ${quota.maxQuantity} ${unitLabel}).`
+                    );
+                }
+            }
+        } catch (err) {
+            if (err.statusCode === 400) throw err;
+            console.error('[Quota] Lỗi kiểm tra hạn mức:', err);
         }
 
         const workflows = await this.workflowRepo.findByGroupId(request.requestGroupId);
@@ -592,6 +833,87 @@ export class RequestsService {
             limit: parseInt(limit),
         });
         return { items, total, page: parseInt(page), limit: parseInt(limit) };
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Timesheets/Excuses page: đơn nhóm LATE_EARLY / ATTENDANCE_CORRECTION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    async getExcuseRequests(query, reqUser) {
+        const {
+            month,
+            year,
+            departmentId,
+            search,
+            status,
+            page = 1,
+            limit = 20,
+        } = query;
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // Nếu không có quyền view all -> chỉ xem của chính mình
+        let employeeId;
+        const hasViewAll = reqUser?.permissions?.includes('REQUEST_VIEW_ALL');
+        if (!hasViewAll) {
+            const employee = await this._getEmployeeByUserId(reqUser.id);
+            employeeId = employee?.id;
+        }
+
+        // Mặc định chỉ đơn đã duyệt (trang đơn giải trình)
+        const statusFilter = status ? String(status) : 'APPROVED';
+
+        return await this.repo.findExcuseRequests({
+            month: month ? parseInt(month) : undefined,
+            year: year ? parseInt(year) : undefined,
+            departmentId: departmentId ? parseInt(departmentId) : undefined,
+            search: search ? String(search) : undefined,
+            status: statusFilter,
+            employeeId,
+            skip,
+            limit: parseInt(limit),
+        });
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Timesheets: Bảng tăng ca chi tiết — nhóm OVERTIME (theo code request_groups)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    async getOvertimeDetailRequests(query, reqUser) {
+        const {
+            month,
+            year,
+            departmentId,
+            search,
+            status,
+            page = 1,
+            limit = 20,
+        } = query;
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        let employeeId;
+        const hasViewAll = reqUser?.permissions?.includes('REQUEST_VIEW_ALL');
+        if (!hasViewAll) {
+            const employee = await this._getEmployeeByUserId(reqUser.id);
+            employeeId = employee?.id;
+        }
+
+        const otGroup = await this.requestGroupsRepo.findByCode(RequestGroupCode.OVERTIME);
+        const requestGroupId = otGroup?.id ?? 1;
+
+        // Mặc định chỉ đơn đã duyệt (bảng tăng ca chi tiết)
+        const statusFilter = status ? String(status) : 'APPROVED';
+
+        return await this.repo.findOvertimeDetailLinesForGroup({
+            requestGroupId,
+            month: month ? parseInt(month) : undefined,
+            year: year ? parseInt(year) : undefined,
+            departmentId: departmentId ? parseInt(departmentId) : undefined,
+            search: search ? String(search) : undefined,
+            status: statusFilter,
+            employeeId,
+            skip,
+            limit: parseInt(limit),
+        });
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

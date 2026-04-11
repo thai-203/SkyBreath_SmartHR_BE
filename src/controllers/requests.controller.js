@@ -35,6 +35,26 @@ export class RequestsController {
         }
     };
 
+    // GET /requests/excuses — Đơn giải trình (nhóm LATE_EARLY / ATTENDANCE_CORRECTION)
+    getExcuseRequests = async (req, res, next) => {
+        try {
+            const result = await this.service.getExcuseRequests(req.query, req.user);
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    // GET /requests/overtime-detail — Bảng tăng ca chi tiết (request_group_id = 1)
+    getOvertimeDetailRequests = async (req, res, next) => {
+        try {
+            const result = await this.service.getOvertimeDetailRequests(req.query, req.user);
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     // GET /requests/:id — Chi tiết đơn
     getById = async (req, res, next) => {
         try {
@@ -53,6 +73,34 @@ export class RequestsController {
                 return res.status(400).json({ success: false, message: 'Thiếu requestTypeId hoặc employeeId' });
             }
             const result = await this.service.getWorkflowPreview(parseInt(requestTypeId), parseInt(employeeId));
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    // GET /requests/quota-status?requestTypeId=&employeeId=&excludeRequestId
+    getQuotaStatus = async (req, res, next) => {
+        try {
+            const { requestTypeId, employeeId, excludeRequestId } = req.query;
+            if (!requestTypeId || !employeeId) {
+                return res.status(400).json({ success: false, message: 'Thiếu requestTypeId hoặc employeeId' });
+            }
+            const result = await this.service.getQuotaStatus(
+                parseInt(requestTypeId),
+                parseInt(employeeId),
+                excludeRequestId ? parseInt(excludeRequestId) : null
+            );
+            res.json({ success: true, data: result });
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    // GET /requests/estimate-quantity
+    estimateQuantity = async (req, res, next) => {
+        try {
+            const result = await this.service.estimateQuantity(req.query);
             res.json({ success: true, data: result });
         } catch (error) {
             next(error);

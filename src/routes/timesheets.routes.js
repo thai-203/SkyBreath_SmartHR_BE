@@ -510,6 +510,10 @@ router.post('/bulk-lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'
 // HR: Manual update of a single processed attendance record's work_value
 router.patch('/processed/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.updateProcessedRecord);
 
+// HR/Admin: Finalize / Unfinalize processed attendance records (matrix lock)
+router.post('/processed-finalize', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.finalizeProcessedMatrix);
+router.post('/processed-unfinalize', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.unfinalizeProcessedMatrix);
+
 /**
  * @swagger
  * /timesheets/{id}/lock:

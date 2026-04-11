@@ -98,8 +98,7 @@ CREATE TABLE `positions` (
 -- =============================================================================
 CREATE TABLE `job_grades` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `department_id` int NOT NULL,                              -- FK → departments.id (bậc thuộc phòng ban)
-  `grade_name` varchar(255) NOT NULL,                        -- Tên bậc (VD: G1, G2, Senior)
+  `grade_name` varchar(255) NOT NULL,                        -- Tên bậc dùng chung cho tất cả phòng ban (VD: G1, G2, Senior)
   `min_salary` decimal(15,2) NOT NULL,                       -- Lương tối thiểu của bậc
   `max_salary` decimal(15,2) NOT NULL,                       -- Lương tối đa của bậc
   `is_deleted` tinyint NOT NULL DEFAULT '0',

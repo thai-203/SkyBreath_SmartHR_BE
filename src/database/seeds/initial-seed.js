@@ -577,6 +577,17 @@ const seed = async () => {
         description: 'View all requests regardless of ownership',
         module: 'Request',
       },
+      // Notifications
+      {
+        permissionCode: 'SEND_MANUAL_NOTIFICATION',
+        description: 'Create and send manual notifications',
+        module: 'Notification',
+      },
+      {
+        permissionCode: 'VIEW_NOTIFICATION_HISTORY',
+        description: 'View notification history',
+        module: 'Notification',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -783,6 +794,9 @@ const seed = async () => {
       'REQUEST_APPROVE',
       'REQUEST_REVOKE',
       'REQUEST_VIEW_ALL',
+      // Notifications
+      'SEND_MANUAL_NOTIFICATION',
+      'VIEW_NOTIFICATION_HISTORY',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -884,35 +898,30 @@ const seed = async () => {
     // 6. Create Job Grades
     const jobGradeRepo = dataSource.getRepository(JobGradeEntity);
     const jobGradesData = [
+      {        
+        gradeName: 'Intern',
+        minSalary: 0,
+        maxSalary: 6000000,
+      },
       {
         gradeName: 'Junior',
-        departmentName: 'Software Development',
         minSalary: 6000000,
         maxSalary: 10000000,
       },
       {
+        gradeName: 'Middle',
+        minSalary: 11000000,
+        maxSalary: 19000000,
+      },
+      {
         gradeName: 'Senior',
-        departmentName: 'Software Development',
         minSalary: 19000000,
         maxSalary: 30000000,
       },
       {
         gradeName: 'Lead',
-        departmentName: 'Software Development',
         minSalary: 31000000,
         maxSalary: 45000000,
-      },
-      {
-        gradeName: 'Junior',
-        departmentName: 'Human Resources',
-        minSalary: 6000000,
-        maxSalary: 10000000,
-      },
-      {
-        gradeName: 'Senior',
-        departmentName: 'Human Resources',
-        minSalary: 19000000,
-        maxSalary: 30000000,
       },
     ];
 
@@ -920,20 +929,16 @@ const seed = async () => {
       let grade = await jobGradeRepo.findOne({
         where: {
           gradeName: j.gradeName,
-          departmentId: departments[j.departmentName].id,
         },
       });
       if (!grade) {
         grade = jobGradeRepo.create({
           gradeName: j.gradeName,
-          departmentId: departments[j.departmentName].id,
           minSalary: j.minSalary,
           maxSalary: j.maxSalary,
         });
         await jobGradeRepo.save(grade);
-        console.log(
-          `Created job grade: ${j.gradeName} for ${j.departmentName}`,
-        );
+        console.log(`Created job grade: ${j.gradeName}`);
       }
     }
 
@@ -1287,6 +1292,17 @@ const seed = async () => {
       positions.map((p) => [p.positionName, p]),
     );
     const jobGrades = await jobGradeRepo.find({ where: { isDeleted: false } });
+    const canonicalJobGradeByName = new Map();
+    const canonicalJobGradeById = new Map();
+    for (const grade of jobGrades) {
+      if (!canonicalJobGradeByName.has(grade.gradeName)) {
+        canonicalJobGradeByName.set(grade.gradeName, grade);
+      }
+      canonicalJobGradeById.set(
+        grade.id,
+        canonicalJobGradeByName.get(grade.gradeName).id,
+      );
+    }
 
     const employeeMasterProfiles = [
       {
@@ -1330,15 +1346,16 @@ const seed = async () => {
           ? employeesByCode[profile.managerCode]
           : null;
 
-      const deptGrades = jobGrades.filter((g) => g.departmentId === dept?.id);
       const fallbackGrade =
-        deptGrades.find((g) => g.gradeName === 'Junior') ||
-        deptGrades[0] ||
-        null;
+        canonicalJobGradeByName.get('Junior') || jobGrades[0] || null;
 
       emp.departmentId = dept?.id || emp.departmentId;
       emp.positionId = position?.id || emp.positionId;
-      emp.jobGradeId = emp.jobGradeId || fallbackGrade?.id || null;
+      emp.jobGradeId =
+        canonicalJobGradeById.get(emp.jobGradeId) ||
+        emp.jobGradeId ||
+        fallbackGrade?.id ||
+        null;
       emp.directManagerId = manager?.id || null;
       emp.hrMentorId = hrEmployee?.id || null;
       emp.joinDate = emp.joinDate || profile.joinDate;
@@ -1710,19 +1727,12 @@ const seed = async () => {
         note: 'Về sớm 15-60 phút trừ 0.5h công',
       },
     ];
-    for (const p of penaltiesData) {
-      const exists = await penaltyRepo.findOne({ 
-        where: { 
-          violationType: p.violationType,
-          fromMinute: p.fromMinute,
-          toMinute: p.toMinute,
-          effectiveFrom: p.effectiveFrom 
-        } 
-      });
-      if (!exists) {
-        await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
-      }
-    }
+    // for (const p of penaltiesData) {
+    //   const exists = await penaltyRepo.findOne({ where: { name: p.name } });
+    //   if (!exists) {
+    //     await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
+    //   }
+    // }
 
     // Onboarding flow
     const onboardingPlanRepo = dataSource.getRepository(OnboardingPlanEntity);
@@ -1926,7 +1936,6 @@ const seed = async () => {
         }),
       );
     }
-
 
     // Shift schedules from shift assignments
     const shiftScheduleRepo = dataSource.getRepository(ShiftScheduleEntity);

@@ -13,7 +13,6 @@ export const TrackingCycle = {
 export const PolicyUnit = {
     DAY: 'DAY',
     HOUR: 'HOUR',
-    MINUTE: 'MINUTE',
     TIME: 'TIME',
 };
 
@@ -23,7 +22,6 @@ export const RequestGroupCode = {
     BUSINESS_TRIP: 'BUSINESS_TRIP',
     WORK_FROM_HOME: 'WORK_FROM_HOME',
     LATE_EARLY: 'LATE_EARLY',
-    ATTENDANCE_CORRECTION: 'ATTENDANCE_CORRECTION',
     OTHER: 'OTHER',
 };
 
