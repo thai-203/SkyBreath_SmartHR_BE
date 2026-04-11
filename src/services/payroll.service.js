@@ -581,6 +581,14 @@ export class PayrollService {
         return this.payrollRepository.update(payrollId, { payrollStatus: PAYROLL_STATUS.LOCKED });
     }
 
+    async unlock(payrollId) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+        if (payroll.payrollStatus !== PAYROLL_STATUS.LOCKED) {
+            throw new BadRequestException(AppMessages.Errors.Payroll.NOT_LOCKED);
+        }
+        return this.payrollRepository.update(payrollId, { payrollStatus: PAYROLL_STATUS.APPROVED });
+    }
+
     async sendPayslips(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus !== PAYROLL_STATUS.LOCKED) {
