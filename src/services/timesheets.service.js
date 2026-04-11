@@ -15,6 +15,8 @@ import { ExcelUtil } from '../common/utils/excel.util.js';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
 import { RequestEntity } from '../models/entities/request.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
+import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
+import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { RequestGroupCode } from '../common/enums/request.enum.js';
 
 /** Đơn được hợp nhất vào bảng công khi sync — theo request_groups.code (không gồm OVERTIME). */
@@ -2428,10 +2430,22 @@ export class TimesheetsService {
       .getMany();
 
     // 4. Get Approved Overtime Requests
+    const ruleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
+    const activeRules = await ruleRepo.find({
+        where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false },
+        relations: ['overtimeType'],
+    });
+
+    const ruleDeptRepo = AppDataSource.getRepository(OvertimeRuleDepartmentEntity);
+    const ruleDepts = await ruleDeptRepo.find({
+        where: { isDeleted: false },
+    });
+
     const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
     const otDetails = await otDetailRepo
       .createQueryBuilder('otd')
       .leftJoinAndSelect('otd.request', 'req')
+      .leftJoinAndSelect('req.requestGroup', 'rg')
       .leftJoinAndSelect('otd.overtimeRule', 'rule')
       .leftJoinAndSelect('rule.overtimeType', 'type')
       .where('MONTH(otd.workDate) = :month AND YEAR(otd.workDate) = :year', {
@@ -2439,6 +2453,7 @@ export class TimesheetsService {
         year,
       })
       .andWhere('req.status = :status', { status: 'APPROVED' })
+      .andWhere('rg.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('req.employeeId IN (:...empIds)', { empIds })
       .getMany();
 
@@ -2488,9 +2503,32 @@ export class TimesheetsService {
 
       empOtDetails.forEach((ot) => {
         const hours = Number(ot.totalHours) || 0;
-        const typeCode = ot.overtimeRule?.overtimeType?.code || 'WEEKDAY';
-        const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
+        
+        let typeCode = 'WEEKDAY';
+        let effectiveRule = ot.overtimeRule;
+        if (!effectiveRule) {
+            const typeId = ot.overtimeTypeId || ot.request?.overtimeTypeId;
+            if (typeId) {
+                const workDate = new Date(ot.workDate);
+                effectiveRule = activeRules.find(r => {
+                    if (r.overtimeTypeId !== typeId) return false;
+                    const from = r.effectiveFrom ? new Date(r.effectiveFrom) : null;
+                    const to = r.effectiveTo ? new Date(r.effectiveTo) : null;
+                    if (from && workDate < from) return false;
+                    if (to && workDate > to) return false;
+                    const depts = ruleDepts.filter(rd => rd.overtimeRuleId === r.id).map(rd => rd.departmentId);
+                    if (depts.length > 0 && !depts.includes(emp.departmentId)) return false;
+                    return true;
+                });
+            }
+        }
 
+        if (effectiveRule) {
+            typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
+        }
+
+        const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
+        
         if (typeCode === 'WEEKDAY') {
           if (isNight) otWeekdayNight += hours;
           else otWeekday += hours;

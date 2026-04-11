@@ -11,6 +11,7 @@ import sendMail from '../common/utils/mail.util.js';
 import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
+import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 const PAYROLL_STATUS = {
@@ -107,11 +108,28 @@ export class PayrollService {
             .where('MONTH(par.attendanceDate) = :m AND YEAR(par.attendanceDate) = :y', { m: payrollMonth, y: payrollYear })
             .andWhere('par.employeeId IN (:...empIds)', { empIds }).getMany();
 
+        // 3b. Fetch all potentially active OT Rules for this period to resolve multipliers dynamically
+        const ruleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
+        const activeRules = await ruleRepo.find({
+            where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false },
+            relations: ['overtimeType'],
+        });
+        
+        // Also fetch department mappings for these rules
+        const ruleDeptRepo = AppDataSource.getRepository(OvertimeRuleDepartmentEntity);
+        const ruleDepts = await ruleDeptRepo.find({
+            where: { isDeleted: false },
+        });
+
         const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
         const otDetails = await otDetailRepo.createQueryBuilder('otd')
-            .leftJoinAndSelect('otd.request', 'req').leftJoinAndSelect('otd.overtimeRule', 'rule').leftJoinAndSelect('rule.overtimeType', 'type')
+            .leftJoinAndSelect('otd.request', 'req')
+            .leftJoinAndSelect('req.requestGroup', 'rg') // Join requestGroup to filter strictly by OVERTIME
+            .leftJoinAndSelect('otd.overtimeRule', 'rule')
+            .leftJoinAndSelect('rule.overtimeType', 'type')
             .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', { m: payrollMonth, y: payrollYear })
             .andWhere('req.status = :s', { s: 'APPROVED' })
+            .andWhere('rg.code = :groupCode', { groupCode: 'OVERTIME' })
             .andWhere('req.employeeId IN (:...empIds)', { empIds }).getMany();
 
         // 4. Calculate each detail
@@ -127,7 +145,7 @@ export class PayrollService {
             const empAttendance = attendanceRecords.filter(r => r.employeeId === employee.id);
             const empOt = otDetails.filter(ot => ot.request?.employeeId === employee.id);
 
-            // AGGREGATE ATTENDANCE
+            // 5. Aggregate attendance
             let officialDays = 0, probationDays = 0, businessTripDays = 0, holidayDays = 0, paidLeaveDays = 0;
             empAttendance.forEach(r => {
                 const val = Number(r.workValue) || 0;
@@ -144,7 +162,7 @@ export class PayrollService {
                 }
             });
 
-            // AGGREGATE OT
+            // 6. Aggregate OT
             let overtimePay = 0;
             let otWeekday = 0, otWeekdayNight = 0, otWeekend = 0, otWeekendNight = 0, otHoliday = 0, otHolidayNight = 0;
 
@@ -152,10 +170,40 @@ export class PayrollService {
 
             empOt.forEach(ot => {
                 const hours = Number(ot.totalHours) || 0;
-                const multiplier = parseFloat(ot.rateMultiplier || ot.overtimeRule?.salaryMultiplier || 1.5);
+                
+                // Refined Multiplier Logic per Requirements
+                // 1. Priority: Direct linked rule (snapshot)
+                // 2. Fallback: Search for active rule by overtimeTypeId + workDate + department
+                let multiplier = 1.5;
+                let typeCode = 'WEEKDAY';
+                
+                let effectiveRule = ot.overtimeRule;
+                if (!effectiveRule) {
+                    const typeId = ot.overtimeTypeId || ot.request?.overtimeTypeId;
+                    if (typeId) {
+                        const workDate = new Date(ot.workDate);
+                        effectiveRule = activeRules.find(r => {
+                            if (r.overtimeTypeId !== typeId) return false;
+                            const from = r.effectiveFrom ? new Date(r.effectiveFrom) : null;
+                            const to = r.effectiveTo ? new Date(r.effectiveTo) : null;
+                            if (from && workDate < from) return false;
+                            if (to && workDate > to) return false;
+                            const depts = ruleDepts.filter(rd => rd.overtimeRuleId === r.id).map(rd => rd.departmentId);
+                            if (depts.length > 0 && !depts.includes(employee.departmentId)) return false;
+                            return true;
+                        });
+                    }
+                }
+
+                if (effectiveRule) {
+                    multiplier = parseFloat(ot.rateMultiplier || effectiveRule.salaryMultiplier || 1.5);
+                    typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
+                } else if (ot.rateMultiplier) {
+                    multiplier = parseFloat(ot.rateMultiplier);
+                }
+
                 overtimePay += hours * hourlyRate * multiplier;
 
-                const typeCode = ot.overtimeRule?.overtimeType?.code || 'WEEKDAY';
                 const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
                 if (typeCode === 'WEEKDAY') { if (isNight) otWeekdayNight += hours; else otWeekday += hours; }
                 else if (typeCode === 'WEEKEND') { if (isNight) otWeekendNight += hours; else otWeekend += hours; }
@@ -164,17 +212,21 @@ export class PayrollService {
 
             const workingDays = officialDays + probationDays + businessTripDays + holidayDays + paidLeaveDays;
             
-            // Refined P1, P2, P3 Logic
+            // 7. Salary calculation bases
             const p1Amount = parseFloat(salary.baseSalary) || 0;
             const p21Amount = (parseFloat(salary.performanceSalary) || 0) * 0.8;
             const p22Amount = (parseFloat(salary.performanceSalary) || 0) * 0.2;
             const p1p2Percentage = 100; // Default
             const p3Percentage = 100; // Default
 
-            const earnedP1 = (p1Amount / (standardDays || 26)) * (officialDays + holidayDays + paidLeaveDays);
-            const earnedP21 = (p21Amount / (standardDays || 26)) * (officialDays + holidayDays + paidLeaveDays);
-            const earnedP22 = (p22Amount / (standardDays || 26)) * (officialDays + holidayDays + paidLeaveDays);
-            const probationSalary = (p1Amount / (standardDays || 26)) * probationDays * 0.85; // 85% for probation
+            const isProbation = employee.employmentStatus === 'PROBATION';
+            const fullPayDays = (isProbation ? 0 : businessTripDays) + officialDays + holidayDays + paidLeaveDays;
+            const probationPayDays = (isProbation ? businessTripDays : 0) + probationDays;
+
+            const earnedP1 = (p1Amount / (standardDays || 26)) * fullPayDays;
+            const earnedP21 = (p21Amount / (standardDays || 26)) * fullPayDays;
+            const earnedP22 = (p22Amount / (standardDays || 26)) * fullPayDays;
+            const probationSalary = (p1Amount / (standardDays || 26)) * probationPayDays * 0.85; // 85% for probation base
 
             const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
             
