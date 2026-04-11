@@ -1,62 +1,58 @@
 import { Router } from 'express';
 import { RequestsController } from '../controllers/requests.controller.js';
-import { RequestsService } from '../services/requests.service.js';
-import { RequestsRepository } from '../repositories/requests.repository.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
+import { uploadCloud } from '../common/middleware/upload.middleware.js';
 
 const router = Router();
+const requestsController = new RequestsController();
 
-// Dependency Injection
-const requestsRepository = new RequestsRepository();
-const requestsService = new RequestsService(requestsRepository);
-const requestsController = new RequestsController(requestsService);
+// GET /requests/excuses — Đơn giải trình (nhóm LATE_EARLY / ATTENDANCE_CORRECTION)
+router.get('/excuses', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getExcuseRequests);
 
-/**
- * @swagger
- * tags:
- *   name: Requests
- *   description: Request management endpoints
- */
+// GET /requests/overtime-detail — Bảng tăng ca chi tiết (nhóm OVERTIME + dòng chi tiết hoặc tổng hợp từ đơn)
+router.get('/overtime-detail', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getOvertimeDetailRequests);
 
-router.get('/leaves/calendar', authMiddleware, requestsController.getLeaveCalendar);
+// GET /requests/my — Đơn của tôi
+router.get('/my', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getMyRequests);
 
-/**
- * @swagger
- * /requests:
- *   post:
- *     summary: Create a new request (EXCUSE, OVERTIME, LEAVE)
- *     tags: [Requests]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - requestType
- *               - startDate
- *             properties:
- *               employeeId:
- *                 type: integer
- *               requestType:
- *                 type: string
- *               startDate:
- *                 type: string
- *                 format: date
- *               endDate:
- *                 type: string
- *                 format: date
- *               requestContent:
- *                 type: object
- *                 description: JSON data containing reason, proofImage, etc.
- *     responses:
- *       201:
- *         description: Request created
- */
-router.post('/', authMiddleware, requestsController.create);
+// GET /requests/pending — Đơn chờ tôi duyệt
+router.get('/pending', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'), requestsController.getPendingApprovals);
 
-router.patch('/:id/status', authMiddleware, requestsController.updateStatus);
+// GET /requests/workflow-preview
+router.get('/workflow-preview', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getWorkflowPreview);
+
+// GET /requests/quota-status — Kiểm tra hạn mức policy
+router.get('/quota-status', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getQuotaStatus);
+
+// GET /requests/estimate-quantity — Ước tính số lượng ngày/giờ xin phép dựa trên ca làm việc
+router.get('/estimate-quantity', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.estimateQuantity);
+
+// GET /requests — Tất cả (HR/Admin)
+router.get('/', authMiddleware, permissionsMiddleware('REQUEST_VIEW_ALL'), requestsController.getAllRequests);
+
+// GET /requests/:id — Chi tiết
+router.get('/:id', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getById);
+
+// POST /requests/draft — Lưu nháp
+router.post('/draft', authMiddleware, permissionsMiddleware('REQUEST_CREATE'), requestsController.saveDraft);
+
+// POST /requests/:id/submit
+router.post('/:id/submit', authMiddleware, permissionsMiddleware('REQUEST_SUBMIT'), requestsController.submit);
+
+// POST /requests/:id/cancel
+router.post('/:id/cancel', authMiddleware, permissionsMiddleware('REQUEST_CANCEL'), requestsController.cancel);
+
+// POST /requests/:id/approve
+router.post('/:id/approve', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'), requestsController.approve);
+
+// POST /requests/:id/reject
+router.post('/:id/reject', authMiddleware, permissionsMiddleware('REQUEST_APPROVE'), requestsController.reject);
+
+// POST /requests/:id/revoke
+router.post('/:id/revoke', authMiddleware, permissionsMiddleware('REQUEST_REVOKE'), requestsController.revoke);
+
+// POST /requests/:id/attachments — Upload tài liệu đính kèm
+router.post('/:id/attachments', authMiddleware, uploadCloud.array('files', 10), requestsController.uploadAttachments);
 
 export const requestsRoutes = router;

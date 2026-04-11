@@ -48,11 +48,11 @@ export class RequestGroupsRepository {
         const query = this.repository.createQueryBuilder('group')
             .where('group.code = :code', { code })
             .andWhere('group.isDeleted = :isDeleted', { isDeleted: false });
-        
+
         if (excludeId) {
             query.andWhere('group.id != :excludeId', { excludeId });
         }
-        
+
         return await query.getOne();
     }
 
@@ -68,11 +68,11 @@ export class RequestGroupsRepository {
         const query = this.repository.createQueryBuilder('group')
             .where('group.name = :name', { name })
             .andWhere('group.isDeleted = :isDeleted', { isDeleted: false });
-        
+
         if (excludeId) {
             query.andWhere('group.id != :excludeId', { excludeId });
         }
-        
+
         return await query.getOne();
     }
     async findByIdWithDeleted(id) {

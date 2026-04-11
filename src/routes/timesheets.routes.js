@@ -236,6 +236,39 @@ router.get('/matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), t
  *       200:
  *         description: List of processed matrix rows
  */
+/**
+ * @swagger
+ * /timesheets/summary-matrix:
+ *   get:
+ *     summary: Get aggregated attendance summary matrix
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: year
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: departmentId
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Summary matrix data
+ */
+router.get('/summary-matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getSummaryMatrix);
+
 router.get('/processed-matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getProcessedMatrix);
 
 // UC27 - Export (must be before /:id routes)
@@ -473,6 +506,13 @@ router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'),
  *         description: Successfully locked
  */
 router.post('/bulk-lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.bulkLock);
+
+// HR: Manual update of a single processed attendance record's work_value
+router.patch('/processed/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.updateProcessedRecord);
+
+// HR/Admin: Finalize / Unfinalize processed attendance records (matrix lock)
+router.post('/processed-finalize', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.finalizeProcessedMatrix);
+router.post('/processed-unfinalize', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.unfinalizeProcessedMatrix);
 
 /**
  * @swagger

@@ -26,7 +26,8 @@ import { LeaveTypeEntity } from '../models/entities/leave-type.entity.js';
 import { LeavePolicyEntity } from '../models/entities/leave-policy.entity.js';
 import { LeaveBalanceEntity } from '../models/entities/leave-balance.entity.js';
 import { RequestEntity } from '../models/entities/request.entity.js';
-import { RequestApproveEntity } from '../models/entities/request-approve.entity.js';
+import { RequestApprovalLevelEntity } from '../models/entities/request-approval-level.entity.js';
+import { RequestAttachmentEntity } from '../models/entities/request-attachment.entity.js';
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { PayrollEntity } from '../models/entities/payroll.entity.js';
 import { PayrollDetailEntity } from '../models/entities/payroll-detail.entity.js';
@@ -52,6 +53,9 @@ import { RequestGroupWorkflowEntity } from '../models/entities/request-group-wor
 import { RequestTypeEntity } from '../models/entities/request-type.entity.js';
 import { RequestTypePolicyEntity } from '../models/entities/request-type-policy.entity.js';
 import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
+import { AiChatConversationEntity } from '../models/entities/ai-chat-conversation.entity.js';
+import { AiChatMessageEntity } from '../models/entities/ai-chat-message.entity.js';
+import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -97,7 +101,8 @@ export const databaseConfig = {
     LeavePolicyEntity,
     LeaveBalanceEntity,
     RequestEntity,
-    RequestApproveEntity,
+    RequestApprovalLevelEntity,
+    RequestAttachmentEntity,
     HolidayListEntity,
     PayrollEntity,
     PayrollDetailEntity,
@@ -128,6 +133,9 @@ export const databaseConfig = {
     AttendanceAllowedIpEntity,
     AttendanceBlockingConfigEntity,
     AttendanceSecurityStatusEntity,
+    AiChatConversationEntity,
+    AiChatMessageEntity,
+    AiConfigurationEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

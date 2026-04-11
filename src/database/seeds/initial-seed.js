@@ -38,7 +38,6 @@ import { PayrollTypeEntity } from '../../models/entities/payroll-type.entity.js'
 import { PenaltyEntity } from '../../models/entities/penalty.entity.js';
 import { PermissionEntity } from '../../models/entities/permission.entity.js';
 import { PositionEntity } from '../../models/entities/position.entity.js';
-import { RequestApproveEntity } from '../../models/entities/request-approve.entity.js';
 import { RequestEntity } from '../../models/entities/request.entity.js';
 import { RolePermissionEntity } from '../../models/entities/role-permission.entity.js';
 import { RoleEntity } from '../../models/entities/role.entity.js';
@@ -56,6 +55,65 @@ const seed = async () => {
   await dataSource.initialize();
 
   try {
+    console.log('Syncing schema...');
+    const SYNC_COLUMNS = [
+        { name: 'standard_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'official_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'probation_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'business_trip_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'holiday_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'benefit_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'annual_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'unpaid_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'night_shift_official_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'night_shift_probation_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'waiting_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'meal_count', type: 'INT', default: '0' },
+        { name: 'used_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'remaining_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekday', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekday_night', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekend', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekend_night', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_holiday', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_holiday_night', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'total_ot_hours', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'p1_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'p21_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'p22_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'probation_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'p1p2_percentage', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'p3_percentage', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'social_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'health_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'unemployment_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'union_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'party_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'charity_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'taxable_income_paid', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'other_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'other_non_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_union_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_social_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_health_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_unemployment_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'total_hr_cost', type: 'DECIMAL(15,2)', default: '0' }
+    ];
+
+    const existingColumnsResult = await dataSource.query(`
+        SELECT COLUMN_NAME 
+        FROM information_schema.COLUMNS 
+        WHERE TABLE_NAME = 'payroll_details' AND TABLE_SCHEMA = DATABASE()
+    `);
+    const existingColumns = new Set(existingColumnsResult.map(c => c.COLUMN_NAME));
+
+    for (const col of SYNC_COLUMNS) {
+        if (!existingColumns.has(col.name)) {
+            console.log(`[Sync] Adding column ${col.name}...`);
+            await dataSource.query(`ALTER TABLE payroll_details ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.default}`);
+        }
+    }
+
     console.log('Seeding data...');
 
     // 1. Create Permissions
@@ -478,6 +536,58 @@ const seed = async () => {
         description: 'Delete request type',
         module: 'RequestConfig',
       },
+      // Request Execution (Tạo / Duyệt Đơn Từ)
+      {
+        permissionCode: 'REQUEST_READ',
+        description: 'View own requests',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_CREATE',
+        description: 'Create request for self',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_CREATE_FOR_OTHERS',
+        description: 'Create request on behalf of others',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_SUBMIT',
+        description: 'Submit request for approval',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_CANCEL',
+        description: 'Cancel own request (before any level approved)',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_APPROVE',
+        description: 'Approve or reject a pending request',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_REVOKE',
+        description: 'Revoke an already-approved level (undo approval)',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_VIEW_ALL',
+        description: 'View all requests regardless of ownership',
+        module: 'Request',
+      },
+      // Notifications
+      {
+        permissionCode: 'SEND_MANUAL_NOTIFICATION',
+        description: 'Create and send manual notifications',
+        module: 'Notification',
+      },
+      {
+        permissionCode: 'VIEW_NOTIFICATION_HISTORY',
+        description: 'View notification history',
+        module: 'Notification',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -552,6 +662,13 @@ const seed = async () => {
       'ONBOARDING_PLAN_READ',
       'ONBOARDING_PROGRESS_READ',
       'ONBOARDING_TASK_READ',
+      // Request Execution — Manager là người duyệt cấp 1
+      'REQUEST_READ',
+      'REQUEST_CREATE',
+      'REQUEST_SUBMIT',
+      'REQUEST_CANCEL',
+      'REQUEST_APPROVE',
+      'REQUEST_REVOKE',
     ];
     for (const code of managerPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -668,6 +785,18 @@ const seed = async () => {
       'REQUEST_TYPE_CREATE',
       'REQUEST_TYPE_UPDATE',
       'REQUEST_TYPE_DELETE',
+      // Request Execution — HR có toàn quyền tạo/duyệt/xem tất cả
+      'REQUEST_READ',
+      'REQUEST_CREATE',
+      'REQUEST_CREATE_FOR_OTHERS',
+      'REQUEST_SUBMIT',
+      'REQUEST_CANCEL',
+      'REQUEST_APPROVE',
+      'REQUEST_REVOKE',
+      'REQUEST_VIEW_ALL',
+      // Notifications
+      'SEND_MANUAL_NOTIFICATION',
+      'VIEW_NOTIFICATION_HISTORY',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -696,6 +825,11 @@ const seed = async () => {
       'PENALTY_READ',
       'REQUEST_GROUP_READ',
       'REQUEST_TYPE_READ',
+      // Request Execution — Employee tạo và gửi đơn cho bản thân
+      'REQUEST_READ',
+      'REQUEST_CREATE',
+      'REQUEST_SUBMIT',
+      'REQUEST_CANCEL',
     ];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -764,35 +898,30 @@ const seed = async () => {
     // 6. Create Job Grades
     const jobGradeRepo = dataSource.getRepository(JobGradeEntity);
     const jobGradesData = [
+      {        
+        gradeName: 'Intern',
+        minSalary: 0,
+        maxSalary: 6000000,
+      },
       {
         gradeName: 'Junior',
-        departmentName: 'Software Development',
         minSalary: 6000000,
         maxSalary: 10000000,
       },
       {
+        gradeName: 'Middle',
+        minSalary: 11000000,
+        maxSalary: 19000000,
+      },
+      {
         gradeName: 'Senior',
-        departmentName: 'Software Development',
         minSalary: 19000000,
         maxSalary: 30000000,
       },
       {
         gradeName: 'Lead',
-        departmentName: 'Software Development',
         minSalary: 31000000,
         maxSalary: 45000000,
-      },
-      {
-        gradeName: 'Junior',
-        departmentName: 'Human Resources',
-        minSalary: 6000000,
-        maxSalary: 10000000,
-      },
-      {
-        gradeName: 'Senior',
-        departmentName: 'Human Resources',
-        minSalary: 19000000,
-        maxSalary: 30000000,
       },
     ];
 
@@ -800,20 +929,16 @@ const seed = async () => {
       let grade = await jobGradeRepo.findOne({
         where: {
           gradeName: j.gradeName,
-          departmentId: departments[j.departmentName].id,
         },
       });
       if (!grade) {
         grade = jobGradeRepo.create({
           gradeName: j.gradeName,
-          departmentId: departments[j.departmentName].id,
           minSalary: j.minSalary,
           maxSalary: j.maxSalary,
         });
         await jobGradeRepo.save(grade);
-        console.log(
-          `Created job grade: ${j.gradeName} for ${j.departmentName}`,
-        );
+        console.log(`Created job grade: ${j.gradeName}`);
       }
     }
 
@@ -1167,6 +1292,17 @@ const seed = async () => {
       positions.map((p) => [p.positionName, p]),
     );
     const jobGrades = await jobGradeRepo.find({ where: { isDeleted: false } });
+    const canonicalJobGradeByName = new Map();
+    const canonicalJobGradeById = new Map();
+    for (const grade of jobGrades) {
+      if (!canonicalJobGradeByName.has(grade.gradeName)) {
+        canonicalJobGradeByName.set(grade.gradeName, grade);
+      }
+      canonicalJobGradeById.set(
+        grade.id,
+        canonicalJobGradeByName.get(grade.gradeName).id,
+      );
+    }
 
     const employeeMasterProfiles = [
       {
@@ -1210,15 +1346,16 @@ const seed = async () => {
           ? employeesByCode[profile.managerCode]
           : null;
 
-      const deptGrades = jobGrades.filter((g) => g.departmentId === dept?.id);
       const fallbackGrade =
-        deptGrades.find((g) => g.gradeName === 'Junior') ||
-        deptGrades[0] ||
-        null;
+        canonicalJobGradeByName.get('Junior') || jobGrades[0] || null;
 
       emp.departmentId = dept?.id || emp.departmentId;
       emp.positionId = position?.id || emp.positionId;
-      emp.jobGradeId = emp.jobGradeId || fallbackGrade?.id || null;
+      emp.jobGradeId =
+        canonicalJobGradeById.get(emp.jobGradeId) ||
+        emp.jobGradeId ||
+        fallbackGrade?.id ||
+        null;
       emp.directManagerId = manager?.id || null;
       emp.hrMentorId = hrEmployee?.id || null;
       emp.joinDate = emp.joinDate || profile.joinDate;
@@ -1590,19 +1727,12 @@ const seed = async () => {
         note: 'Về sớm 15-60 phút trừ 0.5h công',
       },
     ];
-    for (const p of penaltiesData) {
-      const exists = await penaltyRepo.findOne({ 
-        where: { 
-          violationType: p.violationType,
-          fromMinute: p.fromMinute,
-          toMinute: p.toMinute,
-          effectiveFrom: p.effectiveFrom 
-        } 
-      });
-      if (!exists) {
-        await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
-      }
-    }
+    // for (const p of penaltiesData) {
+    //   const exists = await penaltyRepo.findOne({ where: { name: p.name } });
+    //   if (!exists) {
+    //     await penaltyRepo.save(penaltyRepo.create({ ...p, status: 'ACTIVE' }));
+    //   }
+    // }
 
     // Onboarding flow
     const onboardingPlanRepo = dataSource.getRepository(OnboardingPlanEntity);
@@ -1726,82 +1856,8 @@ const seed = async () => {
     }
 
     // Requests and approval flow
-    const requestRepo = dataSource.getRepository(RequestEntity);
-    const requestApproveRepo = dataSource.getRepository(RequestApproveEntity);
-    const overtimeRequestDetailRepo = dataSource.getRepository(
-      OvertimeRequestDetailEntity,
-    );
-
-    let annualLeaveRequest = null;
-    if (staffEmployee && managerEmployee && leaveTypes['Annual Leave']) {
-      annualLeaveRequest = await requestRepo.findOne({
-        where: {
-          employeeId: staffEmployee.id,
-          requestType: 'LEAVE',
-          startDate: '2026-02-20',
-        },
-      });
-      if (!annualLeaveRequest) {
-        annualLeaveRequest = await requestRepo.save(
-          requestRepo.create({
-            employeeId: staffEmployee.id,
-            requestType: 'LEAVE',
-            leaveTypeId: leaveTypes['Annual Leave'].id,
-            requestContent: 'Nghỉ phép cá nhân',
-            startDate: '2026-02-20',
-            endDate: '2026-02-21',
-            requestStatus: 'APPROVED',
-            submittedAt: new Date('2026-02-10T08:00:00'),
-            approvedBy: managerEmployee.id,
-            approvedAt: new Date('2026-02-11T10:00:00'),
-          }),
-        );
-      }
-
-      const approveExists = await requestApproveRepo.findOne({
-        where: {
-          requestId: annualLeaveRequest.id,
-          approverEmployeeId: managerEmployee.id,
-        },
-      });
-      if (!approveExists) {
-        await requestApproveRepo.save(
-          requestApproveRepo.create({
-            requestId: annualLeaveRequest.id,
-            approverEmployeeId: managerEmployee.id,
-            approvalLevel: 1,
-            approvalStatus: 'APPROVED',
-            comment: 'Approved by direct manager',
-          }),
-        );
-      }
-    }
-
-    let overtimeRequest = null;
-    if (staffEmployee && managerEmployee) {
-      overtimeRequest = await requestRepo.findOne({
-        where: {
-          employeeId: staffEmployee.id,
-          requestType: 'OVERTIME',
-          startDate: '2026-02-18',
-        },
-      });
-      if (!overtimeRequest) {
-        overtimeRequest = await requestRepo.save(
-          requestRepo.create({
-            employeeId: staffEmployee.id,
-            requestType: 'OVERTIME',
-            requestContent: 'OT để hoàn thành sprint',
-            startDate: '2026-02-18',
-            endDate: '2026-02-18',
-            requestStatus: 'APPROVED',
-            submittedAt: new Date('2026-02-17T18:00:00'),
-            approvedBy: managerEmployee.id,
-            approvedAt: new Date('2026-02-18T09:00:00'),
-          }),
-        );
-      }
-    }
+    // * Seed data cho Request đã được gỡ bỏ vì tính năng Request Execution cấu hình request type qua Database, và reference tới file cũ không còn.
+    // * Test thông qua giao diện Web theo thiết kế mới.
 
     // Timesheets
     const timeSheetRepo = dataSource.getRepository(TimeSheetEntity);
@@ -1879,30 +1935,6 @@ const seed = async () => {
           note: 'Seed payroll detail',
         }),
       );
-    }
-
-    if (overtimeRequest) {
-      const overtimeRule = overtimeRules['Rule Weekday 150%'];
-      const otExists = await overtimeRequestDetailRepo.findOne({
-        where: { requestId: overtimeRequest.id, workDate: '2026-02-18' },
-      });
-      if (!otExists) {
-        await overtimeRequestDetailRepo.save(
-          overtimeRequestDetailRepo.create({
-            requestId: overtimeRequest.id,
-            overtimeTypeId: overtimeTypes['WEEKDAY']?.id,
-            overtimeRuleId: overtimeRule?.id,
-            workDate: '2026-02-18',
-            startTime: '18:00:00',
-            endTime: '20:00:00',
-            totalHours: 2,
-            rateMultiplier: 1.5,
-            overtimeAmount: 150,
-            reason: 'Sprint release support',
-            payrollId: febPayroll.id,
-          }),
-        );
-      }
     }
 
     // Shift schedules from shift assignments
@@ -1987,13 +2019,14 @@ const seed = async () => {
     const faceDataRepo = dataSource.getRepository(FaceDataEntity);
 
     let faceConfig = await faceConfigRepo.findOne({
-      where: { modelVersion: 'v1.0-seed' },
+      where: { arcfaceModelName: 'buffalo_l' },
     });
     if (!faceConfig) {
       faceConfig = await faceConfigRepo.save(
         faceConfigRepo.create({
-          confidenceThreshold: 85,
-          modelVersion: 'v1.0-seed',
+          recognitionThreshold: 0.6,
+          spoofThreshold: 0.8,
+          arcfaceModelName: 'buffalo_l',
         }),
       );
     }
@@ -2110,25 +2143,26 @@ const seed = async () => {
             cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
           let coutH = 17,
             coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
-          let status = 'ON_TIME';
-          let type = 'NORMAL';
+          let status = 'present';
+          let type = 'face';
+          let overtimeMins = 0;
 
           // Randomize some behavior
           const rand = Math.random();
           if (rand < 0.1) {
             // 10% late
             cinM = 10 + Math.floor(Math.random() * 20); // 08:10 - 08:30
-            status = 'LATE';
+            status = 'late';
           } else if (rand < 0.2) {
             // 10% early leave
             coutH = 16;
             coutM = 30 + Math.floor(Math.random() * 20); // 16:30 - 16:50
-            status = 'EARLY_LEAVE';
+            status = 'early_leave';
           } else if (rand < 0.3) {
             // 10% OT
             coutH = 18 + Math.floor(Math.random() * 2); // 18:00 - 20:00
             coutM = Math.floor(Math.random() * 60);
-            type = 'OVERTIME';
+            overtimeMins = (coutH - 17) * 60 + coutM;
           }
 
           const checkIn = new Date(2026, 1, day, cinH, cinM, 0);
@@ -2141,6 +2175,7 @@ const seed = async () => {
               checkOutTime: checkOut,
               attendanceStatus: status,
               attendanceType: type,
+              overtimeMinutes: overtimeMins > 0 ? overtimeMins : null,
             }),
           );
         }

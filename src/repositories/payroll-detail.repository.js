@@ -43,6 +43,15 @@ export class PayrollDetailRepository {
         });
     }
 
+    async findByPayrollAndEmployeeCode(payrollId, employeeCode) {
+        return this.repository.createQueryBuilder('detail')
+            .leftJoinAndSelect('detail.employee', 'employee')
+            .where('detail.payrollId = :payrollId', { payrollId })
+            .andWhere('employee.employeeCode = :employeeCode', { employeeCode })
+            .andWhere('detail.isDeleted = :isDeleted', { isDeleted: false })
+            .getOne();
+    }
+
     async create(data) {
         const detail = this.repository.create(data);
         return this.repository.save(detail);

@@ -2,8 +2,11 @@ import { AppDataSource } from '../database/data-source.js';
 import { RequestTypeEntity } from '../models/entities/request-type.entity.js';
 
 export class RequestTypesRepository {
-    constructor() {
-        this.repository = AppDataSource.getRepository(RequestTypeEntity);
+    constructor() {}
+
+    get repository() {
+        if (!this._repository) this._repository = AppDataSource.getRepository(RequestTypeEntity);
+        return this._repository;
     }
 
     async findAll(paginationDto = {}) {

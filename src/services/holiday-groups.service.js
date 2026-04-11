@@ -141,8 +141,25 @@ export class HolidayGroupService {
                     startDate: startDate.toISOString().split('T')[0],
                     endDate: endDate.toISOString().split('T')[0],
                     holidayGroupId: newGroup.id,
-                    // Copy employees
-                    employeeIds: sourceHoliday.employees?.map(e => e.id) || []
+                    employeeIds: sourceHoliday.employees?.map(e => e.id) || [],
+                    // Copy and shift compensatory days
+                    compensatoryDays: Array.isArray(sourceHoliday.compensatoryDays) 
+                        ? sourceHoliday.compensatoryDays.map(cd => {
+                            const newDate = new Date(cd.date);
+                            newDate.setFullYear(newDate.getFullYear() + yearDiff);
+                            
+                            const newReplacesDate = cd.replacesDate ? new Date(cd.replacesDate) : null;
+                            if (newReplacesDate) {
+                                newReplacesDate.setFullYear(newReplacesDate.getFullYear() + yearDiff);
+                            }
+
+                            return {
+                                ...cd,
+                                date: newDate.toISOString().split('T')[0],
+                                replacesDate: newReplacesDate ? newReplacesDate.toISOString().split('T')[0] : ""
+                            };
+                        })
+                        : []
                 };
 
                 // Using HolidayListRepository to handle employee associations correctly
