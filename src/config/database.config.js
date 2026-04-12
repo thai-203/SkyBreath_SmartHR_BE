@@ -56,6 +56,7 @@ import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-at
 import { AiChatConversationEntity } from '../models/entities/ai-chat-conversation.entity.js';
 import { AiChatMessageEntity } from '../models/entities/ai-chat-message.entity.js';
 import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
+import { AiPromptEntity } from '../models/entities/ai-prompt.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -136,6 +137,7 @@ export const databaseConfig = {
     AiChatConversationEntity,
     AiChatMessageEntity,
     AiConfigurationEntity,
+    AiPromptEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],
