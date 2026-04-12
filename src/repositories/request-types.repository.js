@@ -10,7 +10,8 @@ export class RequestTypesRepository {
     }
 
     async findAll(paginationDto = {}) {
-        const { skip = 0, limit = 10, search, status, requestGroupId, includeDeleted = false } = paginationDto;
+        const { page = 1, limit = 10, search, status, requestGroupId, includeDeleted = false } = paginationDto;
+        const skip = (page - 1) * limit;
 
         const query = this.repository.createQueryBuilder('type')
             .withDeleted() // MUST because of @DeleteDateColumn
