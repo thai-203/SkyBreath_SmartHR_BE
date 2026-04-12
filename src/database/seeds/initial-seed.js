@@ -55,6 +55,65 @@ const seed = async () => {
   await dataSource.initialize();
 
   try {
+    console.log('Syncing schema...');
+    const SYNC_COLUMNS = [
+        { name: 'standard_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'official_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'probation_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'business_trip_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'holiday_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'benefit_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'annual_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'unpaid_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'night_shift_official_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'night_shift_probation_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'waiting_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'meal_count', type: 'INT', default: '0' },
+        { name: 'used_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'remaining_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekday', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekday_night', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekend', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_weekend_night', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_holiday', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'ot_holiday_night', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'total_ot_hours', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'p1_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'p21_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'p22_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'probation_amount', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'p1p2_percentage', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'p3_percentage', type: 'DECIMAL(5,2)', default: '0' },
+        { name: 'social_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'health_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'unemployment_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'union_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'party_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'charity_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'taxable_income_paid', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'other_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'other_non_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_union_fee', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_social_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_health_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'company_unemployment_insurance', type: 'DECIMAL(15,2)', default: '0' },
+        { name: 'total_hr_cost', type: 'DECIMAL(15,2)', default: '0' }
+    ];
+
+    const existingColumnsResult = await dataSource.query(`
+        SELECT COLUMN_NAME 
+        FROM information_schema.COLUMNS 
+        WHERE TABLE_NAME = 'payroll_details' AND TABLE_SCHEMA = DATABASE()
+    `);
+    const existingColumns = new Set(existingColumnsResult.map(c => c.COLUMN_NAME));
+
+    for (const col of SYNC_COLUMNS) {
+        if (!existingColumns.has(col.name)) {
+            console.log(`[Sync] Adding column ${col.name}...`);
+            await dataSource.query(`ALTER TABLE payroll_details ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.default}`);
+        }
+    }
+
     console.log('Seeding data...');
 
     // 1. Create Permissions

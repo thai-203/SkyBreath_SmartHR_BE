@@ -236,6 +236,39 @@ router.get('/matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), t
  *       200:
  *         description: List of processed matrix rows
  */
+/**
+ * @swagger
+ * /timesheets/summary-matrix:
+ *   get:
+ *     summary: Get aggregated attendance summary matrix
+ *     tags: [Timesheets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: year
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: departmentId
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Summary matrix data
+ */
+router.get('/summary-matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getSummaryMatrix);
+
 router.get('/processed-matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getProcessedMatrix);
 
 // UC27 - Export (must be before /:id routes)

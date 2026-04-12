@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { PayrollController } from '../controllers/payroll.controller.js';
-import { PayrollService } from '../services/payroll.service.js';
-import { PayrollRepository } from '../repositories/payroll.repository.js';
-import { PayrollDetailRepository } from '../repositories/payroll-detail.repository.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { excelUpload } from '../common/middleware/upload.middleware.js';
+import { PayrollController } from '../controllers/payroll.controller.js';
+import { PayrollDetailRepository } from '../repositories/payroll-detail.repository.js';
+import { PayrollRepository } from '../repositories/payroll.repository.js';
+import { PayrollService } from '../services/payroll.service.js';
 
 const router = Router();
 
@@ -50,12 +50,13 @@ router.post('/:id/calculate', authMiddleware, permissionsMiddleware('PAYROLL_UPD
 router.put('/details/:detailId', authMiddleware, permissionsMiddleware('PAYROLL_UPDATE'), payrollController.updateDetail);
 
 // UC29 - Submit / Approve / Reject
-router.post('/:id/submit', authMiddleware, permissionsMiddleware('PAYROLL_APPROVE'), payrollController.submitForApproval);
+router.post('/:id/submit', authMiddleware, permissionsMiddleware('PAYROLL_UPDATE'), payrollController.submitForApproval);
 router.post('/:id/approve', authMiddleware, permissionsMiddleware('PAYROLL_APPROVE'), payrollController.approve);
 router.post('/:id/reject', authMiddleware, permissionsMiddleware('PAYROLL_APPROVE'), payrollController.reject);
 
 // UC30 - Lock & Payslips
 router.post('/:id/lock', authMiddleware, permissionsMiddleware('PAYROLL_LOCK'), payrollController.lock);
+router.post('/:id/unlock', authMiddleware, permissionsMiddleware('PAYROLL_LOCK'), payrollController.unlock);
 router.post('/:id/send-payslips', authMiddleware, permissionsMiddleware('PAYROLL_LOCK'), payrollController.sendPayslips);
 
 // UC28 - Import Details Excel

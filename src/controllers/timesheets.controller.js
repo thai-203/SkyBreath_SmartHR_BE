@@ -254,6 +254,28 @@ export class TimesheetsController {
         }
     };
 
+    getSummaryMatrix = async (req, res, next) => {
+        try {
+            const { month, year } = req.query;
+            if (!month || !year || isNaN(parseInt(month)) || isNaN(parseInt(year))) {
+                return ResponseUtil.sendResponse(res, "Tháng và Năm là bắt buộc và phải là số", null, 400);
+            }
+            const queryDto = {
+                month: parseInt(month, 10),
+                year: parseInt(year, 10),
+                departmentId: req.query.departmentId ? parseInt(req.query.departmentId, 10) : undefined,
+                search: req.query.search,
+                limit: req.query.limit ? parseInt(req.query.limit, 10) : 10,
+                page: req.query.page ? parseInt(req.query.page, 10) : 1
+            };
+            
+            const result = await this.timesheetsService.getSummaryMatrix(queryDto, req.user);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Timesheet.RETRIEVED_ALL, result);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     updateProcessedRecord = async (req, res, next) => {
         try {
             const id = parseInt(req.params.id);

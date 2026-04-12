@@ -143,6 +143,13 @@ export class PayrollController {
         } catch (error) { next(error); }
     };
 
+    unlock = async (req, res, next) => {
+        try {
+            const result = await this.payrollService.unlock(parseInt(req.params.id));
+            ResponseUtil.sendResponse(res, AppMessages.Success.Payroll.UPDATED, result);
+        } catch (error) { next(error); }
+    };
+
     // UC30 - Send payslips
     sendPayslips = async (req, res, next) => {
         try {
