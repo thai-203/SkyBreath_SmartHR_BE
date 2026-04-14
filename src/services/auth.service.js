@@ -70,7 +70,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         roles,
-        permissions,
+        permissions,  
       },
       ...tokens,
     };
@@ -324,6 +324,7 @@ export class AuthService {
 
   async generateTokens(user) {
     const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
+    
     const permissions = [
       ...new Set(
         user.userRoles?.flatMap((ur) =>

@@ -1,10 +1,7 @@
 import { Router } from 'express';
 import { ActionLogsController } from '../controllers/action-logs.controller.js';
-import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
-import { Role } from '../common/enums/index.js';
-import { ActionLogQueryDto } from '../models/dto/action-logs/action-log-query.dto.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = Router();
 const actionLogsController = new ActionLogsController();
@@ -101,9 +98,21 @@ const actionLogReaderRoles = [Role.ADMIN, 'HR'];
 router.get(
   '/',
   authMiddleware,
+<<<<<<< HEAD
   rolesMiddleware(actionLogReaderRoles),
+=======
+  permissionsMiddleware('USER_ACTION_LOG_READ'),
+>>>>>>> cd76d22 (add rbac)
   actionLogsController.findAll,
 );
+
+router.get(
+  '/timesheet',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_READ'),
+  actionLogsController.findAll,
+);
+
 router.get(
   '/export/excel',
   authMiddleware,
@@ -113,8 +122,29 @@ router.get(
 router.get(
   '/:id',
   authMiddleware,
+<<<<<<< HEAD
   rolesMiddleware(actionLogReaderRoles),
   actionLogsController.findOne,
 );
 
+=======
+  permissionsMiddleware('USER_ACTION_LOG_READ'),
+  actionLogsController.findOne,
+);
+
+router.get(
+  '/export/excel',
+  authMiddleware,
+  permissionsMiddleware('USER_ACTION_LOG_EXPORT'),
+  (req, res, next) => actionLogsController.export(req, res, next),
+);
+
+router.get(
+  '/timesheet/export/excel',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_EXPORT'),
+  (req, res, next) => actionLogsController.export(req, res, next),
+);
+
+>>>>>>> cd76d22 (add rbac)
 export const actionLogsRoutes = router;

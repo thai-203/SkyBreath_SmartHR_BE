@@ -30,7 +30,7 @@ const positionsController = new PositionsController();
 router.get(
   '/list',
   authMiddleware,
-  permissionsMiddleware('POSITION_READ'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => positionsController.findList(req, res, next)
 );
 
@@ -49,7 +49,7 @@ router.get(
 router.get(
   '/export/excel',
   authMiddleware,
-  permissionsMiddleware('POSITION_EXPORT'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => positionsController.exportExcel(req, res, next)
 );
 
@@ -94,14 +94,14 @@ router.get(
 router.get(
   '/',
   authMiddleware,
-  // permissionsMiddleware('POSITION_READ'),
+  permissionsMiddleware('CONTRACT_READ'),
   positionsController.findAll
 );
 
 router.post(
   '/',
   authMiddleware,
-  permissionsMiddleware('POSITION_CREATE'),
+  permissionsMiddleware('CONTRACT_READ'),
   validationMiddleware(CreatePositionDto),
   (req, res, next) => positionsController.create(req, res, next)
 );
@@ -163,14 +163,14 @@ router.post(
 router.get(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('POSITION_READ'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => positionsController.findById(req, res, next)
 );
 
 router.put(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('POSITION_UPDATE'),
+  permissionsMiddleware('CONTRACT_READ'),
   validationMiddleware(UpdatePositionDto),
   (req, res, next) => positionsController.update(req, res, next)
 );
@@ -178,7 +178,7 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('POSITION_DELETE'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => positionsController.remove(req, res, next)
 );
 

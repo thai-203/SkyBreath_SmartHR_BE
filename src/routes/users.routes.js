@@ -2,9 +2,7 @@ import { Router } from 'express';
 import { UsersController } from '../controllers/users.controller.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
 import { CreateUserDto, UpdateUserDto } from '../models/dto/users/index.js';
-import { Role } from '../common/enums/index.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = Router();
@@ -83,14 +81,14 @@ const usersController = new UsersController();
 router.post(
   '/',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_CREATE'),
   validationMiddleware(CreateUserDto),
   usersController.create,
 );
 router.get(
   '/',
   authMiddleware,
-  // rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_READ'),
   usersController.findAll,
 );
 
@@ -152,7 +150,18 @@ router.get(
  *         description: Forbidden
  */
 
-router.get('/meta-data',authMiddleware ,usersController.getMetadata);
+router.get(
+  '/meta-data',
+  authMiddleware,
+  permissionsMiddleware('USER_READ'),
+  usersController.getMetadata,
+);
+
+router.get(
+  '/meta-data/public',
+  authMiddleware,
+  usersController.getMetadata,
+);
 
 /**
  * @swagger
@@ -230,20 +239,20 @@ router.get('/meta-data',authMiddleware ,usersController.getMetadata);
 router.get(
   '/:id',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_READ'),
   usersController.findOne,
 );
 router.put(
   '/:id',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_UPDATE'),
   validationMiddleware(UpdateUserDto),
   usersController.update,
 );
 router.delete(
   '/:id',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_DELETE'),
   usersController.remove,
 );
 
@@ -275,7 +284,7 @@ router.delete(
 router.patch(
   '/:id/lock',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_LOCK'),
   usersController.lockUser,
 );
 
@@ -305,21 +314,21 @@ router.patch(
 router.patch(
   '/:id/unlock',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_LOCK'),
   usersController.unlockUser,
 );
 
 router.delete(
   '/:id/user-roles',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_ROLE_REMOVE'),
   usersController.removeUserRoles,
 );
 
 router.post(
   '/:id/reset-password',
   authMiddleware,
-  rolesMiddleware([Role.ADMIN]),
+  permissionsMiddleware('USER_PASSWORD_RESET_FORCE'),
   usersController.resetPassword,
 );
 export const usersRoutes = router;

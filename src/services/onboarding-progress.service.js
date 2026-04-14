@@ -62,6 +62,25 @@ export class OnboardingProgressService {
     return progress;
   }
 
+  async findOwnProgress(userId) {
+    const employee = await this.employeesRepository.findByUserId(userId);
+    if (!employee) {
+      throw new NotFoundException(
+        `Không tìm thấy nhân viên liên kết với người dùng có ID ${userId}`,
+      );
+    }
+    const progress = await this.progressRepository.findByEmployeeId(
+      employee.id,
+    );
+    if (!progress) {
+      throw new NotFoundException(
+        AppMessages.Errors.Onboarding?.PROGRESS_NOT_FOUND?.message ||
+          `Không tìm thấy tiến trình onboarding cho người dùng ${userId}`,
+      );
+    }
+    return progress;
+  }
+
   async create(employeeId, planId, assignedMentorId = null) {
     const plan = await this.plansRepository.findById(planId);
     if (!plan) {

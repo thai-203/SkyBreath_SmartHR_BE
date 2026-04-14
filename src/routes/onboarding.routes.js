@@ -4,7 +4,6 @@ import { OnboardingProgressController } from '../controllers/onboarding-progress
 import { OnboardingTasksController } from '../controllers/onboarding-tasks.controller.js';
 import { TaskAssignmentsController } from '../controllers/task-assignments.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { uploadCloud } from '../common/middleware/upload.middleware.js';
 
@@ -79,11 +78,18 @@ router.get(
   permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
   progressController.findAll,
 );
+
+router.get(
+  '/progress/personal',
+  authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ_OWN'),
+  progressController.findOwnProgress,
+);
 // export progress to excel
 router.get(
   '/progress/export',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_EXPORT'),
+  permissionsMiddleware('ONBOARDING_PROGRESS_EXPORT'),
   progressController.export,
 );
 router.get(
@@ -101,9 +107,10 @@ router.get(
 router.post(
   '/progress',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PROGRESS_UPDATE'),
+  permissionsMiddleware('ONBOARDING_PROGRESS_CREATE'),
   progressController.create,
 );
+
 router.put(
   '/progress/:id',
   authMiddleware,
@@ -113,7 +120,7 @@ router.put(
 router.put(
   '/progress/:id/complete',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PROGRESS_UPDATE'),
+  permissionsMiddleware('ONBOARDING_PROGRESS_COMPLETE'),
   progressController.complete,
 );
 router.put(
@@ -131,9 +138,10 @@ router.put(
 router.get(
   '/progress/employee/:employeeId',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
+  permissionsMiddleware('ONBOARDING_PROGRESS_'),
   progressController.findByEmployee,
 );
+
 router.get(
   '/progress/department/:departmentId',
   authMiddleware,
@@ -145,87 +153,109 @@ router.get(
 router.get(
   '/plans/:planId/tasks',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_TASK_READ'),
+  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   tasksController.getByPlan,
 );
 router.post(
   '/plans/:planId/tasks',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_TASK_CREATE'),
+  // permissionsMiddleware('ONBOARDING_PLAN_MANAGE'),
   tasksController.create,
 );
 router.put(
   '/tasks/:id',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_TASK_UPDATE'),
+  permissionsMiddleware('ONBOARDING_PLAN_UPDATE'),
   tasksController.update,
 );
 router.delete(
   '/tasks/:id',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_TASK_DELETE'),
+  // permissionsMiddleware('ONBOARDING_PLAN_MANAGE'),
   tasksController.delete,
 );
 
 // Task Assignments Routes
-router.get('/assignments', authMiddleware, assignmentsController.list);
+router.get(
+  '/assignments',
+  authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
+  assignmentsController.list,
+);
 router.get('/assignments/:id', authMiddleware, assignmentsController.getById);
 router.get(
   '/assignments/stats/all',
   authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
   assignmentsController.getStats,
 );
 router.post(
   '/assignments',
   authMiddleware,
-  rolesMiddleware(['ADMIN', 'DEPARTMENT_MANAGER']),
+  // permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
   assignmentsController.create,
 );
 router.put(
   '/assignments/:id',
+<<<<<<< HEAD
   uploadCloud.single('evidence'),
+=======
+  authMiddleware,
+  // permissionsMiddleware([
+  //   'ONBOARDING_PROGRESS_MANAGE',
+  //   'ONBOARDING_PROGRESS_UPDATE_OWN',
+  // ]),
+  upload.single('evidence'),
+>>>>>>> cd76d22 (add rbac)
   assignmentsController.update,
 );
 router.put(
   '/assignments/:id/complete',
   authMiddleware,
+  // permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
+
   assignmentsController.complete,
 );
 router.put(
   '/assignments/:id/start',
   authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
   assignmentsController.start,
 );
 router.put(
   '/assignments/:id/reassign',
   authMiddleware,
-  rolesMiddleware(['ADMIN', 'DEPARTMENT_MANAGER']),
+  permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
   assignmentsController.reassign,
 );
 router.delete(
   '/assignments/:id',
   authMiddleware,
-  rolesMiddleware(['ADMIN']),
+  permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
   assignmentsController.delete,
 );
 router.get(
   '/assignments/progress/:progressId',
   authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
   assignmentsController.getByProgress,
 );
 router.get(
   '/assignments/employee/:employeeId',
   authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
   assignmentsController.getByEmployee,
 );
 router.get(
   '/assignments/status/:status',
   authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
   assignmentsController.getByStatus,
 );
 router.get(
   '/assignments/overdue',
   authMiddleware,
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ'),
   assignmentsController.getOverdue,
 );
 

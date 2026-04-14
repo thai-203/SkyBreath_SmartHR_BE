@@ -94,7 +94,7 @@ export class AttendanceService {
             requiredFrames: faceConfig.requiredFrames,
             captureIntervalMs: faceConfig.captureIntervalMs,
             faceDetectionMinSize: faceConfig.faceDetectionMinSize,
-            requireLocationCheck: securityConfig.requireLocationCheck,
+            requireLocationCheck: securityConfig?.requireLocationCheck,
           }
         : {
             maxFacesAllowed: 1,

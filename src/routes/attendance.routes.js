@@ -3,6 +3,7 @@ import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { AttendanceController } from '../controllers/attendance.controller.js';
 import { AttendanceService } from '../services/attendance.service.js';
 import { upload } from '../common/middleware/upload.middleware.js';
+import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = express.Router();
 
@@ -13,12 +14,14 @@ const attendanceController = new AttendanceController(attendanceService);
 router.get(
   '/today-context',
   authMiddleware,
+  permissionsMiddleware('ATTENDANCE_READ_OWN'),
   attendanceController.getTodayContext,
 );
 
 router.post(
   '/check-in',
   authMiddleware,
+  permissionsMiddleware('ATTENDANCE_RECORD'),
   upload.array('frames', 10),
   attendanceController.checkIn,
 );
@@ -26,6 +29,7 @@ router.post(
 router.post(
   '/check-out',
   authMiddleware,
+  permissionsMiddleware('ATTENDANCE_RECORD'),
   upload.array('frames', 10),
   attendanceController.checkOut,
 );

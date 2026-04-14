@@ -161,7 +161,7 @@ export const AppMessages = {
       TOKEN_EXPIRED: { code: 'AUTH_002', message: 'Token expired' },
       TOKEN_INVALID: { code: 'AUTH_003', message: 'Invalid token' },
       UNAUTHORIZED: { code: 'AUTH_004', message: 'Unauthorized' },
-      FORBIDDEN: { code: 'AUTH_005', message: 'Forbidden' },
+      FORBIDDEN: { code: 'AUTH_005', message: 'Bạn không có quyền truy cập tính năng này' },
       RESET_TOKEN_INVALID: {
         code: 'AUTH_006',
         message: 'Reset password token is invalid',

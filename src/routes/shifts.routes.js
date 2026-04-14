@@ -92,7 +92,7 @@ router.put(
 router.delete(
   '/assign/:id',
   authMiddleware,
-  permissionsMiddleware('SHIFT_ASSIGN_DELETE'),
+  permissionsMiddleware('SHIFT_ASSIGN_MANAGE'),
   shiftAssignmentsController.cancel,
 );
 
@@ -103,7 +103,7 @@ router.delete(
 router.post(
   '/assignments/preview',
   authMiddleware,
-  permissionsMiddleware('SHIFT_ASSIGN_CREATE'),
+  // permissionsMiddleware('SHIFT_ASSIGN_MANAGE'),
   shiftAssignmentsController.preview,
 );
 
@@ -117,7 +117,7 @@ router.get(
 router.get(
   '/schedule/employee/:employeeId',
   authMiddleware,
-  permissionsMiddleware('SHIFT_SCHEDULE_READ'),
+  permissionsMiddleware(['SHIFT_SCHEDULE_READ', 'SHIFT_READ_OWN']),
   shiftAssignmentsController.viewEmployeeSchedule,
 );
 
