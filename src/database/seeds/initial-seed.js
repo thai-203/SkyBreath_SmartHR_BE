@@ -820,6 +820,7 @@ const seed = async () => {
     const employeePerms = [
       'TIMESHEET_READ',
       'DEPT_READ',
+      'EMPLOYEE_READ',
       'HOLIDAY_READ',
       'OVERTIME_RULE_READ',
       'PENALTY_READ',
