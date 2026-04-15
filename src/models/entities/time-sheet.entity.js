@@ -64,6 +64,26 @@ export class TimeSheetEntity extends BaseEntity {
 
     @Column({ name: 'remaining_leave_days', type: 'decimal', precision: 5, scale: 2, default: 0 })
     remainingLeaveDays;
+
+    // --- Overtime breakdown tracking ---
+    @Column({ name: 'ot_weekday', type: 'decimal', precision: 10, scale: 2, default: 0 })
+    otWeekday;
+
+    @Column({ name: 'ot_weekday_night', type: 'decimal', precision: 10, scale: 2, default: 0 })
+    otWeekdayNight;
+
+    @Column({ name: 'ot_weekend', type: 'decimal', precision: 10, scale: 2, default: 0 })
+    otWeekend;
+
+    @Column({ name: 'ot_weekend_night', type: 'decimal', precision: 10, scale: 2, default: 0 })
+    otWeekendNight;
+
+    @Column({ name: 'ot_holiday', type: 'decimal', precision: 10, scale: 2, default: 0 })
+    otHoliday;
+
+    @Column({ name: 'ot_holiday_night', type: 'decimal', precision: 10, scale: 2, default: 0 })
+    otHolidayNight;
+    // ------------------------------------
     // --------------------------------
 
     @Column({ name: 'is_locked', default: false, type: 'boolean' })
