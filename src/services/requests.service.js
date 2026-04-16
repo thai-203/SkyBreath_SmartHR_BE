@@ -7,7 +7,7 @@ import { RequestStatus, ApprovalLevelStatus, ApproverType, RequestGroupCode } fr
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { NotificationsService } from './notifications.service.js';
-import { countWorkingDays, getWorkingHoursForDay } from '../common/helpers/working-days.helper.js';
+import { countWorkingDays, getWorkingHoursForDay, getRequestedHours } from '../common/helpers/working-days.helper.js';
 
 export class RequestsService {
     constructor() {
@@ -106,7 +106,7 @@ export class RequestsService {
             const startD = new Date(startDate);
             const endD = new Date(endDate);
             if (startD > endD) throw new BadRequestException('Ngày bắt đầu không được lớn hơn ngày kết thúc');
-            
+
             const overlaps = await this.repo.findOverlappingRequests({
                 employeeId: targetEmployeeId,
                 requestGroupId: requestType.requestGroupId,
@@ -143,6 +143,8 @@ export class RequestsService {
     async getQuotaStatus(requestTypeId, employeeId, excludeRequestId = null) {
         const requestType = await this.typeRepo.findById(requestTypeId);
         if (!requestType) throw new NotFoundException('Không tìm thấy loại đơn');
+
+        const isOvertime = requestType.requestGroup && (/overtime|tăng ca/i.test(requestType.requestGroup.code || '') || /overtime|tăng ca/i.test(requestType.requestGroup.name || ''));
 
         const policy = requestType.policy;
         // Nếu không có policy hoặc không giới hạn → trả về không giới hạn
@@ -197,16 +199,8 @@ export class RequestsService {
                 usedQuantity += days;
             } else if (unit === 'HOUR') {
                 if (req.startTime && req.endTime) {
-                    const startD = new Date(req.startDate);
-                    const endD = new Date(req.endDate);
-                    const [startH, startM] = req.startTime.split(':').map(Number);
-                    const [endH, endM] = req.endTime.split(':').map(Number);
-                    startD.setHours(startH, startM, 0, 0);
-                    endD.setHours(endH, endM, 0, 0);
-                    const diff = (endD - startD) / (1000 * 60 * 60);
-                    if (diff > 0) {
-                        usedQuantity += diff;
-                    }
+                    const reqHours = await getRequestedHours(req.startDate, req.endDate, req.startTime, req.endTime, employeeId, AppDataSource, isOvertime);
+                    usedQuantity += reqHours;
                 } else {
                     // Tính số giờ dựa trên ca làm việc
                     const cursor = new Date(clipStart);
@@ -244,7 +238,7 @@ export class RequestsService {
     // Ước tính số lượng ngày/giờ dựa trên ca làm việc (dành cho màn hình Tạo/Sửa UI)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     async estimateQuantity(query) {
-        const { employeeId, startDate, endDate, startTime, endTime, unit } = query;
+        const { employeeId, startDate, endDate, startTime, endTime, unit, requestTypeId } = query;
         if (!employeeId || !startDate || !endDate || !unit) {
             throw new BadRequestException('Thiếu tham số (employeeId, startDate, endDate, unit)');
         }
@@ -255,22 +249,21 @@ export class RequestsService {
             throw new BadRequestException('Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc');
         }
 
+        let isOvertime = false;
+        if (requestTypeId) {
+            const reqType = await this.typeRepo.findById(requestTypeId);
+            if (reqType?.requestGroup) {
+                isOvertime = /overtime|tăng ca/i.test(reqType.requestGroup.code || '') || /overtime|tăng ca/i.test(reqType.requestGroup.name || '');
+            }
+        }
+
         let requestedQty = 0;
 
         if (unit === 'DAY') {
             requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource);
         } else if (unit === 'HOUR') {
             if (startTime && endTime) {
-                const startD = new Date(startDate);
-                const endD = new Date(endDate);
-                const [startH, startM] = startTime.split(':').map(Number);
-                const [endH, endM] = endTime.split(':').map(Number);
-                startD.setHours(startH, startM, 0, 0);
-                endD.setHours(endH, endM, 0, 0);
-                const diff = (endD - startD) / (1000 * 60 * 60);
-                if (diff > 0) {
-                    requestedQty = diff;
-                }
+                requestedQty = await getRequestedHours(startDate, endDate, startTime, endTime, employeeId, AppDataSource, isOvertime);
             } else {
                 const cursor = new Date(reqStart);
                 cursor.setHours(0, 0, 0, 0);
@@ -320,6 +313,9 @@ export class RequestsService {
 
         // ✅ Kiểm tra hạn mức policy (server-side validation)
         try {
+            const reqGroup = await this.requestGroupsRepo.findById(request.requestGroupId);
+            const isOvertime = reqGroup && (/overtime|tăng ca/i.test(reqGroup.code || '') || /overtime|tăng ca/i.test(reqGroup.name || ''));
+
             const quota = await this.getQuotaStatus(request.requestTypeId, request.employeeId, request.id);
             if (quota.hasQuota) {
                 const reqStart = new Date(request.startDate);
@@ -330,16 +326,7 @@ export class RequestsService {
                     requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource);
                 } else if (quota.unit === 'HOUR') {
                     if (request.startTime && request.endTime) {
-                        const startD = new Date(request.startDate);
-                        const endD = new Date(request.endDate);
-                        const [startH, startM] = request.startTime.split(':').map(Number);
-                        const [endH, endM] = request.endTime.split(':').map(Number);
-                        startD.setHours(startH, startM, 0, 0);
-                        endD.setHours(endH, endM, 0, 0);
-                        const diff = (endD - startD) / (1000 * 60 * 60);
-                        if (diff > 0) {
-                            requestedQty = diff;
-                        }
+                        requestedQty = await getRequestedHours(request.startDate, request.endDate, request.startTime, request.endTime, request.employeeId, AppDataSource, isOvertime);
                     } else {
                         const cursor = new Date(reqStart);
                         cursor.setHours(0, 0, 0, 0);
