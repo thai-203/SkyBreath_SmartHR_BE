@@ -29,6 +29,9 @@ export class PayrollDetailEntity extends BaseEntity {
     @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
     deduction;
 
+    @Column({ name: 'allowance_amount', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    allowanceAmount;
+
     @Column({ name: 'net_salary', type: 'decimal', precision: 15, scale: 2 })
     netSalary;
 
