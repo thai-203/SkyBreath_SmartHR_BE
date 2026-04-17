@@ -582,6 +582,7 @@ router.delete(
  *             required:
  *               - month
  *               - year
+ *             properties:
  *               month:
  *                 type: integer
  *               year:
