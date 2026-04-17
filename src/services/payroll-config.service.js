@@ -43,6 +43,12 @@ export class PayrollConfigService {
         if (data.isActive !== undefined) config.isActive = Boolean(data.isActive);
         if (data.is_active !== undefined) config.isActive = Boolean(data.is_active);
 
+        // Insurance Rates
+        if (data.socialInsuranceRate !== undefined) config.socialInsuranceRate = parseFloat(data.socialInsuranceRate);
+        if (data.healthInsuranceRate !== undefined) config.healthInsuranceRate = parseFloat(data.healthInsuranceRate);
+        if (data.unemploymentInsuranceRate !== undefined) config.unemploymentInsuranceRate = parseFloat(data.unemploymentInsuranceRate);
+        if (data.unionFeeRate !== undefined) config.unionFeeRate = parseFloat(data.unionFeeRate);
+
         return await this.repository.save(config);
     }
 }

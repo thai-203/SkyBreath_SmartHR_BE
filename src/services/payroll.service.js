@@ -13,6 +13,7 @@ import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { PayrollConfigEntity } from '../models/entities/payroll-config.entity.js';
 
 const PAYROLL_STATUS = {
     DRAFT: 'DRAFT',
@@ -22,10 +23,6 @@ const PAYROLL_STATUS = {
 };
 
 // Insurance rates (standard Vietnam)
-const SOCIAL_INSURANCE_RATE = 0.08;  // 8%
-const HEALTH_INSURANCE_RATE = 0.015; // 1.5%
-const UNEMPLOYMENT_RATE = 0.01;      // 1%
-
 // PIT thresholds (VND)
 const PIT_PERSONAL_DEDUCTION = 11_000_000;
 
@@ -76,6 +73,15 @@ export class PayrollService {
         const { payrollMonth, payrollYear } = payroll;
         const startDate = new Date(payrollYear, payrollMonth - 1, 1);
         const endDate = new Date(payrollYear, payrollMonth, 0, 23, 59, 59);
+
+        // 0. Fetch global insurance configurations
+        const configRepo = AppDataSource.getRepository(PayrollConfigEntity);
+        const config = await configRepo.findOne({ where: { configKey: 'GENERAL', isDeleted: false } });
+        
+        const SOCIAL_RATE = (config?.socialInsuranceRate || 0) / 100;
+        const HEALTH_RATE = (config?.healthInsuranceRate || 0) / 100;
+        const UNEMPLOYMENT_RATE_VAL = (config?.unemploymentInsuranceRate || 0) / 100;
+        const UNION_RATE_VAL = (config?.unionFeeRate || 0) / 100;
 
         // 1. Get employees assigned to this payroll
         const existingDetails = await this.payrollDetailRepository.findByPayroll(payrollId);
@@ -193,9 +199,13 @@ export class PayrollService {
             
             // 7. Salary calculation bases
             const p1Amount = parseFloat(salary.baseSalary) || 0;
-            const p21Amount = (parseFloat(salary.performanceSalary) || 0) * 0.8;
-            const p22Amount = (parseFloat(salary.performanceSalary) || 0) * 0.2;
-            const existingDetail = await this.payrollDetailRepository.findByPayrollAndEmployee(payrollId, employee.id);
+            const performanceSalaryBase = parseFloat(existingDetail?.performanceSalary) > 0 
+                ? parseFloat(existingDetail.performanceSalary) 
+                : (parseFloat(salary.performanceSalary) || 0);
+
+            const p21Base = performanceSalaryBase * 0.8;
+            const p22Base = performanceSalaryBase * 0.2;
+
             const p1p2Percentage = parseFloat(existingDetail?.p1p2Percentage ?? 100);
             const p3Percentage = parseFloat(existingDetail?.p3Percentage ?? 100);
 
@@ -204,8 +214,8 @@ export class PayrollService {
             const probationPayDays = (isProbation ? businessTripDays : 0) + probationDays;
 
             const earnedP1 = (p1Amount / (standardDays || 26)) * fullPayDays;
-            const earnedP21 = ((p21Amount / (standardDays || 26)) * fullPayDays) * (p1p2Percentage / 100);
-            const earnedP22 = (p22Amount / (standardDays || 26)) * fullPayDays;
+            const earnedP21 = ((p21Base / (standardDays || 26)) * fullPayDays) * (p1p2Percentage / 100);
+            const earnedP22 = ((p22Base / (standardDays || 26)) * fullPayDays) * (p3Percentage / 100);
             const probationSalary = (p1Amount / (standardDays || 26)) * probationPayDays * 0.85; // 85% for probation base
 
             const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
@@ -214,10 +224,11 @@ export class PayrollService {
             const earnedAllowances = (totalAllowances / (standardDays || 26)) * workingDays;
             const insuranceBase = Math.min(parseFloat(salary.baseSalary) || 0, 20 * 2_340_000);
             
-            const socialInsurance = parseFloat((insuranceBase * SOCIAL_INSURANCE_RATE).toFixed(2));
-            const healthInsurance = parseFloat((insuranceBase * HEALTH_INSURANCE_RATE).toFixed(2));
-            const unemploymentInsurance = parseFloat((insuranceBase * UNEMPLOYMENT_RATE).toFixed(2));
-            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
+            const socialInsurance = parseFloat((insuranceBase * SOCIAL_RATE).toFixed(2));
+            const healthInsurance = parseFloat((insuranceBase * HEALTH_RATE).toFixed(2));
+            const unemploymentInsurance = parseFloat((insuranceBase * UNEMPLOYMENT_RATE_VAL).toFixed(2));
+            const unionFee = parseFloat((insuranceBase * UNION_RATE_VAL).toFixed(2));
+            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
 
             const taxableIncome = totalOfficialSalary + earnedAllowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
             const taxDeduction = taxableIncome > 0 ? parseFloat(this._calcPIT(taxableIncome).toFixed(2)) : 0;
@@ -231,9 +242,6 @@ export class PayrollService {
             const netSalary = parseFloat((totalOfficialSalary + earnedAllowances + overtimePay + bonus - penalty - deduction).toFixed(2));
 
             // Company Costs
-            const companySocialInsurance = parseFloat((insuranceBase * 0.175).toFixed(2));
-            const companyHealthInsurance = parseFloat((insuranceBase * 0.03).toFixed(2));
-            const companyUnemploymentInsurance = parseFloat((insuranceBase * 0.01).toFixed(2));
             const companyUnionFee = parseFloat((insuranceBase * 0.02).toFixed(2));
             const totalHrCost = netSalary + insuranceDeduction + taxDeduction + companySocialInsurance + companyHealthInsurance + companyUnemploymentInsurance + companyUnionFee;
 
@@ -254,11 +262,16 @@ export class PayrollService {
                 p1Amount: earnedP1, p21Amount: earnedP21, p22Amount: earnedP22, p1p2Percentage, p3Percentage,
                 probationAmount: probationSalary,
                 socialInsurance, healthInsurance, unemploymentInsurance,
+                socialInsurancePercentage: parseFloat((SOCIAL_RATE * 100).toFixed(2)),
+                healthInsurancePercentage: parseFloat((HEALTH_RATE * 100).toFixed(2)),
+                unemploymentInsurancePercentage: parseFloat((UNEMPLOYMENT_RATE_VAL * 100).toFixed(2)),
+                unionFeePercentage: parseFloat((UNION_RATE_VAL * 100).toFixed(2)),
                 taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
                 companySocialInsurance,
                 companyHealthInsurance,
                 companyUnemploymentInsurance,
                 companyUnionFee,
+                unionFee: parseFloat(unionFee.toFixed(2)),
                 totalHrCost: parseFloat(totalHrCost.toFixed(2))
             };
 
@@ -300,7 +313,28 @@ export class PayrollService {
         const businessTripDays = dto.businessTripDays !== undefined ? parseFloat(dto.businessTripDays) : parseFloat(detail.businessTripDays || 0);
         const holidayDays = dto.holidayDays !== undefined ? parseFloat(dto.holidayDays) : parseFloat(detail.holidayDays || 0);
         const benefitLeaveDays = dto.benefitLeaveDays !== undefined ? parseFloat(dto.benefitLeaveDays) : parseFloat(detail.benefitLeaveDays || 0);
-        const p1p2Percentage = dto.p1p2Percentage !== undefined ? parseFloat(dto.p1p2Percentage) : parseFloat(detail.p1p2Percentage || 100);
+        const p3Percentage = dto.p3Percentage !== undefined ? parseFloat(dto.p3Percentage) : parseFloat(detail.p3Percentage || 100);
+        const performanceSalary = dto.performanceSalary !== undefined ? parseFloat(dto.performanceSalary) : parseFloat(detail.performanceSalary || 0);
+
+        // Individual Insurance & Tax manual overrides
+        // Fallback chain: DTO -> Existing Detail -> Global Config -> Default Values
+        const configRepo = AppDataSource.getRepository(PayrollConfigEntity);
+        const config = await configRepo.findOne({ where: { configKey: 'GENERAL', isDeleted: false } });
+
+        const socialInsurancePercentage = dto.socialInsurancePercentage !== undefined ? parseFloat(dto.socialInsurancePercentage) : (parseFloat(detail.socialInsurancePercentage) || (config?.socialInsuranceRate || 0));
+        const healthInsurancePercentage = dto.healthInsurancePercentage !== undefined ? parseFloat(dto.healthInsurancePercentage) : (parseFloat(detail.healthInsurancePercentage) || (config?.healthInsuranceRate || 0));
+        const unemploymentInsurancePercentage = dto.unemploymentInsurancePercentage !== undefined ? parseFloat(dto.unemploymentInsurancePercentage) : (parseFloat(detail.unemploymentInsurancePercentage) || (config?.unemploymentInsuranceRate || 0));
+        const unionFeePercentage = dto.unionFeePercentage !== undefined ? parseFloat(dto.unionFeePercentage) : (parseFloat(detail.unionFeePercentage) || (config?.unionFeeRate || 0));
+        
+        const insuranceBase = Math.min(parseFloat(detail.baseSalary) || 0, 20 * 2_340_000);
+        const socialInsurance = parseFloat((insuranceBase * (socialInsurancePercentage / 100)).toFixed(2));
+        const healthInsurance = parseFloat((insuranceBase * (healthInsurancePercentage / 100)).toFixed(2));
+        const unemploymentInsurance = parseFloat((insuranceBase * (unemploymentInsurancePercentage / 100)).toFixed(2));
+        const unionFee = parseFloat((insuranceBase * (unionFeePercentage / 100)).toFixed(2));
+        
+        const taxDeduction = dto.taxDeduction !== undefined ? parseFloat(dto.taxDeduction) : parseFloat(detail.taxDeduction || 0);
+        
+        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
 
         // Recalculate salary if attendance changed or other factors changed
         // This is a simplified version of autoCalculate logic
@@ -318,7 +352,9 @@ export class PayrollService {
             parseFloat(detail.allowanceAmount || 0) +
             bonus -
             deduction -
-            penalty
+            penalty -
+            insuranceDeduction -
+            taxDeduction
         ).toFixed(2));
 
         return this.payrollDetailRepository.update(detailId, {
@@ -333,6 +369,18 @@ export class PayrollService {
             holidayDays,
             benefitLeaveDays,
             p1p2Percentage,
+            p3Percentage,
+            performanceSalary,
+            socialInsurance,
+            healthInsurance,
+            unemploymentInsurance,
+            unionFee,
+            socialInsurancePercentage,
+            healthInsurancePercentage,
+            unemploymentInsurancePercentage,
+            unionFeePercentage,
+            insuranceDeduction,
+            taxDeduction,
             netSalary,
             note: dto.note !== undefined ? dto.note : detail.note,
         });

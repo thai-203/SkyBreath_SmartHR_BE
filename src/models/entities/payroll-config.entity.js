@@ -23,4 +23,16 @@ export class PayrollConfigEntity extends BaseEntity {
 
     @Column({ name: 'config_key', type: 'varchar', length: 100, default: 'GENERAL' })
     configKey;
+
+    @Column({ name: 'social_insurance_rate', type: 'decimal', precision: 5, scale: 2, default: 0.0 })
+    socialInsuranceRate;
+
+    @Column({ name: 'health_insurance_rate', type: 'decimal', precision: 5, scale: 2, default: 0.0 })
+    healthInsuranceRate;
+
+    @Column({ name: 'unemployment_insurance_rate', type: 'decimal', precision: 5, scale: 2, default: 0.0 })
+    unemploymentInsuranceRate;
+
+    @Column({ name: 'union_fee_rate', type: 'decimal', precision: 5, scale: 2, default: 0.0 })
+    unionFeeRate;
 }
