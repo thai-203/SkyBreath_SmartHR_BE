@@ -30,7 +30,7 @@ const jobGradesController = new JobGradesController();
 router.get(
   '/list',
   authMiddleware,
-  permissionsMiddleware('JOB_GRADE_READ'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => jobGradesController.findList(req, res, next)
 );
 
@@ -49,7 +49,7 @@ router.get(
 router.get(
   '/export/excel',
   authMiddleware,
-  permissionsMiddleware('JOB_GRADE_EXPORT'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => jobGradesController.exportExcel(req, res, next)
 );
 
@@ -92,14 +92,14 @@ router.get(
 router.get(
   '/',
   authMiddleware,
-//   permissionsMiddleware('JOB_GRADE_READ'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => jobGradesController.findAll(req, res, next)
 );
 
 router.post(
   '/',
   authMiddleware,
-  permissionsMiddleware('JOB_GRADE_CREATE'),
+  permissionsMiddleware('CONTRACT_CREATE'),
   validationMiddleware(CreateJobGradeDto),
   (req, res, next) => jobGradesController.create(req, res, next)
 );
@@ -161,14 +161,14 @@ router.post(
 router.get(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('JOB_GRADE_READ'),
+  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => jobGradesController.findById(req, res, next)
 );
 
 router.put(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('JOB_GRADE_UPDATE'),
+  permissionsMiddleware('CONTRACT_UPDATE'),
   validationMiddleware(UpdateJobGradeDto),
   (req, res, next) => jobGradesController.update(req, res, next)
 );
@@ -176,7 +176,7 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('JOB_GRADE_DELETE'),
+  permissionsMiddleware('CONTRACT_DELETE'),
   (req, res, next) => jobGradesController.remove(req, res, next)
 );
 

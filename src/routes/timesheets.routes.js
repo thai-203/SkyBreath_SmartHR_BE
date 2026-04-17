@@ -11,7 +11,10 @@ const router = Router();
 // Dependency Injection
 const timesheetsRepository = new TimesheetsRepository();
 const actionLogsService = new ActionLogsService();
-const timesheetsService = new TimesheetsService(timesheetsRepository, actionLogsService);
+const timesheetsService = new TimesheetsService(
+  timesheetsRepository,
+  actionLogsService,
+);
 const timesheetsController = new TimesheetsController(timesheetsService);
 
 /**
@@ -51,7 +54,12 @@ const timesheetsController = new TimesheetsController(timesheetsService);
  *       200:
  *         description: Successfully generated timesheets
  */
-router.post('/generate', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.generate);
+router.post(
+  '/generate',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_CREATE'),
+  timesheetsController.generate,
+);
 
 /**
  * @swagger
@@ -82,7 +90,12 @@ router.post('/generate', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE
  *       201:
  *         description: Employee timesheet created
  */
-router.post('/add-employee', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.addEmployee);
+router.post(
+  '/add-employee',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_CREATE'),
+  timesheetsController.addEmployee,
+);
 
 /**
  * @swagger
@@ -114,7 +127,12 @@ router.post('/add-employee', authMiddleware, permissionsMiddleware('TIMESHEET_CR
  *       400:
  *         description: Bad request
  */
-router.post('/sync', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.syncData);
+router.post(
+  '/sync',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_CREATE'),
+  timesheetsController.syncData,
+);
 
 /**
  * @swagger
@@ -149,7 +167,12 @@ router.post('/sync', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), 
  *       200:
  *         description: List of timesheets
  */
-router.get('/', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.findAll);
+router.get(
+  '/',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_READ'),
+  timesheetsController.findAll,
+);
 
 /**
  * @swagger
@@ -172,7 +195,12 @@ router.get('/', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timeshe
  *       200:
  *         description: List of periods
  */
-router.get('/periods', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getPeriods);
+router.get(
+  '/periods',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_READ'),
+  timesheetsController.getPeriods,
+);
 
 /**
  * @swagger
@@ -205,7 +233,12 @@ router.get('/periods', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), 
  *       400:
  *         description: Bad request
  */
-router.get('/matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getMatrix);
+router.get(
+  '/matrix',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_READ'),
+  timesheetsController.getMatrix,
+);
 
 /**
  * @swagger
@@ -267,9 +300,19 @@ router.get('/matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), t
  *       200:
  *         description: Summary matrix data
  */
-router.get('/summary-matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getSummaryMatrix);
+router.get(
+  '/summary-matrix',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_READ'),
+  timesheetsController.getSummaryMatrix,
+);
 
-router.get('/processed-matrix', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getProcessedMatrix);
+router.get(
+  '/processed-matrix',
+  authMiddleware,
+  permissionsMiddleware(['TIMESHEET_READ', 'TIMESHEET_READ_OWN']),
+  timesheetsController.getProcessedMatrix,
+);
 
 // UC27 - Export (must be before /:id routes)
 /**
@@ -297,7 +340,12 @@ router.get('/processed-matrix', authMiddleware, permissionsMiddleware('TIMESHEET
  *       200:
  *         description: Excel file
  */
-router.get('/export/summary', authMiddleware, permissionsMiddleware('TIMESHEET_EXPORT'), timesheetsController.exportSummary);
+router.get(
+  '/export/summary',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_EXPORT'),
+  timesheetsController.exportSummary,
+);
 
 /**
  * @swagger
@@ -324,7 +372,12 @@ router.get('/export/summary', authMiddleware, permissionsMiddleware('TIMESHEET_E
  *       200:
  *         description: Excel file
  */
-router.get('/export/detailed', authMiddleware, permissionsMiddleware('TIMESHEET_EXPORT'), timesheetsController.exportDetailed);
+router.get(
+  '/export/detailed',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_EXPORT'),
+  timesheetsController.exportDetailed,
+);
 
 // UC24 - View detail
 /**
@@ -345,7 +398,12 @@ router.get('/export/detailed', authMiddleware, permissionsMiddleware('TIMESHEET_
  *       200:
  *         description: Timesheet details
  */
-router.get('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.findById);
+router.get(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_READ'),
+  timesheetsController.findById,
+);
 
 /**
  * @swagger
@@ -365,10 +423,20 @@ router.get('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), time
  *       200:
  *         description: Daily attendance details
  */
-router.get('/:id/attendance', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getAttendanceDetails);
+router.get(
+  '/:id/attendance',
+  authMiddleware,
+  permissionsMiddleware(['TIMESHEET_READ', 'TIMESHEET_READ_OWN']),
+  timesheetsController.getAttendanceDetails,
+);
 
 // UC-Excuse Page
-router.get('/attendance/late-early', authMiddleware, permissionsMiddleware('TIMESHEET_READ'), timesheetsController.getLateEarlyRecords);
+router.get(
+  '/attendance/late-early',
+  authMiddleware,
+  permissionsMiddleware(['TIMESHEET_READ', 'TIMESHEET_READ_OWN']),
+  timesheetsController.getLateEarlyRecords,
+);
 
 // UC25 - Recalculate & Edit
 /**
@@ -399,7 +467,12 @@ router.get('/attendance/late-early', authMiddleware, permissionsMiddleware('TIME
  *       200:
  *         description: Successfully recalculated
  */
-router.post('/bulk-recalculate', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.bulkRecalculate);
+router.post(
+  '/bulk-recalculate',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_UPDATE'),
+  timesheetsController.bulkRecalculate,
+);
 
 /**
  * @swagger
@@ -419,7 +492,12 @@ router.post('/bulk-recalculate', authMiddleware, permissionsMiddleware('TIMESHEE
  *       200:
  *         description: Timesheet recalculated
  */
-router.post('/:id/recalculate', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.recalculate);
+router.post(
+  '/:id/recalculate',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_UPDATE'),
+  timesheetsController.recalculate,
+);
 
 /**
  * @swagger
@@ -454,7 +532,12 @@ router.post('/:id/recalculate', authMiddleware, permissionsMiddleware('TIMESHEET
  *       200:
  *         description: Timesheet updated
  */
-router.put('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.update);
+router.put(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_UPDATE'),
+  timesheetsController.update,
+);
 
 /**
  * @swagger
@@ -474,7 +557,12 @@ router.put('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), ti
  *       200:
  *         description: Timesheet deleted
  */
-router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'), timesheetsController.remove);
+router.delete(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_DELETE'),
+  timesheetsController.remove,
+);
 
 // UC26 - Lock / Unlock
 /**
@@ -494,7 +582,6 @@ router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'),
  *             required:
  *               - month
  *               - year
- *             properties:
  *               month:
  *                 type: integer
  *               year:
@@ -505,14 +592,34 @@ router.delete('/:id', authMiddleware, permissionsMiddleware('TIMESHEET_CREATE'),
  *       200:
  *         description: Successfully locked
  */
-router.post('/bulk-lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.bulkLock);
+router.post(
+  '/bulk-lock',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_LOCK'),
+  timesheetsController.bulkLock,
+);
 
 // HR: Manual update of a single processed attendance record's work_value
-router.patch('/processed/:id', authMiddleware, permissionsMiddleware('TIMESHEET_UPDATE'), timesheetsController.updateProcessedRecord);
+router.patch(
+  '/processed/:id',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_UPDATE'),
+  timesheetsController.updateProcessedRecord,
+);
 
 // HR/Admin: Finalize / Unfinalize processed attendance records (matrix lock)
-router.post('/processed-finalize', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.finalizeProcessedMatrix);
-router.post('/processed-unfinalize', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.unfinalizeProcessedMatrix);
+router.post(
+  '/processed-finalize',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_LOCK'),
+  timesheetsController.finalizeProcessedMatrix,
+);
+router.post(
+  '/processed-unfinalize',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_LOCK'),
+  timesheetsController.unfinalizeProcessedMatrix,
+);
 
 /**
  * @swagger
@@ -532,6 +639,11 @@ router.post('/processed-unfinalize', authMiddleware, permissionsMiddleware('TIME
  *       200:
  *         description: Timesheet locked
  */
-router.post('/:id/lock', authMiddleware, permissionsMiddleware('TIMESHEET_LOCK'), timesheetsController.lock);
+router.post(
+  '/:id/lock',
+  authMiddleware,
+  permissionsMiddleware('TIMESHEET_LOCK'),
+  timesheetsController.lock,
+);
 
 export const timesheetsRoutes = router;
