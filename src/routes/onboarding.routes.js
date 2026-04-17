@@ -138,7 +138,7 @@ router.put(
 router.get(
   '/progress/employee/:employeeId',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PROGRESS_'),
+  permissionsMiddleware('ONBOARDING_PROGRESS_READ_OWN'),
   progressController.findByEmployee,
 );
 
