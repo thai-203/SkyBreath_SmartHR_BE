@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { ActionLogsController } from '../controllers/action-logs.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
-
+import { Role } from '../common/enums/index.js';
+import { rolesMiddleware } from '../common/middleware/roles.middleware.js';
 const router = Router();
 const actionLogsController = new ActionLogsController();
 
@@ -98,11 +99,8 @@ const actionLogReaderRoles = [Role.ADMIN, 'HR'];
 router.get(
   '/',
   authMiddleware,
-<<<<<<< HEAD
   rolesMiddleware(actionLogReaderRoles),
-=======
   permissionsMiddleware('USER_ACTION_LOG_READ'),
->>>>>>> cd76d22 (add rbac)
   actionLogsController.findAll,
 );
 
@@ -122,12 +120,7 @@ router.get(
 router.get(
   '/:id',
   authMiddleware,
-<<<<<<< HEAD
   rolesMiddleware(actionLogReaderRoles),
-  actionLogsController.findOne,
-);
-
-=======
   permissionsMiddleware('USER_ACTION_LOG_READ'),
   actionLogsController.findOne,
 );
@@ -146,5 +139,4 @@ router.get(
   (req, res, next) => actionLogsController.export(req, res, next),
 );
 
->>>>>>> cd76d22 (add rbac)
 export const actionLogsRoutes = router;

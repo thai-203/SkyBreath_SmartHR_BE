@@ -11,7 +11,7 @@ const requestsController = new RequestsController();
 router.get('/excuses', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getExcuseRequests);
 
 // GET /requests/overtime-detail — Bảng tăng ca chi tiết (nhóm OVERTIME + dòng chi tiết hoặc tổng hợp từ đơn)
-router.get('/overtime-detail', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getOvertimeDetailRequests);
+router.get('/overtime-detail', authMiddleware, permissionsMiddleware(['REQUEST_READ', 'REQUEST_READ_OWN']), requestsController.getOvertimeDetailRequests);
 
 // GET /requests/my — Đơn của tôi
 router.get(

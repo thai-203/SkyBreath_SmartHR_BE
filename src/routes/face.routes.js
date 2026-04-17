@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { upload } from '../common/middleware/upload.middleware.js';
+import { uploadCloud } from '../common/middleware/upload.middleware.js';
 import { FaceDataController } from '../controllers/face-data.controller.js';
 import { FaceDataService } from '../services/face-data.service.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
@@ -54,7 +54,7 @@ router.post(
   '/register-faces',
   authMiddleware,
   permissionsMiddleware('ATTENDANCE_FACE_DATA_REGISTER'),
-  upload.array('images', 10),
+  uploadCloud.array('images', 10),
   faceDataController.registerFace,
 );
 

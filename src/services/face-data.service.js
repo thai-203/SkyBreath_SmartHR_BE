@@ -97,9 +97,7 @@ export class FaceDataService {
     // 7. Lưu tất cả embeddings vào DB
     const faceData = embeddings.map((embedding, index) => {
       const file = files[Math.min(index, files.length - 1)];
-      const imageUrl = file
-        ? `/uploads/${path.relative('uploads', file.path).replace(/\\/g, '/')}`
-        : null;
+      const imageUrl = file?.secure_url || file?.path || null;
 
       return {
         employeeId: employee.id,

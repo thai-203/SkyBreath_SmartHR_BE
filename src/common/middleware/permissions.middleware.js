@@ -28,12 +28,7 @@ export const permissionsMiddleware = (requiredPermission) => {
     );
 
     if (!hasPermission) {
-      next(
-        new ForbiddenException({
-          message: AppMessages.Errors.Auth.FORBIDDEN,
-          code: 'PERMISSION_DENIED',
-        }),
-      );
+      next(new ForbiddenException(AppMessages.Errors.Auth.FORBIDDEN));
       return;
     }
 

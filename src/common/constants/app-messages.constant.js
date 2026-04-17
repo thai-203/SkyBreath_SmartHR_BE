@@ -157,14 +157,15 @@ export const AppMessages = {
 
   Errors: {
     Auth: {
-      INVALID_CREDENTIALS: { code: 'AUTH_001', message: 'Invalid credentials' },
-      TOKEN_EXPIRED: { code: 'AUTH_002', message: 'Token expired' },
-      TOKEN_INVALID: { code: 'AUTH_003', message: 'Invalid token' },
-      UNAUTHORIZED: { code: 'AUTH_004', message: 'Unauthorized' },
+      PASSWORD_CHANGE_REQUIRED: { code: 'AUTH_000', message: 'Yêu cầu đổi mật khẩu' },
+      INVALID_CREDENTIALS: { code: 'AUTH_001', message: 'Thông tin đăng nhập không hợp lệ' },
+      TOKEN_EXPIRED: { code: 'AUTH_002', message: 'Token đã hết hạn' },
+      TOKEN_INVALID: { code: 'AUTH_003', message: 'Token không hợp lệ' },
+      UNAUTHORIZED: { code: 'AUTH_004', message: 'Không được ủy quyền' },
       FORBIDDEN: { code: 'AUTH_005', message: 'Bạn không có quyền truy cập tính năng này' },
       RESET_TOKEN_INVALID: {
         code: 'AUTH_006',
-        message: 'Reset password token is invalid',
+        message: 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn',
       },
       PASSWORD_NOT_DIFFERENT: {
         code: 'AUTH_007',

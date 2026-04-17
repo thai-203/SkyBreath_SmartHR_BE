@@ -146,6 +146,14 @@ const seed = async () => {
       { permissionCode: 'PENALTY_DELETE', description: 'Xóa quy định phạt', module: 'Penalty' },
       { permissionCode: 'PENALTY_READ_OWN', description: 'Xem quy định phạt cá nhân', module: 'Penalty' },
 
+      // ================= NOTIFICATION =================
+      { permissionCode: 'SEND_MANUAL_NOTIFICATION', description: 'Gửi thông báo thủ công', module: 'Notification' },
+      { permissionCode: 'VIEW_NOTIFICATION_HISTORY', description: 'Xem lịch sử thông báo', module: 'Notification' },
+
+      // ================= AI =================
+      { permissionCode: 'AI_CONFIGURATION_READ', description: 'Xem cấu hình AI', module: 'AI' },
+      { permissionCode: 'AI_PROMPT_READ', description: 'Xem prompt AI', module: 'AI' },
+
       // ================= USER =================
       { permissionCode: 'USER_READ', description: 'Xem người dùng', module: 'User' },
       { permissionCode: 'USER_CREATE', description: 'Tạo người dùng', module: 'User' },
@@ -196,10 +204,107 @@ const seed = async () => {
         permissionId: p.id,
       }));
       await rolePermissionRepo.save(adminMappings);
+      console.log('✓ Mapped all permissions to ADMIN role');
     }
 
-    // Tương tự cho MANAGER, EMPLOYEE, HR dựa trên danh sách mới...
-    // (Bạn có thể tinh chỉnh filter theo nhu cầu nghiệp vụ cụ thể)
+    // Mapping MANAGER (Giám đốc)
+    if (roleMap['MANAGER']) {
+      const managerPermissions = [
+        'ATTENDANCE_READ_OWN', 'ATTENDANCE_RECORD', 'ATTENDANCE_BLOCKING_CONFIG_READ',
+        'ATTENDANCE_SECURITY_CONFIG_READ', 'ATTENDANCE_FACE_DATA_READ_OWN',
+        'PAYROLL_READ', 'PAYROLL_APPROVE', 'PAYROLL_SLIP_READ', 'PAYROLL_EXPORT',
+        'PAYROLL_TYPE_READ',
+        'REQUEST_READ', 'REQUEST_APPROVE', 'REQUEST_READ_OWN',
+        'REQUEST_TYPE_READ', 'REQUEST_GROUP_READ',
+        'SHIFT_READ', 'SHIFT_ASSIGN_READ', 'SHIFT_SCHEDULE_READ',
+        'SHIFT_READ_OWN', 'SHIFT_GROUP_READ',
+        'EMPLOYEE_READ', 'EMPLOYEE_EXPORT',
+        'CONTRACT_READ', 'CONTRACT_EXPORT',
+        'DEPARTMENT_READ',
+        'ONBOARDING_PLAN_READ', 'ONBOARDING_PROGRESS_READ', 'ONBOARDING_PROGRESS_EXPORT',
+        'TIMESHEET_READ', 'TIMESHEET_EXPORT',
+        'HOLIDAY_READ', 'HOLIDAY_READ_OWN', 'HOLIDAY_GROUP_READ',
+        'OVERTIME_RULE_READ', 'OVERTIME_RULE_READ_OWN',
+        'PENALTY_READ', 'PENALTY_READ_OWN',
+        'USER_READ', 'USER_ACTION_LOG_READ', 'USER_ACTION_LOG_EXPORT',
+        'AI_CONFIGURATION_READ', 'AI_PROMPT_READ',
+        'VIEW_NOTIFICATION_HISTORY',
+      ];
+      const managerMappings = permissions
+        .filter(p => managerPermissions.includes(p.permissionCode))
+        .map(p => rolePermissionRepo.create({
+          roleId: roleMap['MANAGER'].id,
+          permissionId: p.id,
+        }));
+      await rolePermissionRepo.save(managerMappings);
+      console.log(`✓ Mapped ${managerMappings.length} permissions to MANAGER role`);
+    }
+
+    // Mapping HR (Nhân viên nhân sự)
+    if (roleMap['HR']) {
+      const hrPermissions = [
+        'ATTENDANCE_BLOCKING_CONFIG_READ', 'ATTENDANCE_BLOCKING_CONFIG_CREATE',
+        'ATTENDANCE_BLOCKING_CONFIG_UPDATE', 'ATTENDANCE_BLOCKING_CONFIG_DELETE',
+        'ATTENDANCE_SECURITY_CONFIG_READ', 'ATTENDANCE_SECURITY_CONFIG_UPDATE',
+        'ATTENDANCE_FACE_DATA_READ', 'ATTENDANCE_FACE_DATA_DELETE',
+        'PAYROLL_READ', 'PAYROLL_CREATE', 'PAYROLL_UPDATE', 'PAYROLL_SLIP_READ',
+        'PAYROLL_SLIP_CREATE', 'PAYROLL_EXPORT', 'PAYROLL_TYPE_READ',
+        'REQUEST_READ', 'REQUEST_READ_OWN', 'REQUEST_CREATE',
+        'REQUEST_TYPE_READ', 'REQUEST_GROUP_READ',
+        'SHIFT_READ', 'SHIFT_ASSIGN_READ', 'SHIFT_GROUP_READ',
+        'EMPLOYEE_READ', 'EMPLOYEE_CREATE', 'EMPLOYEE_UPDATE', 'EMPLOYEE_EXPORT',
+        'CONTRACT_READ', 'CONTRACT_CREATE', 'CONTRACT_UPDATE', 'CONTRACT_EXPORT',
+        'CONTRACT_TERMINATE',
+        'DEPARTMENT_READ', 'DEPARTMENT_CREATE', 'DEPARTMENT_UPDATE', 'DEPARTMENT_DELETE',
+        'DEPARTMENT_EXPORT',
+        'ONBOARDING_PLAN_READ', 'ONBOARDING_PLAN_CREATE', 'ONBOARDING_PLAN_UPDATE',
+        'ONBOARDING_PLAN_DELETE', 'ONBOARDING_PROGRESS_READ', 'ONBOARDING_PROGRESS_CREATE',
+        'ONBOARDING_PROGRESS_EXPORT',
+        'TIMESHEET_READ', 'TIMESHEET_EXPORT',
+        'HOLIDAY_READ', 'HOLIDAY_CREATE', 'HOLIDAY_UPDATE', 'HOLIDAY_DELETE',
+        'HOLIDAY_GROUP_READ', 'HOLIDAY_GROUP_CREATE', 'HOLIDAY_GROUP_UPDATE',
+        'HOLIDAY_GROUP_DELETE', 'HOLIDAY_CONFIG', 'HOLIDAY_NOTIFICATION_SEND',
+        'OVERTIME_RULE_READ', 'OVERTIME_RULE_CREATE', 'OVERTIME_RULE_UPDATE',
+        'OVERTIME_RULE_DELETE',
+        'PENALTY_READ', 'PENALTY_CREATE', 'PENALTY_UPDATE', 'PENALTY_DELETE',
+        'USER_READ', 'USER_CREATE', 'USER_UPDATE', 'USER_DELETE',
+        'USER_PASSWORD_RESET_FORCE', 'USER_ACTION_LOG_READ', 'USER_ACTION_LOG_EXPORT',
+        'SEND_MANUAL_NOTIFICATION', 'VIEW_NOTIFICATION_HISTORY',
+      ];
+      const hrMappings = permissions
+        .filter(p => hrPermissions.includes(p.permissionCode))
+        .map(p => rolePermissionRepo.create({
+          roleId: roleMap['HR'].id,
+          permissionId: p.id,
+        }));
+      await rolePermissionRepo.save(hrMappings);
+      console.log(`✓ Mapped ${hrMappings.length} permissions to HR role`);
+    }
+
+    // Mapping EMPLOYEE (Nhân viên thường)
+    if (roleMap['EMPLOYEE']) {
+      const employeePermissions = [
+        'ATTENDANCE_READ_OWN', 'ATTENDANCE_RECORD',
+        'ATTENDANCE_FACE_DATA_READ_OWN', 'ATTENDANCE_FACE_DATA_REGISTER',
+        'PAYROLL_SLIP_READ',
+        'REQUEST_READ_OWN', 'REQUEST_CREATE',
+        'REQUEST_TYPE_READ',
+        'SHIFT_READ_OWN',
+        'TIMESHEET_READ_OWN',
+        'HOLIDAY_READ_OWN',
+        'OVERTIME_RULE_READ_OWN',
+        'PENALTY_READ_OWN',
+        'ONBOARDING_PROGRESS_READ_OWN', 'ONBOARDING_PROGRESS_UPDATE_OWN',
+      ];
+      const employeeMappings = permissions
+        .filter(p => employeePermissions.includes(p.permissionCode))
+        .map(p => rolePermissionRepo.create({
+          roleId: roleMap['EMPLOYEE'].id,
+          permissionId: p.id,
+        }));
+      await rolePermissionRepo.save(employeeMappings);
+      console.log(`✓ Mapped ${employeeMappings.length} permissions to EMPLOYEE role`);
+    }
 
     console.log('\n✅ Seed completed!');
   } catch (error) {

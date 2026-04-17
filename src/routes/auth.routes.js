@@ -7,7 +7,7 @@ import {
   LoginDto,
   ChangePasswordDto,
   ForgotPasswordDto,
-  ResetPasswordDto,
+  ResetPasswordOtpDto,
   UpdateProfileDto,
 } from '../models/dto/auth/index.js';
 import { refreshTokenMiddleware } from '../common/middleware/refresh-token.middleware.js';
@@ -176,30 +176,30 @@ router.post(
 
 /**
  * @swagger
- * /auth/reset-password:
+ * /auth/reset-password-otp:
  *   post:
- *     summary: Reset user password using token
+ *     summary: Reset user password using OTP
  *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/ResetPasswordDto'
+ *             $ref: '#/components/schemas/ResetPasswordOtpDto'
  *     responses:
  *       200:
  *         description: Password reset successfully
  *       400:
- *         description: Invalid or expired token
+ *         description: Invalid or expired OTP
  *       404:
  *         description: User not found
  *       500:
  *         description: Internal server error
  */
 router.post(
-  '/reset-password',
-  validationMiddleware(ResetPasswordDto),
-  authController.resetPassword,
+  '/reset-password-otp',
+  validationMiddleware(ResetPasswordOtpDto),
+  authController.resetPasswordWithOtp,
 );
 
 export const authRoutes = router;

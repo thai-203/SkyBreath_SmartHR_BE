@@ -92,7 +92,7 @@ router.put(
 router.delete(
   '/assign/:id',
   authMiddleware,
-  permissionsMiddleware('SHIFT_ASSIGN_MANAGE'),
+  permissionsMiddleware('SHIFT_ASSIGN_DELETE'),
   shiftAssignmentsController.cancel,
 );
 

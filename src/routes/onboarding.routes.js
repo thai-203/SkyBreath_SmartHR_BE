@@ -197,16 +197,12 @@ router.post(
 );
 router.put(
   '/assignments/:id',
-<<<<<<< HEAD
   uploadCloud.single('evidence'),
-=======
   authMiddleware,
   // permissionsMiddleware([
   //   'ONBOARDING_PROGRESS_MANAGE',
   //   'ONBOARDING_PROGRESS_UPDATE_OWN',
   // ]),
-  upload.single('evidence'),
->>>>>>> cd76d22 (add rbac)
   assignmentsController.update,
 );
 router.put(
@@ -219,19 +215,19 @@ router.put(
 router.put(
   '/assignments/:id/start',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
+  // permissionsMiddleware('ONBOARDING_PROGRESS_UPDATE_OWN'),
   assignmentsController.start,
 );
 router.put(
   '/assignments/:id/reassign',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
+  // permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
   assignmentsController.reassign,
 );
 router.delete(
   '/assignments/:id',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
+  // permissionsMiddleware('ONBOARDING_PROGRESS_MANAGE'),
   assignmentsController.delete,
 );
 router.get(
