@@ -2783,6 +2783,7 @@ export class TimesheetsService {
     let businessTripDays = 0;
     let holidayDays = 0;
     let paidLeaveDays = 0;
+    let unpaidLeaveDays = 0;
     let nightShiftOfficialDays = 0;
     let nightShiftProbationDays = 0;
     let mealCount = 0;
@@ -2791,7 +2792,6 @@ export class TimesheetsService {
     // Aggregate Attendance
     empRecords.forEach((r) => {
       const val = Number(r.workValue) || 0;
-      if (val > 0) mealCount++;
 
       const ws = r.workingShift;
       const isNightShift = ws && (
@@ -2804,23 +2804,39 @@ export class TimesheetsService {
         else if (emp.employmentStatus === 'PROBATION') nightShiftProbationDays += val;
       }
 
+      let isWorkingDay = false;
+
       if (r.attendanceStatus === 'HOLIDAY') {
         holidayDays += val;
+        isWorkingDay = true;
       } else if (r.attendanceStatus === 'WAITING') {
         waitingDays += val;
       } else if (r.request && r.request.requestGroup) {
         const groupCode = r.request.requestGroup.code;
         if (groupCode === 'BUSINESS_TRIP' || groupCode === 'WORK_FROM_HOME') {
           businessTripDays += val;
-        } else if (groupCode === 'LEAVE' && r.request.isWorkedTime) {
-          paidLeaveDays += val;
+          isWorkingDay = true;
+        } else if (groupCode === 'LEAVE') {
+          if (r.request.isWorkedTime) {
+            paidLeaveDays += val;
+            isWorkingDay = true;
+          } else {
+            unpaidLeaveDays += val;
+          }
         } else {
           if (emp.employmentStatus === 'ACTIVE') officialDays += val;
           else if (emp.employmentStatus === 'PROBATION') probationDays += val;
+          isWorkingDay = true;
         }
       } else {
         if (emp.employmentStatus === 'ACTIVE') officialDays += val;
         else if (emp.employmentStatus === 'PROBATION') probationDays += val;
+        isWorkingDay = true;
+      }
+
+      // Count meal only if it's a working day (exclude unpaid leave and waiting)
+      if (val > 0 && isWorkingDay) {
+        mealCount++;
       }
     });
 
@@ -2860,7 +2876,8 @@ export class TimesheetsService {
       probationDays: Number(probationDays.toFixed(2)),
       businessTripDays: Number(businessTripDays.toFixed(2)),
       holidayDays: Number(holidayDays.toFixed(2)),
-      benefitLeaveDays: Number(paidLeaveDays.toFixed(2)), // Consistent name
+      benefitLeaveDays: Number(paidLeaveDays.toFixed(2)),
+      unpaidLeaveDays: Number(unpaidLeaveDays.toFixed(2)),
       totalMonthlyDays: Number(totalMonthlyDays.toFixed(2)),
       nightShiftOfficialDays: Number(nightShiftOfficialDays.toFixed(2)),
       nightShiftProbationDays: Number(nightShiftProbationDays.toFixed(2)),

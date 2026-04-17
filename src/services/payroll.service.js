@@ -12,7 +12,7 @@ import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-at
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
-import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 const PAYROLL_STATUS = {
     DRAFT: 'DRAFT',
@@ -103,6 +103,7 @@ export class PayrollService {
 
         // 3. Get summarized TimeSheets
         const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
+        console.log('DEBUG: typeof In =', typeof In);
         const timesheets = await timesheetRepo.find({
             where: {
                 month: payrollMonth,
@@ -194,15 +195,16 @@ export class PayrollService {
             const p1Amount = parseFloat(salary.baseSalary) || 0;
             const p21Amount = (parseFloat(salary.performanceSalary) || 0) * 0.8;
             const p22Amount = (parseFloat(salary.performanceSalary) || 0) * 0.2;
-            const p1p2Percentage = 100; // Default
-            const p3Percentage = 100; // Default
+            const existingDetail = await this.payrollDetailRepository.findByPayrollAndEmployee(payrollId, employee.id);
+            const p1p2Percentage = parseFloat(existingDetail?.p1p2Percentage ?? 100);
+            const p3Percentage = parseFloat(existingDetail?.p3Percentage ?? 100);
 
             const isProbation = employee.employmentStatus === 'PROBATION';
             const fullPayDays = (isProbation ? 0 : businessTripDays) + officialDays + holidayDays + benefitLeaveDays;
             const probationPayDays = (isProbation ? businessTripDays : 0) + probationDays;
 
             const earnedP1 = (p1Amount / (standardDays || 26)) * fullPayDays;
-            const earnedP21 = (p21Amount / (standardDays || 26)) * fullPayDays;
+            const earnedP21 = ((p21Amount / (standardDays || 26)) * fullPayDays) * (p1p2Percentage / 100);
             const earnedP22 = (p22Amount / (standardDays || 26)) * fullPayDays;
             const probationSalary = (p1Amount / (standardDays || 26)) * probationPayDays * 0.85; // 85% for probation base
 
@@ -220,7 +222,6 @@ export class PayrollService {
             const taxableIncome = totalOfficialSalary + earnedAllowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
             const taxDeduction = taxableIncome > 0 ? parseFloat(this._calcPIT(taxableIncome).toFixed(2)) : 0;
 
-            const existingDetail = await this.payrollDetailRepository.findByPayrollAndEmployee(payrollId, employee.id);
             const bonus = parseFloat(existingDetail?.bonus || 0);
             const penalty = parseFloat(existingDetail?.penalty || 0);
             const deduction = parseFloat(existingDetail?.deduction || 0);
@@ -249,8 +250,8 @@ export class PayrollService {
                 otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight,
                 totalOtHours: otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight,
                 mealCount: Number(ts?.mealCount || 0),
-                // New Fields
-                p1Amount, p21Amount, p22Amount, p1p2Percentage, p3Percentage,
+                // Actual Paid (earned) Amounts per Workdays & KPI
+                p1Amount: earnedP1, p21Amount: earnedP21, p22Amount: earnedP22, p1p2Percentage, p3Percentage,
                 probationAmount: probationSalary,
                 socialInsurance, healthInsurance, unemploymentInsurance,
                 taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
@@ -299,6 +300,7 @@ export class PayrollService {
         const businessTripDays = dto.businessTripDays !== undefined ? parseFloat(dto.businessTripDays) : parseFloat(detail.businessTripDays || 0);
         const holidayDays = dto.holidayDays !== undefined ? parseFloat(dto.holidayDays) : parseFloat(detail.holidayDays || 0);
         const benefitLeaveDays = dto.benefitLeaveDays !== undefined ? parseFloat(dto.benefitLeaveDays) : parseFloat(detail.benefitLeaveDays || 0);
+        const p1p2Percentage = dto.p1p2Percentage !== undefined ? parseFloat(dto.p1p2Percentage) : parseFloat(detail.p1p2Percentage || 100);
 
         // Recalculate salary if attendance changed or other factors changed
         // This is a simplified version of autoCalculate logic
@@ -330,6 +332,7 @@ export class PayrollService {
             businessTripDays,
             holidayDays,
             benefitLeaveDays,
+            p1p2Percentage,
             netSalary,
             note: dto.note !== undefined ? dto.note : detail.note,
         });
