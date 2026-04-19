@@ -57,47 +57,55 @@ const seed = async () => {
   try {
     console.log('Syncing schema...');
     const SYNC_COLUMNS = [
-        { name: 'standard_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'official_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'probation_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'business_trip_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'holiday_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'benefit_leave_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'annual_leave_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'unpaid_leave_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'night_shift_official_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'night_shift_probation_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'waiting_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'meal_count', type: 'INT', default: '0' },
-        { name: 'used_leave_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'remaining_leave_days', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'ot_weekday', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'ot_weekday_night', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'ot_weekend', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'ot_weekend_night', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'ot_holiday', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'ot_holiday_night', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'total_ot_hours', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'p1_amount', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'p21_amount', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'p22_amount', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'probation_amount', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'p1p2_percentage', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'p3_percentage', type: 'DECIMAL(5,2)', default: '0' },
-        { name: 'social_insurance', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'health_insurance', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'unemployment_insurance', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'union_fee', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'party_fee', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'charity_fee', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'taxable_income_paid', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'other_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'other_non_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'company_union_fee', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'company_social_insurance', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'company_health_insurance', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'company_unemployment_insurance', type: 'DECIMAL(15,2)', default: '0' },
-        { name: 'total_hr_cost', type: 'DECIMAL(15,2)', default: '0' }
+      { name: 'standard_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'official_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'probation_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'business_trip_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'holiday_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'benefit_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'annual_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'unpaid_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'night_shift_official_days', type: 'DECIMAL(5,2)', default: '0' },
+      {
+        name: 'night_shift_probation_days',
+        type: 'DECIMAL(5,2)',
+        default: '0',
+      },
+      { name: 'waiting_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'meal_count', type: 'INT', default: '0' },
+      { name: 'used_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'remaining_leave_days', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'ot_weekday', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'ot_weekday_night', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'ot_weekend', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'ot_weekend_night', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'ot_holiday', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'ot_holiday_night', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'total_ot_hours', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'p1_amount', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'p21_amount', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'p22_amount', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'probation_amount', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'p1p2_percentage', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'p3_percentage', type: 'DECIMAL(5,2)', default: '0' },
+      { name: 'social_insurance', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'health_insurance', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'unemployment_insurance', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'union_fee', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'party_fee', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'charity_fee', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'taxable_income_paid', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'other_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'other_non_taxable_income', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'company_union_fee', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'company_social_insurance', type: 'DECIMAL(15,2)', default: '0' },
+      { name: 'company_health_insurance', type: 'DECIMAL(15,2)', default: '0' },
+      {
+        name: 'company_unemployment_insurance',
+        type: 'DECIMAL(15,2)',
+        default: '0',
+      },
+      { name: 'total_hr_cost', type: 'DECIMAL(15,2)', default: '0' },
     ];
 
     const existingColumnsResult = await dataSource.query(`
@@ -105,13 +113,17 @@ const seed = async () => {
         FROM information_schema.COLUMNS 
         WHERE TABLE_NAME = 'payroll_details' AND TABLE_SCHEMA = DATABASE()
     `);
-    const existingColumns = new Set(existingColumnsResult.map(c => c.COLUMN_NAME));
+    const existingColumns = new Set(
+      existingColumnsResult.map((c) => c.COLUMN_NAME),
+    );
 
     for (const col of SYNC_COLUMNS) {
-        if (!existingColumns.has(col.name)) {
-            console.log(`[Sync] Adding column ${col.name}...`);
-            await dataSource.query(`ALTER TABLE payroll_details ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.default}`);
-        }
+      if (!existingColumns.has(col.name)) {
+        console.log(`[Sync] Adding column ${col.name}...`);
+        await dataSource.query(
+          `ALTER TABLE payroll_details ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.default}`,
+        );
+      }
     }
 
     console.log('Seeding data...');
@@ -133,6 +145,16 @@ const seed = async () => {
       { permissionCode: 'EMPLOYEE_UPDATE', description: 'Update employees' },
       { permissionCode: 'EMPLOYEE_DELETE', description: 'Delete employees' },
       { permissionCode: 'EMPLOYEE_EXPORT', description: 'Export employees' },
+      {
+        permissionCode: 'ATTENDANCE_READ_OWN',
+        description: 'View own attendance records',
+        module: 'Attendance',
+      },
+      {
+        permissionCode: 'ATTENDANCE_FACE_DATA_READ_OWN',
+        description: 'View own face data',
+        module: 'Attendance',
+      },
       { permissionCode: 'TIMESHEET_READ', description: 'View timesheets' },
       {
         permissionCode: 'TIMESHEET_CREATE',
@@ -144,6 +166,11 @@ const seed = async () => {
         description: 'Lock/Unlock timesheets',
       },
       { permissionCode: 'TIMESHEET_EXPORT', description: 'Export timesheets' },
+      {
+        permissionCode: 'TIMESHEET_READ_OWN',
+        description: 'View own timesheets',
+        module: 'Timesheet',
+      },
       {
         permissionCode: 'HOLIDAY_READ',
         description: 'View holiday list',
@@ -167,6 +194,11 @@ const seed = async () => {
       {
         permissionCode: 'HOLIDAY_EXPORT',
         description: 'Export holidays',
+        module: 'Holiday',
+      },
+      {
+        permissionCode: 'HOLIDAY_READ_OWN',
+        description: 'View own holiday calendar',
         module: 'Holiday',
       },
 
@@ -288,6 +320,16 @@ const seed = async () => {
         module: 'Onboarding',
       },
       {
+        permissionCode: 'ONBOARDING_PROGRESS_READ_OWN',
+        description: 'View own onboarding progress',
+        module: 'Onboarding',
+      },
+      {
+        permissionCode: 'ONBOARDING_PROGRESS_UPDATE_OWN',
+        description: 'Update own onboarding progress',
+        module: 'Onboarding',
+      },
+      {
         permissionCode: 'ONBOARDING_TASK_READ',
         description: 'View onboarding tasks',
         module: 'Onboarding',
@@ -401,6 +443,11 @@ const seed = async () => {
         description: 'View shift schedules',
         module: 'Shift',
       },
+      {
+        permissionCode: 'SHIFT_READ_OWN',
+        description: 'View own working shifts',
+        module: 'Shift',
+      },
       // Payroll
       {
         permissionCode: 'PAYROLL_READ',
@@ -474,6 +521,11 @@ const seed = async () => {
         description: 'Delete overtime rule',
         module: 'Overtime',
       },
+      {
+        permissionCode: 'OVERTIME_RULE_READ_OWN',
+        description: 'View own overtime rules',
+        module: 'Overtime',
+      },
       // Penalties
       {
         permissionCode: 'PENALTY_READ',
@@ -493,6 +545,11 @@ const seed = async () => {
       {
         permissionCode: 'PENALTY_DELETE',
         description: 'Delete penalty',
+        module: 'Penalty',
+      },
+      {
+        permissionCode: 'PENALTY_READ_OWN',
+        description: 'View own penalties',
         module: 'Penalty',
       },
       // Request Configuration
@@ -539,6 +596,11 @@ const seed = async () => {
       // Request Execution (Tạo / Duyệt Đơn Từ)
       {
         permissionCode: 'REQUEST_READ',
+        description: 'View own requests',
+        module: 'Request',
+      },
+      {
+        permissionCode: 'REQUEST_READ_OWN',
         description: 'View own requests',
         module: 'Request',
       },
@@ -669,6 +731,16 @@ const seed = async () => {
       'REQUEST_CANCEL',
       'REQUEST_APPROVE',
       'REQUEST_REVOKE',
+      'ATTENDANCE_READ_OWN',
+      'ATTENDANCE_FACE_DATA_READ_OWN',
+      'REQUEST_READ_OWN',
+      'SHIFT_READ_OWN',
+      'TIMESHEET_READ_OWN',
+      'HOLIDAY_READ_OWN',
+      'OVERTIME_RULE_READ_OWN',
+      'PENALTY_READ_OWN',
+      'ONBOARDING_PROGRESS_READ_OWN',
+      'ONBOARDING_PROGRESS_UPDATE_OWN',
     ];
     for (const code of managerPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -797,6 +869,16 @@ const seed = async () => {
       // Notifications
       'SEND_MANUAL_NOTIFICATION',
       'VIEW_NOTIFICATION_HISTORY',
+      'ATTENDANCE_READ_OWN',
+      'ATTENDANCE_FACE_DATA_READ_OWN',
+      'REQUEST_READ_OWN',
+      'SHIFT_READ_OWN',
+      'TIMESHEET_READ_OWN',
+      'HOLIDAY_READ_OWN',
+      'OVERTIME_RULE_READ_OWN',
+      'PENALTY_READ_OWN',
+      'ONBOARDING_PROGRESS_READ_OWN',
+      'ONBOARDING_PROGRESS_UPDATE_OWN',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -831,6 +913,16 @@ const seed = async () => {
       'REQUEST_CREATE',
       'REQUEST_SUBMIT',
       'REQUEST_CANCEL',
+      'ATTENDANCE_READ_OWN',
+      'ATTENDANCE_FACE_DATA_READ_OWN',
+      'REQUEST_READ_OWN',
+      'SHIFT_READ_OWN',
+      'TIMESHEET_READ_OWN',
+      'HOLIDAY_READ_OWN',
+      'OVERTIME_RULE_READ_OWN',
+      'PENALTY_READ_OWN',
+      'ONBOARDING_PROGRESS_READ_OWN',
+      'ONBOARDING_PROGRESS_UPDATE_OWN',
     ];
     for (const code of employeePerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -899,7 +991,7 @@ const seed = async () => {
     // 6. Create Job Grades
     const jobGradeRepo = dataSource.getRepository(JobGradeEntity);
     const jobGradesData = [
-      {        
+      {
         gradeName: 'Intern',
         minSalary: 0,
         maxSalary: 6000000,
