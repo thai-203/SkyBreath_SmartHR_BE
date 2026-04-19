@@ -18,6 +18,53 @@ export class OnboardingProgressService {
     this.employeesRepository = new EmployeesRepository();
   }
 
+  toDateOnly(dateInput) {
+    if (!dateInput) return null;
+    const date = new Date(dateInput);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  getDisplayStatusMeta(progress, now = new Date()) {
+    const currentStatus = String(progress?.overallStatus || '').toUpperCase();
+    const expectedEndDate = this.toDateOnly(progress?.expectedEndDate);
+    const today = this.toDateOnly(now);
+
+    if (!expectedEndDate || !today || currentStatus === 'COMPLETED') {
+      return {
+        isOverdue: false,
+        overdueDays: 0,
+        displayStatus: currentStatus || 'NOT_STARTED',
+      };
+    }
+
+    if (today <= expectedEndDate) {
+      return {
+        isOverdue: false,
+        overdueDays: 0,
+        displayStatus: currentStatus || 'NOT_STARTED',
+      };
+    }
+
+    const overdueMs = today.getTime() - expectedEndDate.getTime();
+    const overdueDays = Math.floor(overdueMs / (1000 * 60 * 60 * 24));
+
+    return {
+      isOverdue: true,
+      overdueDays,
+      displayStatus: 'OVERDUE',
+    };
+  }
+
+  enrichProgressDisplay(progress) {
+    if (!progress) return progress;
+    const statusMeta = this.getDisplayStatusMeta(progress);
+    return {
+      ...progress,
+      ...statusMeta,
+    };
+  }
+
   async findAll(queryDto) {
     // special case: if client requested page 1 we ignore the limit and return all
     // records (makes initial load show everything regardless of the supplied
@@ -37,7 +84,11 @@ export class OnboardingProgressService {
       this.progressRepository.count(queryDto),
     ]);
 
-    return new PaginatedResponseDto(progress, total, queryDto);
+    const enrichedProgress = progress.map((item) =>
+      this.enrichProgressDisplay(item),
+    );
+
+    return new PaginatedResponseDto(enrichedProgress, total, queryDto);
   }
 
   async findById(progressId) {
@@ -48,7 +99,7 @@ export class OnboardingProgressService {
           `Không tìm thấy tiến trình onboarding có ID ${progressId}.`,
       );
     }
-    return progress;
+    return this.enrichProgressDisplay(progress);
   }
 
   async findByEmployee(employeeId) {
@@ -59,7 +110,7 @@ export class OnboardingProgressService {
           `Không tìm thấy tiến trình onboarding cho nhân viên ${employeeId}`,
       );
     }
-    return progress;
+    return this.enrichProgressDisplay(progress);
   }
 
   async create(employeeId, planId, assignedMentorId = null) {

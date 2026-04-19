@@ -80,7 +80,7 @@ export class AttendanceService {
       shift: shift
         ? { startTime: shift.startTime, endTime: shift.endTime }
         : null,
-      totalWorkMinutes: shift?.totalWorkMinutes ?? 480,
+      totalWorkMinutes: attendanceRecord?.totalWorkMinutes ?? 480,
       workDate: today,
       attendance: {
         checkInTime: attendanceRecord?.checkInTime ?? null,
