@@ -3,7 +3,10 @@ import { OvertimeRulesController } from '../controllers/overtime-rules.controlle
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
-import { CreateOvertimeRuleDto, UpdateOvertimeRuleDto } from '../models/dto/overtime-rules/index.js';
+import {
+  CreateOvertimeRuleDto,
+  UpdateOvertimeRuleDto,
+} from '../models/dto/overtime-rules/index.js';
 
 const router = Router();
 const overtimeRulesController = new OvertimeRulesController();
@@ -16,38 +19,53 @@ const overtimeRulesController = new OvertimeRulesController();
  */
 
 // GET /overtime-rules
-router.get('/', authMiddleware, permissionsMiddleware('OVERTIME_RULE_READ'), overtimeRulesController.findAll);
+router.get(
+  '/',
+  authMiddleware,
+  permissionsMiddleware(['OVERTIME_RULE_READ', 'OVERTIME_RULE_READ_OWN']),
+  overtimeRulesController.findAll,
+);
 
 // GET /overtime-rules/:id
-router.get('/:id', authMiddleware, permissionsMiddleware('OVERTIME_RULE_READ'), overtimeRulesController.findById);
+router.get(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('OVERTIME_RULE_READ'),
+  overtimeRulesController.findById,
+);
 
 // POST /overtime-rules
 router.post(
-    '/',
-    authMiddleware,
-    permissionsMiddleware('OVERTIME_RULE_CREATE'),
-    validationMiddleware(CreateOvertimeRuleDto),
-    overtimeRulesController.create
+  '/',
+  authMiddleware,
+  permissionsMiddleware('OVERTIME_RULE_CREATE'),
+  validationMiddleware(CreateOvertimeRuleDto),
+  overtimeRulesController.create,
 );
 
 // PUT /overtime-rules/:id
 router.put(
-    '/:id',
-    authMiddleware,
-    permissionsMiddleware('OVERTIME_RULE_UPDATE'),
-    validationMiddleware(UpdateOvertimeRuleDto),
-    overtimeRulesController.update
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('OVERTIME_RULE_UPDATE'),
+  validationMiddleware(UpdateOvertimeRuleDto),
+  overtimeRulesController.update,
 );
 
 // PATCH /overtime-rules/:id/activate — kích hoạt policy DRAFT → ACTIVE
 router.patch(
-    '/:id/activate',
-    authMiddleware,
-    permissionsMiddleware('OVERTIME_RULE_UPDATE'),
-    overtimeRulesController.activate
+  '/:id/activate',
+  authMiddleware,
+  permissionsMiddleware('OVERTIME_RULE_UPDATE'),
+  overtimeRulesController.activate,
 );
 
 // DELETE /overtime-rules/:id
-router.delete('/:id', authMiddleware, permissionsMiddleware('OVERTIME_RULE_DELETE'), overtimeRulesController.remove);
+router.delete(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('OVERTIME_RULE_DELETE'),
+  overtimeRulesController.remove,
+);
 
 export const overtimeRulesRoutes = router;

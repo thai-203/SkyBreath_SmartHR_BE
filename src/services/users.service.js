@@ -13,6 +13,7 @@ import { RoleEntity } from '../models/entities/role.entity.js';
 import { AppDataSource } from '../database/data-source.js';
 import { UserRoleRepository } from '../repositories/user-role.repository.js';
 import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { RedisService } from './redis.service.js';
 import { MailService } from './mail.service.js';
 import { config } from '../config/env.config.js';
@@ -136,6 +137,10 @@ export class UsersService {
 
   async findByIdWithPassword(id) {
     return this.usersRepository.findByIdWithPassword(id);
+  }
+
+  async findByOtpRequestId(otpRequestId) {
+    return this.usersRepository.findOne({ otpRequestId });
   }
 
   async update(id, updateUserDto) {
@@ -315,27 +320,33 @@ export class UsersService {
       }
     }
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
+    // Generate OTP (6 digits) and otpRequestId (UUID)
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpRequestId = uuidv4();
 
-    const hashedToken = hashResetPasswordToken(resetToken);
+    // Hash OTP for storage
+    const hashedOtp = hashResetPasswordToken(otp);
 
-    const redisKey = `reset-password:${hashedToken}`;
+    // Save OTP and set mustChangePassword flag
+    await this.usersRepository.update(userId, {
+      otp: hashedOtp,
+      otpRequestId,
+      mustChangePassword: true,
+    });
 
-    await this.cacheService.set(redisKey, user.id);
+    // Create reset URL with otpRequestId and OTP
+    const resetUrl = `${config.frontEndUrl}/forgot-password?requestId=${otpRequestId}&otp=${otp}`;
 
-    // 4. Tạo link reset
-    const resetUrl = `${config.frontEndUrl}/forgot-password?token=${resetToken}`;
-
-    // 5. Gửi email
+    // Send email
     await this.mailService.AdminResetPasswordEmail(
       user.email,
       user.username,
       resetUrl,
     );
-    const temporaryPassword = crypto
-      .randomBytes(12)
-      .toString('base64')
-      .slice(0, 12);
-    this.update(userId, { password: temporaryPassword });
+
+    return { 
+      message: 'OTP đã được gửi đến email của nhân viên',
+      otpRequestId,
+    };
   }
 }

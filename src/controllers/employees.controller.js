@@ -52,6 +52,7 @@ export class EmployeesController {
   all = async (req, res, next) => {
     try {
       const queryDto = plainToInstance(EmployeeQueryDto, req.query);
+      console.log('debug employees all queryDto:', queryDto, 'skip:', queryDto.skip);
       const result = await this.employeesService.findAll(queryDto);
       ResponseUtil.sendResponse(
         res,
@@ -59,6 +60,8 @@ export class EmployeesController {
         result,
       );
     } catch (error) {
+      console.error('Error:', error);
+      if(error.query) console.error('SQL Query:', error.query);
       next(error);
     }
   };

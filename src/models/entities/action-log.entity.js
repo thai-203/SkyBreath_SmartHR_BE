@@ -50,6 +50,10 @@ export class ActionLogEntity extends BaseEntity {
   @Column({ name: 'error_message', type: 'text', nullable: true })
   errorMessage;
 
+  // Optional: store an evidence image URL/path (e.g. attendance failed photo)
+  @Column({ name: 'evidence_image_url', type: 'text', nullable: true })
+  evidenceImageUrl;
+
   @ManyToOne(() => UserEntity)
   @JoinColumn({ name: 'user_id' })
   user;

@@ -12,22 +12,10 @@ export class FaceDataController {
 
   registerFace = async (req, res, next) => {
     try {
-      const { employeeId } = req.body;
+      const userId = req.user.id;
       const files = req.files;
 
-      if (!employeeId) {
-        return ResponseUtil.sendResponse(
-          res,
-          'employeeId is required',
-          null,
-          400,
-        );
-      }
-
-      const result = await this.faceDataService.registerFaces(
-        employeeId,
-        files,
-      );
+      const result = await this.faceDataService.registerFaces(userId, files);
 
       ResponseUtil.sendResponse(res, 'OK', result);
     } catch (error) {
@@ -37,20 +25,10 @@ export class FaceDataController {
 
   getRegisteredFaces = async (req, res, next) => {
     try {
-      const employeeId = req.query.employeeId || req.body.employeeId;
+      const userId = req.user.id;
+      const faces = await this.faceDataService.getPersonalFaceData(userId);
 
-      if (!employeeId) {
-        return ResponseUtil.sendResponse(
-          res,
-          'employeeId is required',
-          null,
-          400,
-        );
-      }
-
-      const faces = await this.faceDataService.getPersonalFaceData(employeeId);
-
-      const facesDto = faces.map((face) => ({
+      const facesDto = faces?.map((face) => ({
         id: face.id,
         registeredAt: face.registeredAt,
         imageUrl: face.imageUrl,
@@ -153,11 +131,7 @@ export class FaceDataController {
   getManagementMetaData = async (req, res, next) => {
     try {
       const result = await this.faceDataService.getManagementMetaData();
-      ResponseUtil.sendResponse(
-        res,
-        'Get Meta Data Successfully',
-        result,
-      );
+      ResponseUtil.sendResponse(res, 'Get Meta Data Successfully', result);
     } catch (error) {
       next(error);
     }
