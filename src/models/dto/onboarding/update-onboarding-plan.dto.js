@@ -41,6 +41,12 @@ export class UpdateOnboardingPlanDto {
   @IsIn(['ACTIVE', 'DRAFT'])
   status;
 
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  durationDays;
+
   @IsOptional()
   @Allow()
   tasks;

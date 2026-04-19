@@ -263,11 +263,27 @@ export class OnboardingPlansService {
     return plan;
   }
 
-  async update(id, dto) {
+  async update(id, dto, userId = null) {
     const plan = await this.plansRepository.findById(id);
 
     if (!plan) {
       throw new Error('Kế hoạch onboarding không được tìm thấy');
+    }
+
+    let linkedProgress = null;
+    if (!plan.isTemplate) {
+      const progressRecords = await this.progressRepository.findAll({
+        planId: id,
+        skip: 0,
+        take: 100,
+      });
+      linkedProgress = progressRecords?.[0] || null;
+
+      if (linkedProgress && linkedProgress.overallStatus !== 'NOT_STARTED') {
+        throw new BadRequestException(
+          'Chỉ có thể chỉnh sửa kế hoạch khi onboarding chưa bắt đầu',
+        );
+      }
     }
 
     // validate planName if provided
@@ -299,14 +315,17 @@ export class OnboardingPlansService {
       dto.status = statusVal;
     }
 
-    Object.assign(plan, {
-      description: dto.description,
-      departmentId: dto.departmentId,
-      positionId: dto.positionId,
-      isTemplate: dto.isTemplate,
-      durationDays: dto.durationDays,
-      status: dto.status,
-    });
+    const patchData = {};
+    if (dto.description !== undefined) patchData.description = dto.description;
+    if (dto.departmentId !== undefined)
+      patchData.departmentId = dto.departmentId;
+    if (dto.positionId !== undefined) patchData.positionId = dto.positionId;
+    if (dto.isTemplate !== undefined) patchData.isTemplate = dto.isTemplate;
+    if (dto.durationDays !== undefined)
+      patchData.durationDays = dto.durationDays;
+    if (dto.status !== undefined) patchData.status = dto.status;
+
+    Object.assign(plan, patchData);
 
     // if template flag toggled on, require department & position
     if (plan.isTemplate) {
@@ -319,9 +338,39 @@ export class OnboardingPlansService {
 
     await this.plansRepository.save(plan);
 
-    const existingTasks = await this.tasksRepository.findByPlanId(plan.id);
+    const effectiveStartDate = dto.startDate
+      ? new Date(dto.startDate)
+      : linkedProgress?.startDate
+        ? new Date(linkedProgress.startDate)
+        : null;
 
-    const incomingTaskIds = (dto.tasks || [])
+    if (linkedProgress && effectiveStartDate) {
+      const expectedEndDate = new Date(effectiveStartDate);
+      expectedEndDate.setDate(
+        expectedEndDate.getDate() +
+          Number(dto.durationDays ?? plan.durationDays ?? 0),
+      );
+
+      await this.progressRepository.update(linkedProgress.id, {
+        startDate: effectiveStartDate,
+        expectedEndDate,
+        totalTasksCount: Array.isArray(dto.tasks)
+          ? dto.tasks.length
+          : linkedProgress.totalTasksCount,
+        updatedAt: new Date(),
+      });
+    }
+
+    if (!Array.isArray(dto.tasks)) {
+      return plan;
+    }
+
+    const existingTasks = await this.tasksRepository.findByPlanId(plan.id);
+    const existingTaskIdSet = new Set(
+      existingTasks.map((task) => Number(task.id)),
+    );
+
+    const incomingTaskIds = dto.tasks
       .filter((t) => t.id)
       .map((t) => Number(t.id));
 
@@ -336,8 +385,11 @@ export class OnboardingPlansService {
       );
     }
 
-    for (const taskDto of dto.tasks || []) {
-      if (taskDto.id) {
+    for (const taskDto of dto.tasks) {
+      const taskId = Number(taskDto.id);
+      const isExistingTask = taskDto.id && existingTaskIdSet.has(taskId);
+
+      if (isExistingTask) {
         await this.tasksRepository.update(taskDto.id, {
           description: taskDto.description,
           category: taskDto.category,
@@ -359,6 +411,69 @@ export class OnboardingPlansService {
 
         await this.tasksRepository.save(newTask);
       }
+    }
+
+    if (linkedProgress) {
+      const refreshedTasks = await this.tasksRepository.findByPlanId(plan.id);
+      const refreshedAssignments =
+        await this.taskAssignmentsRepository.findByProgressId(
+          linkedProgress.id,
+        );
+      const assignmentMap = new Map(
+        refreshedAssignments.map((assignment) => [
+          assignment.taskId,
+          assignment,
+        ]),
+      );
+      const taskIdSet = new Set(refreshedTasks.map((task) => task.id));
+
+      let accumulatedDays = 0;
+      for (const task of refreshedTasks) {
+        accumulatedDays += Number(task.estimatedDays || 1);
+        const dueDate = effectiveStartDate
+          ? new Date(effectiveStartDate)
+          : null;
+
+        if (dueDate) {
+          dueDate.setDate(dueDate.getDate() + accumulatedDays);
+        }
+
+        const existingAssignment = assignmentMap.get(task.id);
+
+        if (existingAssignment) {
+          await this.taskAssignmentsRepository.update(existingAssignment.id, {
+            assignedToEmployeeId: linkedProgress.employeeId,
+            dueDate,
+            status: existingAssignment.status || 'PENDING',
+            updatedAt: new Date(),
+          });
+        } else {
+          await this.taskAssignmentsRepository.create({
+            progressId: linkedProgress.id,
+            taskId: task.id,
+            assignedToEmployeeId: linkedProgress.employeeId,
+            assignedByUserId: userId || plan.createdBy,
+            status: 'PENDING',
+            assignedDate: new Date(),
+            dueDate,
+            createdAt: new Date(),
+          });
+        }
+      }
+
+      const assignmentsToRemove = refreshedAssignments.filter(
+        (assignment) => !taskIdSet.has(assignment.taskId),
+      );
+
+      for (const assignment of assignmentsToRemove) {
+        await this.taskAssignmentsRepository.delete(assignment.id);
+      }
+
+      await this.progressRepository.update(linkedProgress.id, {
+        completedTasksCount: 0,
+        progressPercentage: 0,
+        updatedAt: new Date(),
+      });
     }
 
     return plan;
