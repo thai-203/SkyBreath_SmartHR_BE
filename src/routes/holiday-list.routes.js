@@ -7,14 +7,64 @@ const router = express.Router();
 const controller = new HolidayListController();
 
 // UC - Holiday List
-router.get('/', authMiddleware, (req, res, next) => controller.findAll(req, res, next));
-router.get('/inherit-preview', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.getInheritPreview(req, res, next));
-router.get('/export', authMiddleware, permissionsMiddleware('HOLIDAY_EXPORT'), (req, res, next) => controller.export(req, res, next));
-router.get('/:id', authMiddleware, (req, res, next) => controller.findById(req, res, next));
-router.post('/', authMiddleware, permissionsMiddleware('HOLIDAY_CREATE'), (req, res, next) => controller.create(req, res, next));
-router.post('/bulk-create', authMiddleware, permissionsMiddleware('HOLIDAY_CREATE'), (req, res, next) => controller.bulkCreate(req, res, next));
-router.post('/send-notification', authMiddleware, permissionsMiddleware('HOLIDAY_READ'), (req, res, next) => controller.sendNotification(req, res, next));
-router.put('/:id', authMiddleware, permissionsMiddleware('HOLIDAY_UPDATE'), (req, res, next) => controller.update(req, res, next));
-router.delete('/:id', authMiddleware, permissionsMiddleware('HOLIDAY_DELETE'), (req, res, next) => controller.delete(req, res, next));
+router.get(
+  '/',
+  authMiddleware,
+  permissionsMiddleware(['HOLIDAY_READ', 'HOLIDAY_READ_OWN']),
+  (req, res, next) => controller.findAll(req, res, next),
+);
+
+router.get('/public', authMiddleware, (req, res, next) =>
+  controller.findAll(req, res, next),
+);
+
+router.get(
+  '/inherit-preview',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_READ'),
+  (req, res, next) => controller.getInheritPreview(req, res, next),
+);
+router.get(
+  '/export',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_EXPORT'),
+  (req, res, next) => controller.export(req, res, next),
+);
+router.get(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware(['HOLIDAY_READ', 'HOLIDAY_READ_OWN']),
+  (req, res, next) => controller.findById(req, res, next),
+);
+router.post(
+  '/',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_CREATE'),
+  (req, res, next) => controller.create(req, res, next),
+);
+router.post(
+  '/bulk-create',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_CREATE'),
+  (req, res, next) => controller.bulkCreate(req, res, next),
+);
+router.post(
+  '/send-notification',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_NOTIFICATION_SEND'),
+  (req, res, next) => controller.sendNotification(req, res, next),
+);
+router.put(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_UPDATE'),
+  (req, res, next) => controller.update(req, res, next),
+);
+router.delete(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_DELETE'),
+  (req, res, next) => controller.delete(req, res, next),
+);
 
 export const holidayListRoutes = router;

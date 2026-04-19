@@ -12,7 +12,8 @@ import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-at
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
-import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { PayrollConfigEntity } from '../models/entities/payroll-config.entity.js';
 
 const PAYROLL_STATUS = {
     DRAFT: 'DRAFT',
@@ -22,10 +23,6 @@ const PAYROLL_STATUS = {
 };
 
 // Insurance rates (standard Vietnam)
-const SOCIAL_INSURANCE_RATE = 0.08;  // 8%
-const HEALTH_INSURANCE_RATE = 0.015; // 1.5%
-const UNEMPLOYMENT_RATE = 0.01;      // 1%
-
 // PIT thresholds (VND)
 const PIT_PERSONAL_DEDUCTION = 11_000_000;
 
@@ -77,6 +74,15 @@ export class PayrollService {
         const startDate = new Date(payrollYear, payrollMonth - 1, 1);
         const endDate = new Date(payrollYear, payrollMonth, 0, 23, 59, 59);
 
+        // 0. Fetch global insurance configurations
+        const configRepo = AppDataSource.getRepository(PayrollConfigEntity);
+        const config = await configRepo.findOne({ where: { configKey: 'GENERAL', isDeleted: false } });
+        
+        const SOCIAL_RATE = (config?.socialInsuranceRate || 0) / 100;
+        const HEALTH_RATE = (config?.healthInsuranceRate || 0) / 100;
+        const UNEMPLOYMENT_RATE_VAL = (config?.unemploymentInsuranceRate || 0) / 100;
+        const UNION_RATE_VAL = (config?.unionFeeRate || 0) / 100;
+
         // 1. Get employees assigned to this payroll
         const existingDetails = await this.payrollDetailRepository.findByPayroll(payrollId);
         const employees = existingDetails.map(d => d.employee).filter(Boolean);
@@ -101,159 +107,141 @@ export class PayrollService {
         });
         const standardDays = this._countWorkingDays(payrollYear, payrollMonth, holidayDates);
 
-        // 3. Get Processed Attendance Records & OT Details
-        const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
-        const attendanceRecords = await processedRepo.createQueryBuilder('par')
-            .leftJoinAndSelect('par.request', 'req').leftJoinAndSelect('req.requestGroup', 'rg')
-            .where('MONTH(par.attendanceDate) = :m AND YEAR(par.attendanceDate) = :y', { m: payrollMonth, y: payrollYear })
-            .andWhere('par.employeeId IN (:...empIds)', { empIds }).getMany();
+        // 3. Get summarized TimeSheets
+        const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
+        console.log('DEBUG: typeof In =', typeof In);
+        const timesheets = await timesheetRepo.find({
+            where: {
+                month: payrollMonth,
+                year: payrollYear,
+                employeeId: In(empIds),
+                isDeleted: false
+            }
+        });
 
-        // 3b. Fetch all potentially active OT Rules for this period to resolve multipliers dynamically
+        // 3b. Fetch all potentially active OT Rules for resolving multipliers dynamically
         const ruleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
         const activeRules = await ruleRepo.find({
             where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false },
             relations: ['overtimeType'],
         });
         
-        // Also fetch department mappings for these rules
         const ruleDeptRepo = AppDataSource.getRepository(OvertimeRuleDepartmentEntity);
         const ruleDepts = await ruleDeptRepo.find({
             where: { isDeleted: false },
         });
 
-        const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
-        const otDetails = await otDetailRepo.createQueryBuilder('otd')
-            .leftJoinAndSelect('otd.request', 'req')
-            .leftJoinAndSelect('req.requestGroup', 'rg') // Join requestGroup to filter strictly by OVERTIME
-            .leftJoinAndSelect('otd.overtimeRule', 'rule')
-            .leftJoinAndSelect('rule.overtimeType', 'type')
-            .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', { m: payrollMonth, y: payrollYear })
-            .andWhere('req.status = :s', { s: 'APPROVED' })
-            .andWhere('rg.code = :groupCode', { groupCode: 'OVERTIME' })
-            .andWhere('req.employeeId IN (:...empIds)', { empIds }).getMany();
-
         // 4. Calculate each detail
         const details = [];
         for (const employee of employees) {
             const salaryRepo = AppDataSource.getRepository(EmployeeSalaryEntity);
-            const salary = await salaryRepo.findOne({
-                where: { employeeId: employee.id, salaryStatus: 'ACTIVE', isDeleted: false },
-                order: { effectiveFrom: 'DESC' },
+            const empSalaries = await salaryRepo.find({
+                where: { employeeId: employee.id, isDeleted: false },
+                order: { createdAt: 'DESC' },
             });
+            const preferred = ['ACTIVE', 'APPROVED', 'ACTIVE_MEMBER'];
+            const salary = empSalaries.find(s => preferred.includes(String(s.salaryStatus || '').trim().toUpperCase())) || empSalaries[0];
             if (!salary) continue;
 
-            const empAttendance = attendanceRecords.filter(r => r.employeeId === employee.id);
-            const empOt = otDetails.filter(ot => ot.request?.employeeId === employee.id);
+            // 5. Use prioritized data from TimeSheetEntity
+            const ts = timesheets.find(t => t.employeeId === employee.id);
+            if (!ts) {
+                // If the user wants to ONLY calculate for those with timesheets, 
+                // we skip employees who aren't found in the summarized timesheet table.
+                continue;
+            }
+            
+            // Granular fields (fallback to 0 if no timesheet generated)
+            const officialDays = Number(ts?.officialDays || 0);
+            const probationDays = Number(ts?.probationDays || 0);
+            const businessTripDays = Number(ts?.businessTripDays || 0);
+            const holidayDays = Number(ts?.holidayDays || 0);
+            const benefitLeaveDays = Number(ts?.benefitLeaveDays || 0);
+            const nightShiftOfficialDays = Number(ts?.nightShiftOfficialDays || 0);
+            const nightShiftProbationDays = Number(ts?.nightShiftProbationDays || 0);
+            
+            // OT breakdown from Timesheet
+            const otWeekday = Number(ts?.otWeekday || 0);
+            const otWeekdayNight = Number(ts?.otWeekdayNight || 0);
+            const otWeekend = Number(ts?.otWeekend || 0);
+            const otWeekendNight = Number(ts?.otWeekendNight || 0);
+            const otHoliday = Number(ts?.otHoliday || 0);
+            const otHolidayNight = Number(ts?.otHolidayNight || 0);
+            const totalOtHours = Number(ts?.overtimeHours || (otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight));
 
-            // 5. Aggregate attendance
-            let officialDays = 0, probationDays = 0, businessTripDays = 0, holidayDays = 0, paidLeaveDays = 0;
-            empAttendance.forEach(r => {
-                const val = Number(r.workValue) || 0;
-                if (r.attendanceStatus === 'HOLIDAY') holidayDays += val;
-                else if (r.request?.requestGroup) {
-                    const group = r.request.requestGroup.code;
-                    if (group === 'BUSINESS_TRIP' || group === 'WORK_FROM_HOME') businessTripDays += val;
-                    else if (group === 'LEAVE' && r.request.isWorkedTime) paidLeaveDays += val;
-                    else if (employee.employmentStatus === 'ACTIVE') officialDays += val;
-                    else probationDays += val;
-                } else {
-                    if (employee.employmentStatus === 'ACTIVE') officialDays += val;
-                    else probationDays += val;
-                }
-            });
-
-            // 6. Aggregate OT
+            // 6. Calculate Overtime Pay
+            // We still need individual request details if we want completely accurate multiplier resolution, 
+            // but the User wants payroll from "timesheet data table". 
+            // If the table shows breakdown, we should use standard multipliers for these breakdowns.
+            const hourlyRate = (parseFloat(salary.baseSalary) || 0) / (standardDays || (ts?.standardDays > 0 ? ts.standardDays : 26)) / 8;
+            
+            // Standard multipliers if specific rule not found
             let overtimePay = 0;
-            let otWeekday = 0, otWeekdayNight = 0, otWeekend = 0, otWeekendNight = 0, otHoliday = 0, otHolidayNight = 0;
+            
+            // Helper to get multiplier for a type
+            const getMultiplier = (typeCode, isNight) => {
+                const rule = activeRules.find(r => r.overtimeType?.code === typeCode && 
+                             (ruleDepts.filter(rd => rd.overtimeRuleId === r.id).length === 0 || 
+                              ruleDepts.some(rd => rd.overtimeRuleId === r.id && rd.departmentId === employee.departmentId)));
+                let m = rule ? parseFloat(rule.salaryMultiplier || 1.5) : (typeCode === 'WEEKDAY' ? 1.5 : (typeCode === 'WEEKEND' ? 2.0 : 3.0));
+                if (isNight) m += 0.1; // Example: night shift bonus 10% (adjust per business rule)
+                return m;
+            };
 
-            const hourlyRate = (parseFloat(salary.baseSalary) || 0) / (standardDays || 26) / 8;
+            overtimePay += otWeekday * hourlyRate * getMultiplier('WEEKDAY', false);
+            overtimePay += otWeekdayNight * hourlyRate * getMultiplier('WEEKDAY', true);
+            overtimePay += otWeekend * hourlyRate * getMultiplier('WEEKEND', false);
+            overtimePay += otWeekendNight * hourlyRate * getMultiplier('WEEKEND', true);
+            overtimePay += otHoliday * hourlyRate * getMultiplier('HOLIDAY', false);
+            overtimePay += otHolidayNight * hourlyRate * getMultiplier('HOLIDAY', true);
 
-            empOt.forEach(ot => {
-                const hours = Number(ot.totalHours) || 0;
-                
-                // Refined Multiplier Logic per Requirements
-                // 1. Priority: Direct linked rule (snapshot)
-                // 2. Fallback: Search for active rule by overtimeTypeId + workDate + department
-                let multiplier = 1.5;
-                let typeCode = 'WEEKDAY';
-                
-                let effectiveRule = ot.overtimeRule;
-                if (!effectiveRule) {
-                    const typeId = ot.overtimeTypeId || ot.request?.overtimeTypeId;
-                    if (typeId) {
-                        const workDate = new Date(ot.workDate);
-                        effectiveRule = activeRules.find(r => {
-                            if (r.overtimeTypeId !== typeId) return false;
-                            const from = r.effectiveFrom ? new Date(r.effectiveFrom) : null;
-                            const to = r.effectiveTo ? new Date(r.effectiveTo) : null;
-                            if (from && workDate < from) return false;
-                            if (to && workDate > to) return false;
-                            const depts = ruleDepts.filter(rd => rd.overtimeRuleId === r.id).map(rd => rd.departmentId);
-                            if (depts.length > 0 && !depts.includes(employee.departmentId)) return false;
-                            return true;
-                        });
-                    }
-                }
-
-                if (effectiveRule) {
-                    multiplier = parseFloat(ot.rateMultiplier || effectiveRule.salaryMultiplier || 1.5);
-                    typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
-                } else if (ot.rateMultiplier) {
-                    multiplier = parseFloat(ot.rateMultiplier);
-                }
-
-                overtimePay += hours * hourlyRate * multiplier;
-
-                const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
-                if (typeCode === 'WEEKDAY') { if (isNight) otWeekdayNight += hours; else otWeekday += hours; }
-                else if (typeCode === 'WEEKEND') { if (isNight) otWeekendNight += hours; else otWeekend += hours; }
-                else if (typeCode === 'HOLIDAY') { if (isNight) otHolidayNight += hours; else otHoliday += hours; }
-            });
-
-            const workingDays = officialDays + probationDays + businessTripDays + holidayDays + paidLeaveDays;
+            const workingDays = officialDays + probationDays + businessTripDays + holidayDays + benefitLeaveDays;
             
             // 7. Salary calculation bases
             const p1Amount = parseFloat(salary.baseSalary) || 0;
-            const p21Amount = (parseFloat(salary.performanceSalary) || 0) * 0.8;
-            const p22Amount = (parseFloat(salary.performanceSalary) || 0) * 0.2;
-            const p1p2Percentage = 100; // Default
-            const p3Percentage = 100; // Default
+            const performanceSalaryBase = parseFloat(existingDetail?.performanceSalary) > 0 
+                ? parseFloat(existingDetail.performanceSalary) 
+                : (parseFloat(salary.performanceSalary) || 0);
+
+            const p21Base = performanceSalaryBase * 0.8;
+            const p22Base = performanceSalaryBase * 0.2;
+
+            const p1p2Percentage = parseFloat(existingDetail?.p1p2Percentage ?? 100);
+            const p3Percentage = parseFloat(existingDetail?.p3Percentage ?? 100);
 
             const isProbation = employee.employmentStatus === 'PROBATION';
-            const fullPayDays = (isProbation ? 0 : businessTripDays) + officialDays + holidayDays + paidLeaveDays;
+            const fullPayDays = (isProbation ? 0 : businessTripDays) + officialDays + holidayDays + benefitLeaveDays;
             const probationPayDays = (isProbation ? businessTripDays : 0) + probationDays;
 
             const earnedP1 = (p1Amount / (standardDays || 26)) * fullPayDays;
-            const earnedP21 = (p21Amount / (standardDays || 26)) * fullPayDays;
-            const earnedP22 = (p22Amount / (standardDays || 26)) * fullPayDays;
+            const earnedP21 = ((p21Base / (standardDays || 26)) * fullPayDays) * (p1p2Percentage / 100);
+            const earnedP22 = ((p22Base / (standardDays || 26)) * fullPayDays) * (p3Percentage / 100);
             const probationSalary = (p1Amount / (standardDays || 26)) * probationPayDays * 0.85; // 85% for probation base
 
             const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
             
-            const allowances = (parseFloat(salary.lunchAllowance || 0) + parseFloat(salary.fuelAllowance || 0) + parseFloat(salary.phoneAllowance || 0) + parseFloat(salary.otherAllowance || 0));
+            const totalAllowances = (parseFloat(salary.lunchAllowance || 0) + parseFloat(salary.fuelAllowance || 0) + parseFloat(salary.phoneAllowance || 0) + parseFloat(salary.otherAllowance || 0));
+            const earnedAllowances = (totalAllowances / (standardDays || 26)) * workingDays;
             const insuranceBase = Math.min(parseFloat(salary.baseSalary) || 0, 20 * 2_340_000);
             
-            const socialInsurance = parseFloat((insuranceBase * SOCIAL_INSURANCE_RATE).toFixed(2));
-            const healthInsurance = parseFloat((insuranceBase * HEALTH_INSURANCE_RATE).toFixed(2));
-            const unemploymentInsurance = parseFloat((insuranceBase * UNEMPLOYMENT_RATE).toFixed(2));
-            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
+            const socialInsurance = parseFloat((insuranceBase * SOCIAL_RATE).toFixed(2));
+            const healthInsurance = parseFloat((insuranceBase * HEALTH_RATE).toFixed(2));
+            const unemploymentInsurance = parseFloat((insuranceBase * UNEMPLOYMENT_RATE_VAL).toFixed(2));
+            const unionFee = parseFloat((insuranceBase * UNION_RATE_VAL).toFixed(2));
+            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
 
-            const taxableIncome = totalOfficialSalary + allowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
+            const taxableIncome = totalOfficialSalary + earnedAllowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
             const taxDeduction = taxableIncome > 0 ? parseFloat(this._calcPIT(taxableIncome).toFixed(2)) : 0;
 
-            const existingDetail = await this.payrollDetailRepository.findByPayrollAndEmployee(payrollId, employee.id);
             const bonus = parseFloat(existingDetail?.bonus || 0);
             const penalty = parseFloat(existingDetail?.penalty || 0);
             const deduction = parseFloat(existingDetail?.deduction || 0);
 
             // NET SALARY AGREEMENT: Deductions (Insurance/Tax) are NOT subtracted from netSalary
             // They are borne by the company.
-            const netSalary = parseFloat((totalOfficialSalary + allowances + overtimePay + bonus - penalty - deduction).toFixed(2));
+            const netSalary = parseFloat((totalOfficialSalary + earnedAllowances + overtimePay + bonus - penalty - deduction).toFixed(2));
 
             // Company Costs
-            const companySocialInsurance = parseFloat((insuranceBase * 0.175).toFixed(2));
-            const companyHealthInsurance = parseFloat((insuranceBase * 0.03).toFixed(2));
-            const companyUnemploymentInsurance = parseFloat((insuranceBase * 0.01).toFixed(2));
             const companyUnionFee = parseFloat((insuranceBase * 0.02).toFixed(2));
             const totalHrCost = netSalary + insuranceDeduction + taxDeduction + companySocialInsurance + companyHealthInsurance + companyUnemploymentInsurance + companyUnionFee;
 
@@ -261,19 +249,29 @@ export class PayrollService {
                 payrollId, employeeId: employee.id,
                 workingDays, baseSalary: p1Amount, overtimePay: parseFloat(overtimePay.toFixed(2)),
                 bonus, penalty, deduction, insuranceDeduction, taxDeduction, netSalary,
+                allowanceAmount: parseFloat(earnedAllowances.toFixed(2)),
                 standardDays, officialDays, probationDays, businessTripDays, holidayDays,
-                benefitLeaveDays: paidLeaveDays,
+                benefitLeaveDays: benefitLeaveDays,
+                waitingDays: Number(ts?.waitingDays || 0),
+                nightShiftOfficialDays,
+                nightShiftProbationDays,
                 otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight,
                 totalOtHours: otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight,
-                // New Fields
-                p1Amount, p21Amount, p22Amount, p1p2Percentage, p3Percentage,
+                mealCount: Number(ts?.mealCount || 0),
+                // Actual Paid (earned) Amounts per Workdays & KPI
+                p1Amount: earnedP1, p21Amount: earnedP21, p22Amount: earnedP22, p1p2Percentage, p3Percentage,
                 probationAmount: probationSalary,
                 socialInsurance, healthInsurance, unemploymentInsurance,
+                socialInsurancePercentage: parseFloat((SOCIAL_RATE * 100).toFixed(2)),
+                healthInsurancePercentage: parseFloat((HEALTH_RATE * 100).toFixed(2)),
+                unemploymentInsurancePercentage: parseFloat((UNEMPLOYMENT_RATE_VAL * 100).toFixed(2)),
+                unionFeePercentage: parseFloat((UNION_RATE_VAL * 100).toFixed(2)),
                 taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
                 companySocialInsurance,
                 companyHealthInsurance,
                 companyUnemploymentInsurance,
                 companyUnionFee,
+                unionFee: parseFloat(unionFee.toFixed(2)),
                 totalHrCost: parseFloat(totalHrCost.toFixed(2))
             };
 
@@ -307,19 +305,82 @@ export class PayrollService {
         const deduction = dto.deduction !== undefined ? parseFloat(dto.deduction) : parseFloat(detail.deduction);
         const penalty = dto.penalty !== undefined ? parseFloat(dto.penalty) : parseFloat(detail.penalty);
 
-        // NET SALARY AGREEMENT: Deductions (Insurance/Tax) are NOT subtracted from netSalary
+        // Standard attendance fields
+        const standardDays = dto.standardDays !== undefined ? parseFloat(dto.standardDays) : parseFloat(detail.standardDays || 26);
+        const workingDays = dto.workingDays !== undefined ? parseFloat(dto.workingDays) : parseFloat(detail.workingDays || 0);
+        const officialDays = dto.officialDays !== undefined ? parseFloat(dto.officialDays) : parseFloat(detail.officialDays || 0);
+        const probationDays = dto.probationDays !== undefined ? parseFloat(dto.probationDays) : parseFloat(detail.probationDays || 0);
+        const businessTripDays = dto.businessTripDays !== undefined ? parseFloat(dto.businessTripDays) : parseFloat(detail.businessTripDays || 0);
+        const holidayDays = dto.holidayDays !== undefined ? parseFloat(dto.holidayDays) : parseFloat(detail.holidayDays || 0);
+        const benefitLeaveDays = dto.benefitLeaveDays !== undefined ? parseFloat(dto.benefitLeaveDays) : parseFloat(detail.benefitLeaveDays || 0);
+        const p3Percentage = dto.p3Percentage !== undefined ? parseFloat(dto.p3Percentage) : parseFloat(detail.p3Percentage || 100);
+        const performanceSalary = dto.performanceSalary !== undefined ? parseFloat(dto.performanceSalary) : parseFloat(detail.performanceSalary || 0);
+
+        // Individual Insurance & Tax manual overrides
+        // Fallback chain: DTO -> Existing Detail -> Global Config -> Default Values
+        const configRepo = AppDataSource.getRepository(PayrollConfigEntity);
+        const config = await configRepo.findOne({ where: { configKey: 'GENERAL', isDeleted: false } });
+
+        const socialInsurancePercentage = dto.socialInsurancePercentage !== undefined ? parseFloat(dto.socialInsurancePercentage) : (parseFloat(detail.socialInsurancePercentage) || (config?.socialInsuranceRate || 0));
+        const healthInsurancePercentage = dto.healthInsurancePercentage !== undefined ? parseFloat(dto.healthInsurancePercentage) : (parseFloat(detail.healthInsurancePercentage) || (config?.healthInsuranceRate || 0));
+        const unemploymentInsurancePercentage = dto.unemploymentInsurancePercentage !== undefined ? parseFloat(dto.unemploymentInsurancePercentage) : (parseFloat(detail.unemploymentInsurancePercentage) || (config?.unemploymentInsuranceRate || 0));
+        const unionFeePercentage = dto.unionFeePercentage !== undefined ? parseFloat(dto.unionFeePercentage) : (parseFloat(detail.unionFeePercentage) || (config?.unionFeeRate || 0));
+        
+        const insuranceBase = Math.min(parseFloat(detail.baseSalary) || 0, 20 * 2_340_000);
+        const socialInsurance = parseFloat((insuranceBase * (socialInsurancePercentage / 100)).toFixed(2));
+        const healthInsurance = parseFloat((insuranceBase * (healthInsurancePercentage / 100)).toFixed(2));
+        const unemploymentInsurance = parseFloat((insuranceBase * (unemploymentInsurancePercentage / 100)).toFixed(2));
+        const unionFee = parseFloat((insuranceBase * (unionFeePercentage / 100)).toFixed(2));
+        
+        const taxDeduction = dto.taxDeduction !== undefined ? parseFloat(dto.taxDeduction) : parseFloat(detail.taxDeduction || 0);
+        
+        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
+
+        // Recalculate salary if attendance changed or other factors changed
+        // This is a simplified version of autoCalculate logic
+        const p1Amount = parseFloat(detail.baseSalary) || 0;
+        const hourlyRate = p1Amount / (standardDays || 26) / 8;
+        
+        // Use auto-calculate logic for netSalary if needed, otherwise use simple sum
+        // For individual updates, we'll keep it simple or allow a full recalculation call
         const netSalary = parseFloat((
-            parseFloat(detail.baseSalary) +
-            parseFloat(detail.overtimePay) +
+            parseFloat(detail.p1Amount || 0) +
+            parseFloat(detail.overtimePay || 0) +
+            parseFloat(detail.p21Amount || 0) +
+            parseFloat(detail.p22Amount || 0) +
+            parseFloat(detail.probationAmount || 0) +
+            parseFloat(detail.allowanceAmount || 0) +
             bonus -
             deduction -
-            penalty
+            penalty -
+            insuranceDeduction -
+            taxDeduction
         ).toFixed(2));
 
         return this.payrollDetailRepository.update(detailId, {
             bonus,
             deduction,
             penalty,
+            standardDays,
+            workingDays,
+            officialDays,
+            probationDays,
+            businessTripDays,
+            holidayDays,
+            benefitLeaveDays,
+            p1p2Percentage,
+            p3Percentage,
+            performanceSalary,
+            socialInsurance,
+            healthInsurance,
+            unemploymentInsurance,
+            unionFee,
+            socialInsurancePercentage,
+            healthInsurancePercentage,
+            unemploymentInsurancePercentage,
+            unionFeePercentage,
+            insuranceDeduction,
+            taxDeduction,
             netSalary,
             note: dto.note !== undefined ? dto.note : detail.note,
         });
@@ -656,7 +717,10 @@ export class PayrollService {
             const rows = [
                 ['Chỉ tiêu', 'Số tiền (VND)'],
                 ['Ngày công thực tế', detail.workingDays || 0],
-                ['Lương cơ bản', parseFloat(detail.baseSalary || 0)],
+                ['Lương cơ bản (P1)', parseFloat(detail.baseSalary || 0)],
+                ['Lương hiệu năng (P2)', parseFloat(Number(detail.p21Amount || 0) + Number(detail.p22Amount || 0))],
+                ['Lương thử việc', parseFloat(detail.probationAmount || 0)],
+                ['Phụ cấp', parseFloat(detail.allowanceAmount || 0)],
                 ['Phụ cấp làm thêm giờ', parseFloat(detail.overtimePay || 0)],
                 ['Thưởng', parseFloat(detail.bonus || 0)],
                 ['Khấu trừ', -parseFloat(detail.deduction || 0)],
@@ -748,7 +812,10 @@ export class PayrollService {
             <table style="width: 100%; border-collapse: collapse;">
                 <tr style="background: #f9fafb;"><th style="text-align:left;padding:8px;border:1px solid #e5e7eb;">Chỉ tiêu</th><th style="text-align:right;padding:8px;border:1px solid #e5e7eb;">Số tiền</th></tr>
                 <tr><td style="padding:8px;border:1px solid #e5e7eb;">Ngày công thực tế</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">${detail.workingDays} ngày</td></tr>
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương cơ bản</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">${fmt(detail.baseSalary)} ₫</td></tr>
+                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương cơ bản (P1)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">${fmt(detail.baseSalary)} ₫</td></tr>
+                ${(Number(detail.p21Amount) + Number(detail.p22Amount)) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương hiệu năng (P2)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(Number(detail.p21Amount) + Number(detail.p22Amount))} ₫</td></tr>` : ''}
+                ${Number(detail.probationAmount) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương thử việc</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.probationAmount)} ₫</td></tr>` : ''}
+                ${Number(detail.allowanceAmount) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Phụ cấp</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.allowanceAmount)} ₫</td></tr>` : ''}
                 <tr><td style="padding:8px;border:1px solid #e5e7eb;">Phụ cấp làm thêm giờ</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.overtimePay)} ₫</td></tr>
                 <tr><td style="padding:8px;border:1px solid #e5e7eb;">Thưởng</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.bonus)} ₫</td></tr>
                 <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Khấu trừ</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.deduction)} ₫</td></tr>

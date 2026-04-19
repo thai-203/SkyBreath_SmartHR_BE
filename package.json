@@ -12,7 +12,8 @@
     "build": "babel src -d dist",
     "lint": "eslint \"src/**/*.js\" --fix",
     "test": "jest",
-    "seed": "babel-node src/database/seeds/initial-seed.js"
+    "seed": "babel-node src/database/seeds/initial-seed.js",
+    "seed:permissions": "babel-node src/database/seeds/permissions-seed.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

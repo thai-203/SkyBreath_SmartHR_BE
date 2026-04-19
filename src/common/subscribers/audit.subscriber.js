@@ -14,6 +14,8 @@ export class AuditSubscriber {
     try {
       const ctx = getRequestContext();
       const { actionType: defaultActionType, ...restPayload } = payload;
+      console.log(ctx);
+      
 
       await event.manager.insert(ActionLogEntity, {
         actionType: ctx?.customAction ?? defaultActionType,
@@ -22,6 +24,7 @@ export class AuditSubscriber {
         ...restPayload,
         status: 'SUCCESS',
         errorMessage: null,
+        evidenceImageUrl: ctx?.evidenceImageUrl ?? null,
         userId: ctx?.userId ?? null,
         requestIp: ctx?.ip ?? null,
         userAgent: ctx?.userAgent ?? null,

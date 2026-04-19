@@ -3,7 +3,10 @@ import { PenaltiesController } from '../controllers/penalties.controller.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
-import { CreatePenaltyDto, UpdatePenaltyDto } from '../models/dto/penalties/index.js';
+import {
+  CreatePenaltyDto,
+  UpdatePenaltyDto,
+} from '../models/dto/penalties/index.js';
 
 const router = Router();
 const penaltiesController = new PenaltiesController();
@@ -56,10 +59,10 @@ const penaltiesController = new PenaltiesController();
  *         description: Thành công
  */
 router.get(
-    '/',
-    authMiddleware,
-    permissionsMiddleware('PENALTY_READ'),
-    penaltiesController.findAll
+  '/',
+  authMiddleware,
+  permissionsMiddleware(['PENALTY_READ', 'PENALTY_READ_OWN']),
+  penaltiesController.findAll,
 );
 
 /**
@@ -81,10 +84,10 @@ router.get(
  *         description: Thành công
  */
 router.get(
-    '/:id',
-    authMiddleware,
-    permissionsMiddleware('PENALTY_READ'),
-    penaltiesController.findById
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('PENALTY_READ'),
+  penaltiesController.findById,
 );
 
 /**
@@ -137,11 +140,11 @@ router.get(
  *         description: Tạo thành công
  */
 router.post(
-    '/',
-    authMiddleware,
-    permissionsMiddleware('PENALTY_CREATE'),
-    validationMiddleware(CreatePenaltyDto),
-    penaltiesController.create
+  '/',
+  authMiddleware,
+  permissionsMiddleware('PENALTY_CREATE'),
+  validationMiddleware(CreatePenaltyDto),
+  penaltiesController.create,
 );
 
 /**
@@ -190,11 +193,11 @@ router.post(
  *         description: Cập nhật thành công
  */
 router.put(
-    '/:id',
-    authMiddleware,
-    permissionsMiddleware('PENALTY_UPDATE'),
-    validationMiddleware(UpdatePenaltyDto),
-    penaltiesController.update
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('PENALTY_UPDATE'),
+  validationMiddleware(UpdatePenaltyDto),
+  penaltiesController.update,
 );
 
 /**
@@ -216,10 +219,10 @@ router.put(
  *         description: Xóa thành công
  */
 router.delete(
-    '/:id',
-    authMiddleware,
-    permissionsMiddleware('PENALTY_DELETE'),
-    penaltiesController.remove
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('PENALTY_DELETE'),
+  penaltiesController.remove,
 );
 
 export const penaltiesRoutes = router;

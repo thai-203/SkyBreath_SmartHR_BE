@@ -21,7 +21,11 @@ export class FaceDataService {
 
   // ── Register ──────────────────────────────────────────────────────────
 
-  async registerFaces(employeeId, files) {
+  async registerFaces(userId, files) {
+    const employee = await this.employeeRepository.findByUserId(userId);
+    if (!employee) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
     if (!files || files.length === 0) {
       throw new BadRequestException('Images required');
     }
@@ -93,12 +97,10 @@ export class FaceDataService {
     // 7. Lưu tất cả embeddings vào DB
     const faceData = embeddings.map((embedding, index) => {
       const file = files[Math.min(index, files.length - 1)];
-      const imageUrl = file
-        ? `/uploads/${path.relative('uploads', file.path).replace(/\\/g, '/')}`
-        : null;
+      const imageUrl = file?.secure_url || file?.path || null;
 
       return {
-        employeeId,
+        employeeId: employee.id,
         faceVector: JSON.stringify(embedding),
         imageUrl,
       };
@@ -123,12 +125,18 @@ export class FaceDataService {
     return employee;
   }
 
-  async getPersonalFaceData(employeeId) {
-    const employee = await this.faceDataRepository.findByEmployeeId(employeeId);
+  async getPersonalFaceData(userId) {
+    const employee = await this.employeeRepository.findByUserId(userId);
     if (!employee) {
+      throw new NotFoundException('Không tìm thấy nhân viên');
+    }
+    const employeeId = employee.id;
+
+    const faceData = await this.faceDataRepository.findByEmployeeId(employeeId);
+    if (!faceData) {
       throw new NotFoundException('Không tìm thấy dữ liệu sinh trắc');
     }
-    return employee;
+    return faceData;
   }
 
   async getAllFaces(queryDto) {

@@ -142,7 +142,7 @@ export class OnboardingPlansController {
         whitelist: true,
         forbidNonWhitelisted: false,
       });
-      const plan = await this.plansService.update(id, updateDto);
+      const plan = await this.plansService.update(id, updateDto, req.user?.id);
       res.status(200).json({
         success: true,
         data: plan,

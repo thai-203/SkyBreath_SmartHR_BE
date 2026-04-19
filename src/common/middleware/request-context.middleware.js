@@ -6,6 +6,7 @@ export function requestContextMiddleware(req, res, next) {
     ip: req.ip,
     userAgent: req.headers['user-agent'] ?? null,
     customAction: null,
+    evidenceImageUrl: null,
   };
 
   requestContext.run(context, () => next());

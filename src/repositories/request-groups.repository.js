@@ -7,7 +7,8 @@ export class RequestGroupsRepository {
     }
 
     async findAll(paginationDto = {}) {
-        const { skip = 0, limit = 10, search, status, includeDeleted = false } = paginationDto;
+        const { page = 1, limit = 10, search, status, includeDeleted = false } = paginationDto;
+        const skip = (page - 1) * limit;
 
         const query = this.repository.createQueryBuilder('group')
             .withDeleted() // Bắt buộc thêm vì BaseEntity có @DeleteDateColumn

@@ -11,6 +11,7 @@ __pycache__/
 # Environment
 venv/
 arcface-service/venv/
+.env.*
 .env
 .env.local
 .env.*.local

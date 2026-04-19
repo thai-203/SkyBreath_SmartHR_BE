@@ -26,16 +26,21 @@ export class ArcFaceService {
    */
   async extractMulti(files) {
     const form = new FormData();
-    for (const file of files) {
-      form.append('files', fs.createReadStream(file.path));
-    }
 
-    const res = await axios.post(`${ARC_FACE_URL}/extract-multi`, form, {
+    const streams = await Promise.all(
+      files.map((file) => axios.get(file.path, { responseType: 'stream' })),
+    );
+
+    streams.forEach((res, index) => {
+      form.append('files', res.data, `image-${index}.jpg`);
+    });
+
+    const response = await axios.post(`${ARC_FACE_URL}/extract-multi`, form, {
       headers: form.getHeaders(),
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
     });
 
-    return res.data;
+    return response.data;
   }
 }

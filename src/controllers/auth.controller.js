@@ -125,26 +125,32 @@ export class AuthController {
     try {
       const { email } = req.body;
       
-      await this.authService.forgotPassword(email);
+      const result = await this.authService.forgotPassword(email);
 
       return ResponseUtil.sendResponse(
         res,
         AppMessages.Success.Auth.PASSWORD_RESET_REQUESTED,
+        result,
       );
     } catch (error) {
       next(error);
     }
   };
 
-  resetPassword = async (req, res, next) => {
+  resetPasswordWithOtp = async (req, res, next) => {
     try {
-      const { token, newPassword } = req.body;
+      const { otpRequestId, otp, newPassword } = req.body;
 
-      await this.authService.resetPassword(token, newPassword);
+      const result = await this.authService.resetPasswordWithOtp(
+        otpRequestId,
+        otp,
+        newPassword,
+      );
 
       return ResponseUtil.sendResponse(
         res,
         AppMessages.Success.Auth.PASSWORD_RESET_SUCCESS,
+        result,
       );
     } catch (error) {
       next(error);

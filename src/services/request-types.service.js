@@ -85,6 +85,18 @@ export class RequestTypesService {
 
         // Cập nhật thông tin cơ bản
         if (Object.keys(typeData).length > 0) {
+            // Nếu đang kích hoạt lại (status -> ACTIVE), kiểm tra nhóm cha
+            if (typeData.status === 'ACTIVE') {
+                const parentGroupId = typeData.requestGroupId || typeItem.requestGroupId;
+                const parentGroup = await this.groupsRepo.findById(parentGroupId);
+                if (!parentGroup || parentGroup.isDeleted) {
+                    throw new BadRequestException('Không thể kích hoạt loại đơn vì Nhóm Đơn cha đã bị xoá.');
+                }
+                if (parentGroup.status !== 'ACTIVE') {
+                    throw new BadRequestException('Không thể kích hoạt loại đơn vì Nhóm Đơn cha đang ở trạng thái không hoạt động.');
+                }
+            }
+
             // Check duplicate name nếu thay đổi tên hoặc di chuyển sang group khác
             const nameToCheck = typeData.name || typeItem.name;
             const groupToCheck = typeData.requestGroupId || typeItem.requestGroupId;
@@ -161,6 +173,12 @@ export class RequestTypesService {
         }
         if (!typeItem.isDeleted) {
             throw new BadRequestException('Loại đơn từ này chưa bị xoá');
+        }
+
+        // Kiểm tra nhóm đơn cha có còn tồn tại và chưa bị xoá không
+        const parentGroup = await this.groupsRepo.findById(typeItem.requestGroupId);
+        if (!parentGroup || parentGroup.isDeleted) {
+            throw new BadRequestException('Không thể khôi phục vì Nhóm Đơn cha đã bị xoá. Vui lòng khôi phục Nhóm Đơn trước.');
         }
 
         await this.repository.update(id, {

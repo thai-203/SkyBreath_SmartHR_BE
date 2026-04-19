@@ -56,6 +56,7 @@ import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-at
 import { AiChatConversationEntity } from '../models/entities/ai-chat-conversation.entity.js';
 import { AiChatMessageEntity } from '../models/entities/ai-chat-message.entity.js';
 import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
+import { AiPromptEntity } from '../models/entities/ai-prompt.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -63,6 +64,7 @@ import { AttendanceSecurityConfigEntity } from '../models/entities/attendance-se
 import { AttendanceAllowedIpEntity } from '../models/entities/attendance-allowed-ip.entity.js';
 import { AttendanceBlockingConfigEntity } from '../models/entities/attendance-blocking-config.entity.js';
 import { AttendanceSecurityStatusEntity } from '../models/entities/attendance-security-status.entity.js';
+import { PayrollConfigEntity } from '../models/entities/payroll-config.entity.js';
 export const databaseConfig = {
   type: 'mysql',
   host: config.database.host,
@@ -136,6 +138,8 @@ export const databaseConfig = {
     AiChatConversationEntity,
     AiChatMessageEntity,
     AiConfigurationEntity,
+    AiPromptEntity,
+    PayrollConfigEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

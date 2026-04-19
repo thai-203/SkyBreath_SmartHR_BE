@@ -5,6 +5,7 @@ import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { AiChatConversationRepository } from '../repositories/ai-chat-conversations.repository.js';
 import { AiChatMessageRepository } from '../repositories/ai-chat-messages.repository.js';
 import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
+import { AiPromptEntity } from '../models/entities/ai-prompt.entity.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -266,6 +267,17 @@ Phạt muộn: FROM penalties WHERE violation_type='LATE' AND status='ACTIVE' AN
 
 Sau khi nhận kết quả SQL, trình bày ngắn gọn, dễ hiểu bằng tiếng Việt. Không lộ câu SQL gốc.`;
 
+    const activePrompts = await AppDataSource.getRepository(AiPromptEntity).find({ where: { status: 'ACTIVE' } });
+    let additionalRules = '';
+    if (activePrompts && activePrompts.length > 0) {
+      additionalRules = '\n\n--- CÁC QUY TẮC / MẪU BỔ SUNG TỪ ADMIN ---\n';
+      activePrompts.forEach(p => {
+         additionalRules += `\n[${p.promptKey}]:\n${p.promptContent}\n`;
+      });
+    }
+
+    const finalSystemInstruction = systemInstruction + additionalRules;
+
     const activeConfig = await AppDataSource.getRepository(AiConfigurationEntity).findOne({ where: { status: 'ACTIVE' } });
     if (!activeConfig || !activeConfig.configValue) {
       throw new Error('Cấu hình AI chưa được thiết lập, vui lòng báo quản trị viên.');
@@ -276,7 +288,7 @@ Sau khi nhận kết quả SQL, trình bày ngắn gọn, dễ hiểu bằng ti�
     
     const model = genAI.getGenerativeModel({
       model: modelToUse,
-      systemInstruction: systemInstruction,
+      systemInstruction: finalSystemInstruction,
       tools: tools,
     });
 

@@ -29,6 +29,24 @@ export class PayrollDetailEntity extends BaseEntity {
     @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
     deduction;
 
+    @Column({ name: 'allowance_amount', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    allowanceAmount;
+
+    @Column({ name: 'union_fee', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    unionFee;
+
+    @Column({ name: 'social_insurance_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
+    socialInsurancePercentage;
+
+    @Column({ name: 'health_insurance_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
+    healthInsurancePercentage;
+
+    @Column({ name: 'unemployment_insurance_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
+    unemploymentInsurancePercentage;
+
+    @Column({ name: 'union_fee_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
+    unionFeePercentage;
+
     @Column({ name: 'net_salary', type: 'decimal', precision: 15, scale: 2 })
     netSalary;
 
@@ -119,6 +137,9 @@ export class PayrollDetailEntity extends BaseEntity {
 
     @Column({ name: 'p3_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
     p3Percentage;
+
+    @Column({ name: 'performance_salary', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    performanceSalary;
 
     @Column({ name: 'social_insurance', type: 'decimal', precision: 15, scale: 2, default: 0 })
     socialInsurance;

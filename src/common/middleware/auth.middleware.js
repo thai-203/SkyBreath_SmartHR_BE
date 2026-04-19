@@ -43,6 +43,10 @@ export const authMiddleware = async (req, res, next) => {
       next(new UnauthorizedException(AppMessages.Errors.User.INACTIVE));
       return;
     }
+    if (user.mustChangePassword) {
+      next(new UnauthorizedException(AppMessages.Errors.Auth.PASSWORD_CHANGE_REQUIRED));
+      return;
+    }
 
     // Extract unique permissions
     const permissions = new Set();

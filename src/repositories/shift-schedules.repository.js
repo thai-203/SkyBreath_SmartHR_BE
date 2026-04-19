@@ -273,7 +273,7 @@ export class ShiftSchedulesRepository {
   }
   async findTodayShiftByEmpId(options = {}) {
     const { employeeId, today } = options;
-    return this.repository.findOne({
+    return this.repository.find({
       where: { employeeId, workDate: today },
       relations: ['shift', 'employee'],
     });

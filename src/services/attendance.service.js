@@ -1,5 +1,4 @@
 import {
-  getRequestContext,
   setRequestContextValue,
 } from '../common/context/request-context';
 import { BadRequestException, NotFoundException } from '../common/exceptions';
@@ -17,6 +16,7 @@ import { ArcFaceService } from './arcface.service';
 import { IpService } from './ip.service';
 import { AttendanceSecurityStatusRepository } from '../repositories/attendance-security-status.repository';
 import { AttendanceBlockingConfigRepository } from '../repositories/attendance-blocking-config.repository';
+import { RequestsRepository } from '../repositories/requests.repository';
 
 export class AttendanceService {
   constructor() {
@@ -32,12 +32,24 @@ export class AttendanceService {
     this.securityStatusRepo = new AttendanceSecurityStatusRepository();
     this.attendanceBlockingConfigRepo =
       new AttendanceBlockingConfigRepository();
+    this.requestRepo = new RequestsRepository();
   }
 
   async getTodayContext(userId) {
+    // Validate input
+    if (!userId || typeof userId !== 'number') {
+      throw new BadRequestException(AppMessages.Errors.User.NOT_FOUND);
+    }
+
     const employee = await this.employeeRepository.findByUserId(userId);
+
+    // Validate employee exists
+    if (!employee) {
+      throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
+
     const employeeId = employee.id;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA');
     const now = new Date();
 
     const shiftSchedule = await this.shiftRepo.findTodayShiftByEmpId({
@@ -56,15 +68,20 @@ export class AttendanceService {
     const securityStatus =
       await this.securityStatusRepo.findByEmployeeId(employeeId);
 
+    const blockedUntil = new Date(securityStatus?.blockedUntil);
+
     const isBlocked =
       securityStatus?.blockedUntil &&
-      new Date(securityStatus.blockedUntil) > now;
+      !isNaN(blockedUntil) &&
+      blockedUntil > now;
 
     if (!isBlocked && securityStatus?.blockedUntil) {
       await this.securityStatusRepo.resetStatus(employeeId);
     }
 
-    const shift = shiftSchedule?.shift ?? null;
+    const shifts = (shiftSchedule || []).map((s) => s.shift).filter(Boolean);
+
+    const currentShift = this._getCurrentShift(shifts);
 
     const recentRecords = await this.actionLogRepo.findRecentAttendanceLogs(
       userId,
@@ -73,18 +90,54 @@ export class AttendanceService {
 
     const securityConfig = await this.securityRepo.findOneConfig();
 
+    const overtime = await this.requestRepo.getTodayOvertime(employeeId, today);
+
     return {
       userName: employee?.fullName ?? '',
       hasBiometric: faceCount > 0,
-      hasShift: !!shift,
-      shift: shift
-        ? { startTime: shift.startTime, endTime: shift.endTime }
+      hasShift: shifts.length > 0,
+      currentShift: currentShift
+        ? {
+            shiftId: currentShift.id,
+            name: currentShift.shiftName,
+            startTime: currentShift.startTime,
+            endTime: currentShift.endTime,
+          }
         : null,
-      totalWorkMinutes: shift?.totalWorkMinutes ?? 480,
+
+      shifts: shifts.map((shift) => ({
+        shiftId: shift.id,
+        name: shift.shiftName,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+      })),
+      overtime: overtime?.items?.[0] || null,
+      totalWorkMinutes: currentShift
+        ? (() => {
+            if (!currentShift?.startTime || !currentShift?.endTime) return 0;
+            const plannedMinutes =
+              this._timeToMinutes(currentShift.endTime) -
+              this._timeToMinutes(currentShift.startTime);
+            if (
+              currentShift.breakStartTime &&
+              currentShift.breakEndTime &&
+              this._timeToMinutes(currentShift.breakEndTime) >
+                this._timeToMinutes(currentShift.breakStartTime)
+            ) {
+              const breakDuration =
+                this._timeToMinutes(currentShift.breakEndTime) -
+                this._timeToMinutes(currentShift.breakStartTime);
+              return Math.max(0, plannedMinutes - breakDuration);
+            }
+            return plannedMinutes;
+          })()
+        : 0,
       workDate: today,
       attendance: {
         checkInTime: attendanceRecord?.checkInTime ?? null,
         checkOutTime: attendanceRecord?.checkOutTime ?? null,
+        totalWorkMinutes: attendanceRecord?.totalWorkMinutes ?? null,
+        overtimeMinutes: attendanceRecord?.overtimeMinutes ?? null,
       },
       isBlocked,
       security: faceConfig
@@ -94,12 +147,12 @@ export class AttendanceService {
             requiredFrames: faceConfig.requiredFrames,
             captureIntervalMs: faceConfig.captureIntervalMs,
             faceDetectionMinSize: faceConfig.faceDetectionMinSize,
-            requireLocationCheck: securityConfig.requireLocationCheck,
+            requireLocationCheck: securityConfig?.requireLocationCheck,
           }
         : {
             maxFacesAllowed: 1,
-            livenessMode: 'MULTI_FRAME',
-            requiredFrames: 10,
+            livenessMode: 'SINGLE_FRAME',
+            requiredFrames: 1,
             captureIntervalMs: 1000,
             faceDetectionMinSize: 80,
             requireLocationCheck: false,
@@ -231,22 +284,42 @@ export class AttendanceService {
 
   // ── POST /attendance/check-in ─────────────────────────────────────────
   async checkIn(employeeId, files, location) {
-    const securityStatus =
-      await this.securityStatusRepo.findByEmployeeId(employeeId);
-    setRequestContextValue('customAction', 'check_in');
+    // Validate input
+    if (!employeeId || typeof employeeId !== 'number') {
+      throw new BadRequestException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
 
     if (!files || files.length === 0)
-      throw new NotFoundException(
+      throw new BadRequestException(
         AppMessages.Errors.Attendance.NO_IMAGE_PROVIDED,
       );
 
-    const today = new Date().toISOString().slice(0, 10);
+    // Validate employee exists
+    const employee = await this.employeeRepository.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
 
-    const shiftSchedule = await this.shiftRepo.findTodayShiftByEmpId({
+    const securityStatus =
+      await this.securityStatusRepo.findByEmployeeId(employeeId);
+    setRequestContextValue('customAction', 'check_in');
+    setRequestContextValue(
+      'evidenceImageUrl',
+      files?.[0]?.path ??
+        files?.[0]?.secure_url ??
+        files?.[0]?.url ??
+        files?.[0]?.location ??
+        null,
+    );
+
+    const today = new Date().toLocaleDateString('en-CA');
+    const shiftSchedules = await this.shiftRepo.findTodayShiftByEmpId({
       employeeId,
       today,
     });
-    if (!shiftSchedule)
+    const shifts = shiftSchedules.map((s) => s.shift).filter(Boolean);
+
+    if (!shifts)
       throw new NotFoundException(AppMessages.Errors.Attendance.NO_SHIFT_TODAY);
 
     const securityConfig = await this.securityRepo.findOneConfig();
@@ -255,7 +328,9 @@ export class AttendanceService {
     const faceConfig = await this.faceConfigRepo.findOneConfig();
     await this._validateFace(employeeId, files, faceConfig);
 
-    const shift = shiftSchedule.shift;
+    const shift = this._getCurrentShift(shifts);
+    const shiftSchedule = shiftSchedules.find((ss) => ss.shiftId === shift.id);
+
     const now = new Date();
     const lateMinutes = this._calcLateMinutes(now, shift.startTime);
 
@@ -276,27 +351,60 @@ export class AttendanceService {
       );
     }
     setRequestContextValue('customAction', null);
+    setRequestContextValue('evidenceImageUrl', null);
 
     if (securityStatus) {
       await this.securityStatusRepo.resetStatus(employeeId);
     }
     setRequestContextValue('customAction', 'check_in');
+    setRequestContextValue(
+      'evidenceImageUrl',
+      files?.[0]?.path ??
+        files?.[0]?.secure_url ??
+        files?.[0]?.url ??
+        files?.[0]?.location ??
+        null,
+    );
 
     return { success: true, checkInTime: now.toISOString(), lateMinutes };
   }
 
   // ── POST /attendance/check-out ────────────────────────────────────────
   async checkOut(employeeId, files, location) {
-    const securityStatus =
-      await this.securityStatusRepo.findByEmployeeId(employeeId);
-    setRequestContextValue('customAction', 'check_out');
+    // Validate input
+    if (!employeeId || typeof employeeId !== 'number') {
+      throw new BadRequestException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
 
     if (!files || files.length === 0)
       throw new BadRequestException(
         AppMessages.Errors.Attendance.NO_IMAGE_PROVIDED,
       );
 
-    const today = new Date().toISOString().slice(0, 10);
+    // Validate employee exists
+    const employee = await this.employeeRepository.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
+
+    const securityStatus =
+      await this.securityStatusRepo.findByEmployeeId(employeeId);
+    setRequestContextValue('customAction', 'check_out');
+    setRequestContextValue(
+      'evidenceImageUrl',
+      files?.[0]?.path ??
+        files?.[0]?.secure_url ??
+        files?.[0]?.url ??
+        files?.[0]?.location ??
+        null,
+    );
+    const today = new Date().toLocaleDateString('en-CA');
+
+    const overtimeRaw = await this.requestRepo.getTodayOvertime(
+      employeeId,
+      today,
+    );
+    const overtime = overtimeRaw.items[0];
 
     const record = await this.attendanceRepo.findOne({ employeeId, today });
     if (!record?.checkInTime)
@@ -316,14 +424,64 @@ export class AttendanceService {
 
     const now = new Date();
     const checkInMs = new Date(record.checkInTime).getTime();
-    const totalWorkMinutes = Math.round((now.getTime() - checkInMs) / 60000);
+    let totalWorkMinutes = Math.round((now.getTime() - checkInMs) / 60000);
 
-    const shift = record.shiftSchedule?.shift;
+    const shiftSchedule = await this.shiftRepo.findTodayShiftByEmpId({
+      employeeId,
+      today,
+    });
+    const shifts = shiftSchedule.map((s) => s.shift).filter(Boolean);
+
+    const shift = this._getCurrentShift(shifts);
+
+    // Subtract break time from totalWorkMinutes if break time exists
+    if (
+      shift &&
+      shift.breakStartTime !== '00:00:00' &&
+      shift.breakEndTime !== '00:00:00'
+    ) {
+      const breakStartMinutes = this._timeToMinutes(shift.breakStartTime);
+      const breakEndMinutes = this._timeToMinutes(shift.breakEndTime);
+      const breakDurationMinutes = breakEndMinutes - breakStartMinutes;
+      if (breakDurationMinutes > 0) {
+        totalWorkMinutes = Math.max(0, totalWorkMinutes - breakDurationMinutes);
+      }
+    }
+
     const earlyLeaveMinutes = shift
       ? this._calcEarlyLeave(now, shift.endTime)
       : 0;
-    const plannedMinutes = shift?.totalWorkMinutes ?? 480;
-    const overtimeMinutes = Math.max(0, totalWorkMinutes - plannedMinutes);
+
+    // Calculate overtimeMinutes based on overtime request if available
+    let overtimeMinutes = 0;
+    if (overtime) {
+      const overtimeStartTime = new Date(`${today}T${overtime.startTime}`);
+      const overtimeEndTime = new Date(`${today}T${overtime.endTime}`);
+      const checkInTime = new Date(record.checkInTime);
+
+      // Determine the actual start time for overtime calculation
+      // If checkInTime > overtimeStartTime, use checkInTime instead
+      const actualOvertimeStart =
+        checkInTime > overtimeStartTime ? checkInTime : overtimeStartTime;
+
+      if (checkInTime > overtimeEndTime) {
+        overtimeMinutes = 0;
+      } else if (now >= actualOvertimeStart) {
+        if (now >= overtimeEndTime) {
+          // Already past overtime end time, use full overtime duration from actual start
+          overtimeMinutes = Math.round(
+            (overtimeEndTime.getTime() - actualOvertimeStart.getTime()) / 60000,
+          );
+        } else {
+          // Still in overtime period, use time from actual start till now
+          overtimeMinutes = Math.round(
+            (now.getTime() - actualOvertimeStart.getTime()) / 60000,
+          );
+        }
+      }
+      // If now < actualOvertimeStart: overtimeMinutes stays 0
+    }
+    // If no overtime: overtimeMinutes stays 0
 
     record.checkOutTime = now;
     record.totalWorkMinutes = totalWorkMinutes;
@@ -334,11 +492,20 @@ export class AttendanceService {
     await this.attendanceRepo.update(record.id, record);
 
     setRequestContextValue('customAction', null);
+    setRequestContextValue('evidenceImageUrl', null);
 
     if (securityStatus) {
       await this.securityStatusRepo.resetStatus(employeeId);
     }
     setRequestContextValue('customAction', 'check_out');
+    setRequestContextValue(
+      'evidenceImageUrl',
+      files?.[0]?.path ??
+        files?.[0]?.secure_url ??
+        files?.[0]?.url ??
+        files?.[0]?.location ??
+        null,
+    );
 
     return {
       success: true,
@@ -373,5 +540,59 @@ export class AttendanceService {
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
     const endMinutes = this._timeToMinutes(shiftEndTime);
     return Math.max(0, endMinutes - nowMinutes);
+  }
+
+  _getCurrentShift(shifts) {
+    const today = new Date().toLocaleDateString('en-CA');
+    const now = new Date();
+
+    if (!shifts || shifts.length === 0) return null;
+
+    // Sort ca theo startTime tăng dần
+    const sorted = [...shifts].sort((a, b) => {
+      return a.startTime.localeCompare(b.startTime);
+    });
+
+    // Convert helper
+    const toDate = (time) => new Date(`${today} ${time}`);
+
+    // 1. Nếu nằm trong ca nào → lấy ca đó
+    for (const shift of sorted) {
+      const start = toDate(shift.startTime);
+      const end = toDate(shift.endTime);
+      if (now >= start && now <= end) {
+        return shift;
+      }
+    }
+
+    // 2. Nếu trước ca đầu → lấy ca đầu
+    const firstShift = sorted[0];
+    if (now < toDate(firstShift.startTime)) {
+      return firstShift;
+    }
+
+    // 3. Nếu sau ca cuối → lấy ca cuối
+    const lastShift = sorted[sorted.length - 1];
+    if (now > toDate(lastShift.endTime)) {
+      return lastShift;
+    }
+
+    // 4. Nếu nằm giữa 2 ca → dùng midpoint
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const current = sorted[i];
+      const next = sorted[i + 1];
+
+      const endCurrent = toDate(current.endTime);
+      const startNext = toDate(next.startTime);
+
+      if (now > endCurrent && now < startNext) {
+        // midpoint
+        const mid = new Date((endCurrent.getTime() + startNext.getTime()) / 2);
+
+        return now < mid ? current : next;
+      }
+    }
+
+    return null;
   }
 }

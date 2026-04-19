@@ -236,11 +236,20 @@ export class TimesheetsController {
 
     exportDetailed = async (req, res, next) => {
         try {
-            const { month, year, employeeId, departmentId, search } = req.query;
+            const { month, year, employeeIds, departmentId, search } = req.query;
+            let parsedEmployeeIds = [];
+            if (employeeIds) {
+                parsedEmployeeIds = String(employeeIds).split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+            }
+            
+            if (parsedEmployeeIds.length === 0) {
+                return res.status(400).json({ success: false, message: "Vui lòng chọn ít nhất 1 nhân viên để xuất chi tiết" });
+            }
+
             const buffer = await this.timesheetsService.exportDetailed(
                 parseInt(month),
                 parseInt(year),
-                employeeId ? parseInt(employeeId) : undefined,
+                parsedEmployeeIds,
                 departmentId ? parseInt(departmentId) : undefined,
                 search ? String(search) : undefined,
                 req.user

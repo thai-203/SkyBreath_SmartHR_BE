@@ -27,11 +27,15 @@ router.get(
   permissionsMiddleware('EMPLOYEE_READ'),
   employeesController.getMetadata,
 );
-router.get('/list', authMiddleware, employeesController.list);
+router.get(
+  '/list',
+  authMiddleware,
+  employeesController.list,
+);
 router.get(
   '/no-plan',
   authMiddleware,
-  permissionsMiddleware('EMPLOYEE_READ'),
+  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   employeesController.getEmployeeNoPlanId,
 );
 router.get('/user/:userId', authMiddleware, employeesController.getByUserId);
@@ -41,6 +45,12 @@ router.get(
   permissionsMiddleware('EMPLOYEE_READ'),
   employeesController.all,
 );
+router.get(
+  '/public',
+  authMiddleware,
+  employeesController.all,
+);
+
 router.get(
   '/validation-data',
   authMiddleware,

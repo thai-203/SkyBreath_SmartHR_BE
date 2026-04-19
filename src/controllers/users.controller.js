@@ -133,11 +133,11 @@ export class UsersController {
     try {
       const currentUserId = req.user.id;
       const userId = parseInt(req.params.id);
-      await this.usersService.resetPassword(userId, currentUserId);
+      const result = await this.usersService.resetPassword(userId, currentUserId);
       ResponseUtil.sendResponse(
         res,
-        'Mật khẩu người dùng đã được yêu cầu đặt lại thành công',
-        null,
+        result.message,
+        { otpRequestId: result.otpRequestId },
       );
     } catch (error) {
       next(error);

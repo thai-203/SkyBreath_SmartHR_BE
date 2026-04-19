@@ -52,6 +52,18 @@ export class OnboardingProgressController {
     }
   };
 
+  findOwnProgress = async (req, res, next) => {
+    try {
+      const progress = await this.progressService.findOwnProgress(req.user.id);
+      res.status(200).json({
+        success: true,
+        data: progress,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   create = async (req, res, next) => {
     try {
       const createDto = plainToInstance(CreateOnboardingProgressDto, req.body);
