@@ -613,12 +613,15 @@ export class TimesheetsService {
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const qb = employeeRepo
       .createQueryBuilder('emp')
+      .innerJoin(
+        'time_sheets',
+        'ts',
+        'ts.employee_id = emp.id AND ts.month = :month AND ts.year = :year AND ts.deleted_at IS NULL',
+        { month, year }
+      )
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
-      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('emp.employmentStatus IN (:...statuses)', {
-        statuses: ['ACTIVE', 'PROBATION'],
-      });
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false });
 
     if (departmentId) {
       qb.andWhere('emp.departmentId = :departmentId', { departmentId });
@@ -2482,12 +2485,15 @@ export class TimesheetsService {
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const qb = employeeRepo
       .createQueryBuilder('emp')
+      .innerJoin(
+        'time_sheets',
+        'ts',
+        'ts.employee_id = emp.id AND ts.month = :month AND ts.year = :year AND ts.deleted_at IS NULL',
+        { month, year }
+      )
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
-      .where('emp.isDeleted = :isDeleted', { isDeleted: false })
-      .andWhere('emp.employmentStatus IN (:...statuses)', {
-        statuses: ['ACTIVE', 'PROBATION'],
-      });
+      .where('emp.isDeleted = :isDeleted', { isDeleted: false });
 
     if (departmentId) {
       qb.andWhere('emp.departmentId = :departmentId', { departmentId });
