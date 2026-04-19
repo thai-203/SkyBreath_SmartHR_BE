@@ -48,7 +48,6 @@ function _dateKeyFromRequestField(value) {
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-/** Chọn đơn áp dụng cho một ngày (nghỉ nhiều ngày: mỗi ngày trong [start_date, end_date] trùng cùng request). */
 function _pickSyncRequestForDay(empRequests, calendarDateKey) {
   const candidates = empRequests.filter((r) => {
     const code = r.requestGroup?.code;
@@ -67,6 +66,34 @@ function _pickSyncRequestForDay(empRequests, calendarDateKey) {
     return (a.id || 0) - (b.id || 0);
   });
   return candidates[0];
+}
+
+/** Phân tích mã ngắn chấm công (P, L, CT...) từ Request */
+function _resolveRequestCode(req, isWeekend) {
+  const groupCode = req.requestGroup?.code;
+  if (groupCode === RequestGroupCode.BUSINESS_TRIP) {
+    const name = (req.requestType?.name || '').toLowerCase();
+    if (isWeekend || name.includes('ngày nghỉ') || name.includes('cuối tuần')) return 'CT-CN';
+    return 'CT';
+  }
+  if (groupCode === RequestGroupCode.LEAVE) {
+    const name = (req.requestType?.name || '').toLowerCase();
+    if (name.includes('phép năm') || name.includes('đơn nghỉ phép')) return 'P';
+    if (name.includes('thai sản')) return 'M';
+    if (name.includes('không hưởng lương') || name.includes('không lương')) return 'R';
+    if (name.includes('con ốm')) return 'C';
+    if (name.includes('ốm đau') || name.includes('bản thân ốm') || name.includes('nghỉ ốm')) return 'S';
+    if (name.includes('dưỡng sức')) return 'D';
+    if (name.includes('tai nạn')) return 'A';
+    if (name.includes('việc riêng') || name.includes('hiếu') || name.includes('hỉ') || name.includes('cưới')) return 'V';
+    if (name.includes('bù lễ')) return 'BL';
+    if (name.includes('bù')) return 'B';
+    if (name.includes('học') || name.includes('tham quan') || name.includes('nghỉ mát')) return 'H';
+    if (name.includes('kỷ luật') || name.includes('chờ việc')) return 'NC';
+    if (name.includes('lễ')) return 'L';
+    return 'P'; // Mặc định
+  }
+  return null;
 }
 
 export class TimesheetsService {
@@ -264,7 +291,7 @@ export class TimesheetsService {
         for (const [dateKey, { checkIn, checkOut }] of dailyMap) {
           let actualHours = this._calcActualHours(checkIn, checkOut, shift);
           console.log(`actualHour: ${actualHours}`);
-          
+
           const excuseRequest = excuseRequests.find((r) => {
             const start = new Date(r.startDate);
             const end = new Date(r.endDate);
@@ -286,7 +313,7 @@ export class TimesheetsService {
           if (actualHours > shiftHoursPerDay) {
             const actualOtHours = actualHours - shiftHoursPerDay;
             console.log(`actualOtHours for ${dateKey}:`, actualOtHours);
-            
+
             const otDetail = otDetails.find((r) => {
               const d = new Date(r.workDate);
               const detailDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1361,7 +1388,7 @@ export class TimesheetsService {
   async exportDetailed(
     month,
     year,
-    employeeId,
+    employeeIds,
     departmentId,
     search,
     userContext,
@@ -1375,7 +1402,9 @@ export class TimesheetsService {
     // Access check: EMPLOYEE-only can only export their own data
     if (userContext && this._isEmployee(userContext)) {
       const employee = await this._getEmployeeByUserId(userContext.id);
-      employeeId = employee?.id;
+      if (employee) {
+        employeeIds = [employee.id];
+      }
       departmentId = undefined;
       search = undefined;
     }
@@ -1391,8 +1420,8 @@ export class TimesheetsService {
         statuses: ['ACTIVE', 'PROBATION'],
       });
 
-    if (employeeId) {
-      qb.andWhere('emp.id = :employeeId', { employeeId });
+    if (employeeIds && employeeIds.length > 0) {
+      qb.andWhere('emp.id IN (:...employeeIds)', { employeeIds });
     } else {
       if (departmentId) {
         qb.andWhere('emp.departmentId = :departmentId', { departmentId });
@@ -1797,7 +1826,7 @@ export class TimesheetsService {
         early_leave_minutes: 0,
         overtimeHours: 0,
         overtime_hours: 0,
-        status: 'ABSENT',
+        status: 'V',
         attendanceStatus: null,
         attendanceType: null,
         shiftName: shift?.shiftName || 'CA_HC',
@@ -1813,7 +1842,7 @@ export class TimesheetsService {
       });
 
       if (leave) {
-        detail.status = 'LEAVE';
+        detail.status = 'L';
         detail.leaveType = leave.requestType?.name || 'Nghỉ';
       }
 
@@ -1833,7 +1862,7 @@ export class TimesheetsService {
             typeof excuseRequest.requestContent === 'string'
               ? JSON.parse(excuseRequest.requestContent)
               : excuseRequest.requestContent;
-        } catch (e) {}
+        } catch (e) { }
 
         detail.excuseRequest = {
           id: excuseRequest.id,
@@ -2355,37 +2384,83 @@ export class TimesheetsService {
           earlyMins = 0;
         }
 
-        const overlappingReq = _pickSyncRequestForDay(empRequests, dateStr);
-        if (overlappingReq) {
-          const groupCode = overlappingReq.requestGroup?.code;
-          if (groupCode === RequestGroupCode.LEAVE) {
-            attendanceStatus = 'LEAVE';
-            workValue = overlappingReq.isWorkedTime ? 1.0 : 0.0;
-          } else if (groupCode === RequestGroupCode.BUSINESS_TRIP) {
-            attendanceStatus = 'CT';
-            workValue = 1.0;
-          } else if (groupCode === RequestGroupCode.ATTENDANCE_CORRECTION) {
-            attendanceStatus = 'X';
-            lateMins = 0;
-            earlyMins = 0;
-            if (workValue === 0) workValue = 1.0;
+        // Retrieve all overlapping requests for the day
+        const dayRequests = empRequests.filter((r) => {
+          const code = r.requestGroup?.code;
+          if (!code || !TIMESHEET_SYNC_GROUP_PRIORITY[code]) return false;
+          const start = _dateKeyFromRequestField(r.startDate);
+          if (!start) return false;
+          const end = _dateKeyFromRequestField(r.endDate) || start;
+          return dateStr >= start && dateStr <= end;
+        });
+
+        const correctionReq = dayRequests.find(
+          (r) => r.requestGroup?.code === RequestGroupCode.ATTENDANCE_CORRECTION
+        );
+        const codeRequests = dayRequests.filter(
+          (r) =>
+            r.requestGroup?.code === RequestGroupCode.LEAVE ||
+            r.requestGroup?.code === RequestGroupCode.BUSINESS_TRIP
+        );
+
+        if (correctionReq) {
+          attendanceStatus = 'X';
+          workValue = 1.0;
+          lateMins = 0;
+          earlyMins = 0;
+          reqId = correctionReq.id;
+        } else if (codeRequests.length > 0) {
+          reqId = codeRequests[0].id;
+          const mappedCodes = codeRequests.map((r) => _resolveRequestCode(r, isWeekend));
+
+          if (codeRequests.length >= 2) {
+            // [Mã 1]/[Mã 2] - Sáng làm mã 1, chiều mã 2
+            attendanceStatus = `${mappedCodes[0]}/${mappedCodes[1]}`;
+            workValue = 0;
+            for (let i = 0; i < 2; i++) {
+              const isWorked =
+                codeRequests[i].isWorkedTime ||
+                codeRequests[i].requestGroup?.code === RequestGroupCode.BUSINESS_TRIP;
+              if (isWorked) workValue += 0.5;
+            }
+          } else {
+            const reqCode = mappedCodes[0];
+            const isWorked =
+              codeRequests[0].isWorkedTime ||
+              codeRequests[0].requestGroup?.code === RequestGroupCode.BUSINESS_TRIP;
+
+            // Trường hợp 0.5/[Mã] - nửa làm nửa nghỉ
+            if (workValue > 0 && workValue < 1.0) {
+              attendanceStatus = `0.5/${reqCode}`;
+              workValue = workValue + (isWorked ? 0.5 : 0);
+              if (workValue > 1) workValue = 1; // max 1 công
+            } else {
+              // Nghỉ cả ngày mã đó
+              attendanceStatus = reqCode || (isWeekend ? 'CT-CN' : 'CT');
+              workValue = isWorked ? 1.0 : 0.0;
+            }
           }
-          reqId = overlappingReq.id;
         } else if (holidayDates.has(dateStr)) {
           attendanceStatus = 'L';
           workValue = 1.0;
         } else if (isWeekend && !checkIn && !checkOut) {
-          attendanceStatus = 'WEEKEND';
+          attendanceStatus = 'N'; // Mã nghỉ hằng tuần chuẩn
           workValue = 0.0;
-        }
-
-        if (
-          attendanceStatus === 'ABSENT' &&
-          !isWeekend &&
-          !holidayDates.has(dateStr)
-        ) {
-          attendanceStatus = 'ABSENT';
-          workValue = 0.0;
+        } else {
+          // No requests, not a holiday/normal weekend
+          if (hasBothCheckInOut) {
+            if (workValue === 0) attendanceStatus = 'ABSENT';
+            else if (workValue < 1.0) attendanceStatus = 'KL';
+            else attendanceStatus = 'X';
+          } else if (hasOnlyPartial) {
+            attendanceStatus = 'KL';
+            workValue = 0.0;
+            lateMins = 0;
+            earlyMins = 0;
+          } else {
+            attendanceStatus = 'KL';
+            workValue = 0.0;
+          }
         }
 
         recordsToInsert.push({
