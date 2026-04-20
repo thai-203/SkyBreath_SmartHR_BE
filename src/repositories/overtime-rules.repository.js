@@ -124,7 +124,7 @@ export class OvertimeRulesRepository {
         const incomingIsGlobal = incomingDeptIds.length === 0;
 
         const overlaps = [];
-        
+
         // 4. Duyệt qua từng quy định ứng viên để kiểm tra trùng lặp về PHÒNG BAN
         for (const rule of candidates) {
             // Lấy danh sách phòng ban của quy định đang xét
@@ -162,16 +162,61 @@ export class OvertimeRulesRepository {
 
     async getUsageStatus(id) {
         try {
-            const requests = await AppDataSource.query(
-                `SELECT payroll_id FROM overtime_request_details WHERE overtime_rule_id = ?`,
-                [id]
-            );
+            const rule = await this.repository.findOne({ where: { id } });
+            if (!rule || !rule.overtimeTypeId) {
+                return { hasRequests: false, hasPayroll: false };
+            }
+
+            // Lọc bỏ các đơn Nháp (DRAFT), Bị từ chối (REJECTED), Đã hủy (CANCELLED/REVOKED)
+            // Chỉ xem xét các đơn đã gửi duyệt (PENDING) hoặc đã duyệt (APPROVED)
+            let queryStr = `SELECT id, status FROM requests WHERE overtime_type_id = ? AND is_deleted = false AND status IN ('PENDING', 'APPROVED')`;
+            const params = [rule.overtimeTypeId];
+
+            if (rule.effectiveFrom) {
+                queryStr += ` AND start_date >= ?`;
+                params.push(rule.effectiveFrom);
+            }
+            if (rule.effectiveTo) {
+                queryStr += ` AND start_date <= ?`;
+                params.push(rule.effectiveTo);
+            }
+
+            const requests = await AppDataSource.query(queryStr, params);
 
             if (requests.length === 0) {
                 return { hasRequests: false, hasPayroll: false };
             }
 
-            const hasPayroll = requests.some(row => row.payroll_id !== null);
+            // hasRequests = true nếu có đơn PENDING hoặc APPROVED
+            // hasPayroll: kiểm tra bảng payrolls xem đã có bảng lương APPROVED/LOCKED
+            // trong khoảng thời gian hiệu lực của rule này chưa
+            let hasPayroll = false;
+            try {
+                let payrollQuery = `SELECT id FROM payrolls WHERE is_deleted = false AND payroll_status IN ('APPROVED', 'LOCKED')`;
+                const payrollParams = [];
+
+                if (rule.effectiveFrom) {
+                    // effectiveFrom dạng 'YYYY-MM-DD' → lấy năm/tháng
+                    const fromDate = new Date(rule.effectiveFrom);
+                    const fromYM = fromDate.getFullYear() * 100 + (fromDate.getMonth() + 1); // VD: 202601
+                    payrollQuery += ` AND (payroll_year * 100 + payroll_month) >= ?`;
+                    payrollParams.push(fromYM);
+                }
+                if (rule.effectiveTo) {
+                    const toDate = new Date(rule.effectiveTo);
+                    const toYM = toDate.getFullYear() * 100 + (toDate.getMonth() + 1);
+                    payrollQuery += ` AND (payroll_year * 100 + payroll_month) <= ?`;
+                    payrollParams.push(toYM);
+                }
+
+                payrollQuery += ` LIMIT 1`;
+                const payrollRows = await AppDataSource.query(payrollQuery, payrollParams);
+                hasPayroll = payrollRows.length > 0;
+            } catch (payrollErr) {
+                console.warn('[getUsageStatus] Không thể kiểm tra payrolls:', payrollErr.message);
+                hasPayroll = false;
+            }
+
             return { hasRequests: true, hasPayroll };
         } catch (err) {
             console.error("Error checking usage status:", err);

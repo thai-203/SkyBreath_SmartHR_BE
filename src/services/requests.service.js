@@ -9,6 +9,13 @@ import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { NotificationsService } from './notifications.service.js';
 import { countWorkingDays, getWorkingHoursForDay, getRequestedHours } from '../common/helpers/working-days.helper.js';
 
+function toLocalYMD(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
 export class RequestsService {
     constructor() {
         this.repo = new RequestsRepository();
@@ -100,7 +107,14 @@ export class RequestsService {
             description: description || null,
             currentApprovalLevel: 0,
             totalApprovalLevels: 0,
+            quantity: 0, // Sẽ được tính lại bên dưới
         };
+
+        const reqGroup = await this.requestGroupsRepo.findById(requestType.requestGroupId);
+        const isOvertime = reqGroup && (/overtime|tăng ca/i.test(reqGroup.code || '') || /overtime|tăng ca/i.test(reqGroup.name || ''));
+
+        let estimatedQuantity = 0;
+        let detailsToSave = [];
 
         if (startDate && endDate) {
             const startD = new Date(startDate);
@@ -117,18 +131,89 @@ export class RequestsService {
             if (overlaps.length > 0) {
                 throw new BadRequestException('Thời gian lưu đơn bị trùng lặp với một đơn khác đang có hiệu lực trong hệ thống.');
             }
+
+            // Tính số lượng quantity tổng của đơn
+            const reqUnit = policy?.unit || 'DAY';
+            if (reqUnit === 'DAY') {
+                estimatedQuantity = await countWorkingDays(startD, endD, targetEmployeeId, AppDataSource, isOvertime);
+            } else if (reqUnit === 'HOUR') {
+                if (startTime && endTime) {
+                    estimatedQuantity = await getRequestedHours(startDate, endDate, startTime, endTime, targetEmployeeId, AppDataSource, isOvertime);
+                } else {
+                    const cursor = new Date(startD);
+                    cursor.setHours(0, 0, 0, 0);
+                    while (cursor <= endD) {
+                        estimatedQuantity += await getWorkingHoursForDay(cursor, targetEmployeeId, AppDataSource, isOvertime);
+                        cursor.setDate(cursor.getDate() + 1);
+                    }
+                }
+            } else if (reqUnit === 'HALF_DAY') {
+                estimatedQuantity = await countWorkingDays(startD, endD, targetEmployeeId, AppDataSource, isOvertime) * 2;
+            } else {
+                estimatedQuantity = 1; // TIME unit
+            }
+
+            // Xây dựng danh sách các dòng chi tiết nếu là đơn OT
+            if (isOvertime) {
+                const reqUnit = policy?.unit || 'DAY';
+                const cursor = new Date(startD);
+                cursor.setHours(0, 0, 0, 0);
+                while (cursor <= endD) {
+                    let dayHours = 0;
+                    
+                    if (reqUnit === 'DAY') {
+                        dayHours = await getWorkingHoursForDay(cursor, targetEmployeeId, AppDataSource, true);
+                    } else if (reqUnit === 'HALF_DAY') {
+                        dayHours = 4;
+                    } else if (startTime && endTime) {
+                        const currentStr = toLocalYMD(cursor);
+                        dayHours = await getRequestedHours(currentStr, currentStr, startTime, endTime, targetEmployeeId, AppDataSource, true);
+                    } else {
+                        dayHours = await getWorkingHoursForDay(cursor, targetEmployeeId, AppDataSource, true);
+                    }
+
+                    if (dayHours > 0) {
+                        detailsToSave.push({
+                            overtimeTypeId: overtimeTypeId || null,
+                            workDate: toLocalYMD(cursor),
+                            startTime: startTime || null,
+                            endTime: endTime || null,
+                            totalHours: dayHours,
+                            reason: description || null
+                        });
+                    }
+                    cursor.setDate(cursor.getDate() + 1);
+                }
+            }
         }
+
+        data.quantity = estimatedQuantity;
+        let savedRequest;
 
         if (requestId) {
             const existing = await this._findRequestOrFail(requestId);
             if (existing.status !== RequestStatus.DRAFT) {
                 throw new BadRequestException('Chỉ có thể chỉnh sửa đơn ở trạng thái nháp');
             }
-            return await this.repo.update(requestId, data);
+            savedRequest = await this.repo.update(requestId, data);
         } else {
             const requestCode = await this.repo.generateRequestCode();
-            return await this.repo.create({ ...data, requestCode });
+            savedRequest = await this.repo.create({ ...data, requestCode });
         }
+
+        // Xóa các dòng detail OT cũ và ghi đè dòng detail mới
+        if (isOvertime) {
+            await this.repo.otdRepository.update(
+                { requestId: savedRequest.id, isDeleted: false },
+                { isDeleted: true, deletedAt: new Date() }
+            );
+            if (detailsToSave.length > 0) {
+                const entries = detailsToSave.map(d => ({ ...d, requestId: savedRequest.id }));
+                await this.repo.otdRepository.save(this.repo.otdRepository.create(entries));
+            }
+        }
+
+        return savedRequest;
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -195,7 +280,7 @@ export class RequestsService {
 
             if (unit === 'DAY') {
                 // Tính số ngày làm việc
-                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource);
+                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource, isOvertime);
                 usedQuantity += days;
             } else if (unit === 'HOUR') {
                 if (req.startTime && req.endTime) {
@@ -206,14 +291,14 @@ export class RequestsService {
                     const cursor = new Date(clipStart);
                     cursor.setHours(0, 0, 0, 0);
                     while (cursor <= clipEnd) {
-                        const hoursInDay = await getWorkingHoursForDay(cursor, employeeId, AppDataSource);
+                        const hoursInDay = await getWorkingHoursForDay(cursor, employeeId, AppDataSource, isOvertime);
                         usedQuantity += hoursInDay;
                         cursor.setDate(cursor.getDate() + 1);
                     }
                 }
             } else if (unit === 'HALF_DAY') {
                 // Tính số nửa ngày (1 ngày = 2 nửa ngày)
-                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource);
+                const days = await countWorkingDays(clipStart, clipEnd, employeeId, AppDataSource, isOvertime);
                 usedQuantity += days * 2;
             } else {
                 // TIME/OTHER: tính số lần (1 đơn = 1 lần)
@@ -229,8 +314,8 @@ export class RequestsService {
             remainingQuantity: Math.round(remainingQuantity * 100) / 100,
             unit,
             trackingCycle,
-            periodStart: periodStart.toISOString().slice(0, 10),
-            periodEnd: periodEnd.toISOString().slice(0, 10),
+            periodStart: toLocalYMD(periodStart),
+            periodEnd: toLocalYMD(periodEnd),
         };
     }
 
@@ -260,7 +345,7 @@ export class RequestsService {
         let requestedQty = 0;
 
         if (unit === 'DAY') {
-            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource);
+            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource, isOvertime);
         } else if (unit === 'HOUR') {
             if (startTime && endTime) {
                 requestedQty = await getRequestedHours(startDate, endDate, startTime, endTime, employeeId, AppDataSource, isOvertime);
@@ -268,12 +353,12 @@ export class RequestsService {
                 const cursor = new Date(reqStart);
                 cursor.setHours(0, 0, 0, 0);
                 while (cursor <= reqEnd) {
-                    requestedQty += await getWorkingHoursForDay(cursor, employeeId, AppDataSource);
+                    requestedQty += await getWorkingHoursForDay(cursor, employeeId, AppDataSource, isOvertime);
                     cursor.setDate(cursor.getDate() + 1);
                 }
             }
         } else if (unit === 'HALF_DAY') {
-            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource) * 2;
+            requestedQty = await countWorkingDays(reqStart, reqEnd, employeeId, AppDataSource, isOvertime) * 2;
         } else {
             requestedQty = 1; // TIME unit
         }
@@ -323,7 +408,7 @@ export class RequestsService {
                 let requestedQty = 0;
 
                 if (quota.unit === 'DAY') {
-                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource);
+                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource, isOvertime);
                 } else if (quota.unit === 'HOUR') {
                     if (request.startTime && request.endTime) {
                         requestedQty = await getRequestedHours(request.startDate, request.endDate, request.startTime, request.endTime, request.employeeId, AppDataSource, isOvertime);
@@ -331,12 +416,12 @@ export class RequestsService {
                         const cursor = new Date(reqStart);
                         cursor.setHours(0, 0, 0, 0);
                         while (cursor <= reqEnd) {
-                            requestedQty += await getWorkingHoursForDay(cursor, request.employeeId, AppDataSource);
+                            requestedQty += await getWorkingHoursForDay(cursor, request.employeeId, AppDataSource, isOvertime);
                             cursor.setDate(cursor.getDate() + 1);
                         }
                     }
                 } else if (quota.unit === 'HALF_DAY') {
-                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource) * 2;
+                    requestedQty = await countWorkingDays(reqStart, reqEnd, request.employeeId, AppDataSource, isOvertime) * 2;
                 } else {
                     requestedQty = 1;
                 }
@@ -948,4 +1033,4 @@ export class RequestsService {
             })
         );
     }
-}
+}
