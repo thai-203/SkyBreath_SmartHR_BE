@@ -1,5 +1,6 @@
 import { WorkingShiftsRepository } from '../repositories/working-shifts.repository.js';
 import { ShiftGroupsRepository } from '../repositories/shift-groups.repository.js';
+import { ShiftAssignmentsRepository } from '../repositories/shift-assignments.repository.js';
 import {
   NotFoundException,
   ConflictException,
@@ -9,6 +10,22 @@ import { AppMessages } from '../common/constants/index.js';
 export class WorkingShiftsService {
   constructor() {
     this.shiftRepo = new WorkingShiftsRepository();
+    this.shiftAssignRepo = new ShiftAssignmentsRepository();
+  }
+
+  _hasTimeWindowChange(shift, updateDto) {
+    const timeFields = [
+      'startTime',
+      'endTime',
+      'breakStartTime',
+      'breakEndTime',
+    ];
+
+    return timeFields.some(
+      (field) =>
+        Object.prototype.hasOwnProperty.call(updateDto, field) &&
+        updateDto[field] !== shift[field],
+    );
   }
 
   async findAll(queryDto) {
@@ -62,6 +79,16 @@ export class WorkingShiftsService {
 
   async update(id, updateDto) {
     const shift = await this.findById(id);
+    const hasAssignments = await this.shiftAssignRepo.hasAssignmentsByShiftId(
+      shift.id,
+    );
+
+    if (hasAssignments && this._hasTimeWindowChange(shift, updateDto)) {
+      throw new ConflictException(
+        AppMessages.Errors.WorkingShift.ASSIGNED_TIME_LOCKED,
+      );
+    }
+
     // if changing group or validating existing group status
     if (updateDto.groupId && updateDto.groupId !== shift.groupId) {
       const group = await new ShiftGroupsRepository().findById(
@@ -92,6 +119,14 @@ export class WorkingShiftsService {
 
   async remove(id) {
     const shift = await this.findById(id);
+    const hasAssignments = await this.shiftAssignRepo.hasAssignmentsByShiftId(
+      shift.id,
+    );
+
+    if (hasAssignments) {
+      throw new ConflictException(AppMessages.Errors.WorkingShift.ASSIGNED);
+    }
+
     return this.shiftRepo.softDelete(shift.id);
   }
 

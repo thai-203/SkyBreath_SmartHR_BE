@@ -72,18 +72,63 @@ export const uploadMiddleware = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
+const contractImportFileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const allowedExtensions = new Set([
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.pdf',
+    '.docx',
+    '.doc',
+    '.txt',
+  ]);
+  const allowedMimeTypes = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/webp',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'text/plain',
+  ]);
+
+  if (allowedExtensions.has(ext) || allowedMimeTypes.has(file.mimetype)) {
+    cb(null, true);
+    return;
+  }
+
+  cb(
+    new Error('Chỉ cho phép tải lên ảnh, PDF hoặc Word (.doc, .docx)!'),
+    false,
+  );
+};
+
+export const contractImportUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: contractImportFileFilter,
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
 // Excel upload middleware (Memory Storage)
 const excelFileFilter = (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ext === '.xlsx' || ext === '.xls' || file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-        cb(null, true);
-    } else {
-        cb(new Error('Chỉ cho phép tải lên tệp Excel (.xlsx, .xls)!'), false);
-    }
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (
+    ext === '.xlsx' ||
+    ext === '.xls' ||
+    file.mimetype ===
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ) {
+    cb(null, true);
+  } else {
+    cb(new Error('Chỉ cho phép tải lên tệp Excel (.xlsx, .xls)!'), false);
+  }
 };
 
 export const excelUpload = multer({
-    storage: multer.memoryStorage(),
-    fileFilter: excelFileFilter,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  storage: multer.memoryStorage(),
+  fileFilter: excelFileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
