@@ -98,4 +98,17 @@ export class ShiftAssignmentsRepository {
       deletedAt: new Date(),
     });
   }
+
+  async hasAssignmentsByShiftId(shiftId) {
+    if (!shiftId) return false;
+
+    const count = await this.repository.count({
+      where: {
+        shiftId,
+        isDeleted: false,
+      },
+    });
+
+    return count > 0;
+  }
 }

@@ -1,6 +1,7 @@
 import { WorkingShiftsService } from '../working-shifts.service.js';
 import { WorkingShiftsRepository } from '../../repositories/working-shifts.repository.js';
 import { ShiftGroupsRepository } from '../../repositories/shift-groups.repository.js';
+import { ShiftAssignmentsRepository } from '../../repositories/shift-assignments.repository.js';
 
 jest.mock('../../repositories/working-shifts.repository.js', () => ({
   WorkingShiftsRepository: jest.fn(),
@@ -10,10 +11,15 @@ jest.mock('../../repositories/shift-groups.repository.js', () => ({
   ShiftGroupsRepository: jest.fn(),
 }));
 
+jest.mock('../../repositories/shift-assignments.repository.js', () => ({
+  ShiftAssignmentsRepository: jest.fn(),
+}));
+
 describe('WorkingShiftsService', () => {
   let service;
   let shiftRepo;
   let shiftGroupRepo;
+  let shiftAssignRepo;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -31,8 +37,13 @@ describe('WorkingShiftsService', () => {
       findById: jest.fn(),
     };
 
+    shiftAssignRepo = {
+      hasAssignmentsByShiftId: jest.fn(),
+    };
+
     WorkingShiftsRepository.mockImplementation(() => shiftRepo);
     ShiftGroupsRepository.mockImplementation(() => shiftGroupRepo);
+    ShiftAssignmentsRepository.mockImplementation(() => shiftAssignRepo);
 
     service = new WorkingShiftsService();
   });
@@ -105,6 +116,7 @@ describe('WorkingShiftsService', () => {
       shiftName: 'Old Name',
       groupId: 1,
     });
+    shiftAssignRepo.hasAssignmentsByShiftId.mockResolvedValue(false);
     shiftGroupRepo.findById.mockResolvedValue({ id: 2, status: 'active' });
     shiftRepo.findAll.mockResolvedValue({ items: [], total: 0 });
     shiftRepo.update.mockResolvedValue({ id: 5, shiftName: 'New Name' });
@@ -123,11 +135,59 @@ describe('WorkingShiftsService', () => {
 
   it('removes existing shift by soft delete', async () => {
     shiftRepo.findById.mockResolvedValue({ id: 7 });
+    shiftAssignRepo.hasAssignmentsByShiftId.mockResolvedValue(false);
     shiftRepo.softDelete.mockResolvedValue({ affected: 1 });
 
     const result = await service.remove(7);
 
     expect(shiftRepo.softDelete).toHaveBeenCalledWith(7);
     expect(result).toEqual({ affected: 1 });
+  });
+
+  it('throws ConflictException when deleting shift assigned to employees', async () => {
+    shiftRepo.findById.mockResolvedValue({ id: 8 });
+    shiftAssignRepo.hasAssignmentsByShiftId.mockResolvedValue(true);
+
+    await expectRejectWithStatus(service.remove(8), 409);
+    expect(shiftRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it('allows editing non-time fields for assigned shift', async () => {
+    shiftRepo.findById.mockResolvedValue({
+      id: 9,
+      shiftName: 'Ca A',
+      startTime: '08:00:00',
+      endTime: '17:00:00',
+      breakStartTime: '12:00:00',
+      breakEndTime: '13:00:00',
+      groupId: 1,
+    });
+    shiftAssignRepo.hasAssignmentsByShiftId.mockResolvedValue(true);
+    shiftRepo.findAll.mockResolvedValue({ items: [], total: 0 });
+    shiftRepo.update.mockResolvedValue({ id: 9, shiftName: 'Ca A1' });
+
+    const result = await service.update(9, { shiftName: 'Ca A1' });
+
+    expect(shiftRepo.update).toHaveBeenCalledWith(9, { shiftName: 'Ca A1' });
+    expect(result).toEqual({ id: 9, shiftName: 'Ca A1' });
+  });
+
+  it('throws ConflictException when editing time window of assigned shift', async () => {
+    shiftRepo.findById.mockResolvedValue({
+      id: 10,
+      shiftName: 'Ca B',
+      startTime: '08:00:00',
+      endTime: '17:00:00',
+      breakStartTime: '12:00:00',
+      breakEndTime: '13:00:00',
+      groupId: 1,
+    });
+    shiftAssignRepo.hasAssignmentsByShiftId.mockResolvedValue(true);
+
+    await expectRejectWithStatus(
+      service.update(10, { startTime: '09:00:00' }),
+      409,
+    );
+    expect(shiftRepo.update).not.toHaveBeenCalled();
   });
 });

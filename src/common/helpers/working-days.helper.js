@@ -66,7 +66,16 @@ function toLocalYMD(date) {
  * @param {import('typeorm').DataSource} dataSource - TypeORM DataSource
  * @returns {Promise<number>} số ngày làm việc
  */
-export async function countWorkingDays(start, end, employeeId, dataSource) {
+export async function countWorkingDays(start, end, employeeId, dataSource, isOvertime = false) {
+    // Nếu là Tăng ca, mặc định không quan tâm ca làm việc, cứ đếm đủ số ngày
+    if (isOvertime) {
+        const d1 = new Date(start);
+        d1.setHours(0, 0, 0, 0);
+        const d2 = new Date(end);
+        d2.setHours(0, 0, 0, 0);
+        return Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+    }
+
     const employee = await dataSource.getRepository('EmployeeEntity').findOne({
         where: { id: employeeId, isDeleted: false },
     });
@@ -74,6 +83,7 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
 
     // Bước 1: Xác định nhân viên có phải "nhân viên theo ca" không
     const isShiftBased = await isShiftBasedEmployee(employeeId, employee.departmentId, dataSource);
+    console.log('[DEBUG countWorkingDays] employeeId:', employeeId, 'departmentId:', employee.departmentId, 'isShiftBased:', isShiftBased, 'isOvertime:', isOvertime);
 
     const ShiftAssignment = dataSource.getRepository('ShiftAssignmentEntity');
 
@@ -99,6 +109,10 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
     // Lọc bỏ ca OT
     const regularAssignments = filterOutOTAssignments(allAssignments);
     const hasAssignmentsInRange = regularAssignments.length > 0;
+    console.log('[DEBUG countWorkingDays] allAssignments:', allAssignments.length, 'regularAssignments:', regularAssignments.length);
+    regularAssignments.forEach(sa => {
+        console.log('[DEBUG countWorkingDays]   sa.id:', sa.id, 'weekdays:', sa.weekdays, 'effectiveFrom:', sa.effectiveFrom, 'effectiveTo:', sa.effectiveTo, 'shift:', sa.shift?.shiftName);
+    });
 
     // Bước 3: Duyệt từng ngày và đếm
     let count = 0;
@@ -121,7 +135,9 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
                     const weekdays = Array.isArray(sa.weekdays)
                         ? sa.weekdays.map(Number)
                         : (sa.weekdays ? String(sa.weekdays).split(',').map(Number) : [1, 2, 3, 4, 5]);
-                    return inRange && weekdays.includes(ourDay);
+                    const matched = inRange && weekdays.includes(ourDay);
+                    console.log('[DEBUG countWorkingDays]   date:', toLocalYMD(cursor), 'ourDay:', ourDay, 'weekdays:', weekdays, 'inRange:', inRange, 'matched:', matched);
+                    return matched;
                 });
                 if (isWorking) count++;
             }
@@ -134,6 +150,7 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
         cursor.setDate(cursor.getDate() + 1);
     }
 
+    console.log('[DEBUG countWorkingDays] RESULT:', count);
     return count;
 }
 
@@ -151,7 +168,11 @@ export async function countWorkingDays(start, end, employeeId, dataSource) {
  * @param {import('typeorm').DataSource} dataSource
  * @returns {Promise<number>} số giờ làm việc trong ngày
  */
-export async function getWorkingHoursForDay(date, employeeId, dataSource) {
+export async function getWorkingHoursForDay(date, employeeId, dataSource, isOvertime = false) {
+    // Nếu là đơn Tăng ca toàn ngày mà không truyền giờ, có thể mặc định là 8h/ngày hoặc theo người dùng chọn.
+    // Tạm thời fix cứng trả 8h vì T7/CN có thể không có ca.
+    if (isOvertime) return 8;
+
     const employee = await dataSource.getRepository('EmployeeEntity').findOne({
         where: { id: employeeId, isDeleted: false },
     });
@@ -222,15 +243,29 @@ export async function getWorkingHoursForDay(date, employeeId, dataSource) {
  * @param {boolean} isOvertime
  */
 export async function getRequestedHours(startDate, endDate, reqStartTime, reqEndTime, employeeId, dataSource, isOvertime = false) {
-    // 1. TRƯỜNG HỢP TĂNG CA (OT): Tính thô theo thời gian chọn
+    // 1. TRƯỜNG HỢP TĂNG CA (OT): Đừng trừ theo chuỗi thời gian liên tục, mà tính "mỗi ngày mấy tiếng"
     if (isOvertime) {
-        const startD = new Date(startDate);
-        const endD = new Date(endDate);
+        let dailyHours = 0;
         const [startH, startM] = reqStartTime.split(':').map(Number);
         const [endH, endM] = reqEndTime.split(':').map(Number);
-        startD.setHours(startH, startM, 0, 0);
-        endD.setHours(endH, endM, 0, 0);
-        return Math.max(0, (endD - startD) / (1000 * 60 * 60));
+
+        let startMins = startH * 60 + startM;
+        let endMins = endH * 60 + endM;
+
+        if (endMins < startMins) {
+            // Ca lặp qua đêm (Ví dụ 22:00 -> 02:00 là 4 tiếng)
+            endMins += 24 * 60;
+        }
+        dailyHours = (endMins - startMins) / 60;
+
+        // Cứ mỗi ngày trong khoảng sẽ cộng thêm dailyHours
+        const cursor = new Date(startDate);
+        cursor.setHours(0, 0, 0, 0);
+        const limit = new Date(endDate);
+        limit.setHours(0, 0, 0, 0);
+        const totalDays = Math.round((limit - cursor) / (1000 * 60 * 60 * 24)) + 1;
+
+        return totalDays * dailyHours;
     }
 
     const employee = await dataSource.getRepository('EmployeeEntity').findOne({

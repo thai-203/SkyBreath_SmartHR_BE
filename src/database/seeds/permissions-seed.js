@@ -783,6 +783,8 @@ const seed = async () => {
         'REQUEST_READ',
         'REQUEST_READ_OWN',
         'REQUEST_CREATE',
+        'REQUEST_APPROVE',
+        'REQUEST_CANCEL',
         'REQUEST_TYPE_READ',
         'REQUEST_GROUP_READ',
         'SHIFT_READ',
@@ -845,12 +847,6 @@ const seed = async () => {
         'USER_ACTION_LOG_EXPORT',
         'SEND_MANUAL_NOTIFICATION',
         'VIEW_NOTIFICATION_HISTORY',
-        'ATTENDANCE_READ_OWN',
-        'REQUEST_READ_OWN',
-        'TIMESHEET_READ_OWN',
-        'HOLIDAY_READ_OWN',
-        'OVERTIME_RULE_READ_OWN',
-        'PENALTY_READ_OWN',
       ];
       const hrMappings = permissions
         .filter((p) => hrPermissions.includes(p.permissionCode))

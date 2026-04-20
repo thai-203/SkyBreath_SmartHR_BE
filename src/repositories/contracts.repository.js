@@ -81,6 +81,7 @@ export class ContractsRepository {
       search,
       contractStatus,
       contractType,
+      employeeId,
     } = queryDto;
 
     const order = sortBy
@@ -97,6 +98,10 @@ export class ContractsRepository {
 
     if (contractType) {
       baseWhere.contractType = contractType;
+    }
+
+    if (employeeId && !Number.isNaN(Number(employeeId))) {
+      baseWhere.employeeId = Number(employeeId);
     }
 
     let where = baseWhere;
