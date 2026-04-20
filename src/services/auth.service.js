@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 import { AppMessages } from '../common/constants/index.js';
 import {
   BadRequestException,
@@ -20,6 +21,7 @@ import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { MailService } from './mail.service.js';
 import { RedisService } from './redis.service.js';
 import { UsersService } from './users.service.js';
+import { setRequestContextValue } from '../common/context/request-context.js';
 export class AuthService {
   constructor(
     usersService = new UsersService(),
@@ -52,6 +54,7 @@ export class AuthService {
   }
 
   async login(user) {
+    setRequestContextValue('userId', user.id);
     const tokens = await this.generateTokens(user);
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.usersService.updateLastLogin(user.id);
@@ -63,7 +66,6 @@ export class AuthService {
         ) || [],
       ),
     ];
-
     return {
       user: {
         id: user.id,
@@ -179,28 +181,28 @@ export class AuthService {
       // Organization info
       department: employee?.department
         ? {
-          id: employee.department.id,
-          name: employee.department.departmentName,
-        }
+            id: employee.department.id,
+            name: employee.department.departmentName,
+          }
         : null,
       position: employee?.position
         ? {
-          id: employee.position.id,
-          name: employee.position.positionName,
-        }
+            id: employee.position.id,
+            name: employee.position.positionName,
+          }
         : null,
       jobGrade: employee?.jobGrade
         ? {
-          id: employee.jobGradeId,
-          name: employee.jobGrade.gradeName,
-        }
+            id: employee.jobGradeId,
+            name: employee.jobGrade.gradeName,
+          }
         : null,
       manager: employee?.directManager?.fullName || null,
       directManager: employee?.directManager
         ? {
-          id: employee.directManager.id,
-          name: employee.directManager.fullName,
-        }
+            id: employee.directManager.id,
+            name: employee.directManager.fullName,
+          }
         : null,
       hrMentor: employee?.hrMentor?.fullName || null,
       employmentStatus: employee?.employmentStatus || null,
@@ -301,21 +303,21 @@ export class AuthService {
       permanentAddress: updated.permanentAddress,
       department: updated.department
         ? {
-          id: updated.department.id,
-          name: updated.department.departmentName,
-        }
+            id: updated.department.id,
+            name: updated.department.departmentName,
+          }
         : null,
       position: updated.position
         ? {
-          id: updated.position.id,
-          name: updated.position.positionName,
-        }
+            id: updated.position.id,
+            name: updated.position.positionName,
+          }
         : null,
       jobGrade: updated.jobGrade
         ? {
-          id: updated.jobGrade.id,
-          name: updated.jobGrade.name,
-        }
+            id: updated.jobGrade.id,
+            name: updated.jobGrade.name,
+          }
         : null,
       manager: updated.directManager?.fullName || null,
       hrMentor: updated.hrMentor?.fullName || null,
@@ -324,6 +326,7 @@ export class AuthService {
 
   async generateTokens(user) {
     const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
+
     const permissions = [
       ...new Set(
         user.userRoles?.flatMap((ur) =>
@@ -358,28 +361,41 @@ export class AuthService {
       refreshToken,
     };
   }
+
+  // ── User-initiated forgot password (send OTP) ─────────────────────────
   async forgotPassword(email) {
     const user = await this.usersService.findByEmail(email);
-    console.log(user);
-    
+
     if (!user) {
-      return {
-        message: AppMessages.Success.Auth.PASSWORD_RESET_REQUESTED,
-      };
+      // For security, don't reveal if email exists
+      return { message: 'Nếu email tồn tại, OTP sẽ được gửi' };
     }
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
+    if (user.status !== 'ACTIVE' || user.isDeleted) {
+      throw new BadRequestException(AppMessages.Errors.User.INACTIVE);
+    }
 
-    const hashedToken = hashResetPasswordToken(resetToken);
+    // Generate OTP (6 digits) and otpRequestId (UUID)
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpRequestId = uuidv4();
 
-    const redisKey = `reset-password:${hashedToken}`;
+    // Hash OTP for storage
+    const hashedOtp = hashResetPasswordToken(otp);
 
-    await this.cacheService.set(redisKey, user.id, 5 * 60);
+    // Set OTP expiration (1 hour from now)
+    const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    // 4. Tạo link reset
-    const resetUrl = `${config.frontEndUrl}/forgot-password?token=${resetToken}`;
+    // Save OTP + otpRequestId to DB (don't set mustChangePassword for user-initiated action)
+    await this.usersService.update(user.id, {
+      otp: hashedOtp,
+      otpExpiresAt,
+      otpRequestId,
+    });
 
-    // 5. Gửi email
+    // Create reset URL with otpRequestId and OTP
+    const resetUrl = `${config.frontEndUrl}/forgot-password?requestId=${otpRequestId}&otp=${otp}`;
+
+    // Send email
     await this.mailService.sendResetPasswordEmail(
       user.email,
       user.username,
@@ -387,40 +403,68 @@ export class AuthService {
     );
 
     return {
-      message: AppMessages.Success.Auth.PASSWORD_RESET_REQUESTED,
+      message: 'OTP đã được gửi đến email của bạn',
+      otpRequestId, // Return for frontend
     };
   }
 
-  async resetPassword(token, newPassword) {
-    const hashedToken = hashResetPasswordToken(token);
+  // ── User verify OTP and reset password ───────────────────────────────
+  async resetPasswordWithOtp(otpRequestId, otp, newPassword) {
+    // Find user by otpRequestId
+    const user = await this.usersService.findByOtpRequestId(otpRequestId);
 
-    const redisKey = `reset-password:${hashedToken}`;
-
-    const userId = await this.cacheService.get(redisKey);
-
-    if (!userId) {
-      throw new BadRequestException(
-        AppMessages.Errors.Auth.RESET_TOKEN_INVALID,
-      );
+    if (!user) {
+      throw new BadRequestException('OTP request không hợp lệ');
     }
 
-    const user = await this.usersService.findByIdWithPassword(userId);
+    if (user.status !== 'ACTIVE' || user.isDeleted) {
+      throw new BadRequestException(AppMessages.Errors.User.INACTIVE);
+    }
 
-    const duplicatePassword = await comparePassword(newPassword, user.password);
+    // Check if OTP exists and not expired
+    if (!user.otp) {
+      throw new BadRequestException('OTP không hợp lệ hoặc đã hết hạn');
+    }
 
+    if (user.otpExpiresAt !== null) {
+      const now = new Date();
+      if (now > user.otpExpiresAt) {
+        throw new BadRequestException(
+          'OTP đã hết hạn. Vui lòng yêu cầu OTP mới',
+        );
+      }
+    }
+
+    // Verify OTP
+    const hashedInputOtp = hashResetPasswordToken(otp);
+    if (hashedInputOtp !== user.otp) {
+      throw new BadRequestException('OTP không chính xác');
+    }
+
+    // Get user with password to check duplicate
+    const userWithPassword = await this.usersService.findByIdWithPassword(
+      user.id,
+    );
+
+    // Check new password is different from current
+    const duplicatePassword = await comparePassword(
+      newPassword,
+      userWithPassword.password,
+    );
     if (duplicatePassword) {
       throw new BadRequestException(
         AppMessages.Errors.Auth.PASSWORD_NOT_DIFFERENT,
       );
     }
 
-    await this.usersService.update(userId, {
+    await this.usersService.update(user.id, {
       password: newPassword,
+      otp: null,
+      otpExpiresAt: null,
+      otpRequestId: null,
+      mustChangePassword: false, // Ensure this is false for user action
     });
 
-    // Xóa token sau khi dùng
-    await this.cacheService.del(redisKey);
-
-    return { message: AppMessages.Success.Auth.PASSWORD_RESET_SUCCESS };
+    return { message: 'Mật khẩu đã được đặt lại thành công' };
   }
 }

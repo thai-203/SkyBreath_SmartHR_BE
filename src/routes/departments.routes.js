@@ -3,7 +3,11 @@ import { DepartmentsController } from '../controllers/departments.controller.js'
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 import { validationMiddleware } from '../common/middleware/validation.middleware.js';
-import { CreateDepartmentDto, UpdateDepartmentDto, DepartmentQueryDto } from '../models/dto/departments/index.js';
+import {
+  CreateDepartmentDto,
+  UpdateDepartmentDto,
+  DepartmentQueryDto,
+} from '../models/dto/departments/index.js';
 
 const router = Router();
 const departmentsController = new DepartmentsController();
@@ -83,10 +87,31 @@ const departmentsController = new DepartmentsController();
  *       403:
  *         description: Forbidden
  */
-router.post('/', authMiddleware, permissionsMiddleware('DEPT_CREATE'), validationMiddleware(CreateDepartmentDto), departmentsController.create);
-router.get('/list', authMiddleware, departmentsController.list);
-router.get('/', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.findAll);
+router.post(
+  '/',
+  authMiddleware,
+  permissionsMiddleware('DEPARTMENT_CREATE'),
+  validationMiddleware(CreateDepartmentDto),
+  departmentsController.create,
+);
+router.get(
+  '/list',
+  authMiddleware,
+  departmentsController.list,
+);
+router.get(
+  '/',
+  authMiddleware,
+  permissionsMiddleware('CONTRACT_READ'),
+  departmentsController.findAll,
+);
 
+router.get(
+  '/timesheet',
+  authMiddleware,
+  permissionsMiddleware(['TIMESHEET_READ', 'TIMESHEET_READ_OWN']),
+  departmentsController.findAll,
+);
 /**
  * @swagger
  * /departments/chart:
@@ -99,7 +124,19 @@ router.get('/', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsC
  *       200:
  *         description: Organization chart
  */
-router.get('/chart', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.getOrgChart);
+router.get(
+  '/chart',
+  authMiddleware,
+  permissionsMiddleware('DEPARTMENT_READ'),
+  departmentsController.getOrgChart,
+);
+
+router.get(
+  '/chart/holiday',
+  authMiddleware,
+  permissionsMiddleware('HOLIDAY_READ'),
+  departmentsController.getOrgChart,
+);
 
 /**
  * @swagger
@@ -113,7 +150,12 @@ router.get('/chart', authMiddleware, permissionsMiddleware('DEPT_READ'), departm
  *       200:
  *         description: CSV file
  */
-router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), departmentsController.export);
+router.get(
+  '/export',
+  authMiddleware,
+  permissionsMiddleware('DEPARTMENT_EXPORT'),
+  departmentsController.export,
+);
 
 /**
  * @swagger
@@ -176,8 +218,24 @@ router.get('/export', authMiddleware, permissionsMiddleware('DEPT_EXPORT'), depa
  *       404:
  *         description: Department not found
  */
-router.get('/:id', authMiddleware, permissionsMiddleware('DEPT_READ'), departmentsController.findOne);
-router.put('/:id', authMiddleware, permissionsMiddleware('DEPT_UPDATE'), validationMiddleware(UpdateDepartmentDto), departmentsController.update);
-router.delete('/:id', authMiddleware, permissionsMiddleware('DEPT_DELETE'), departmentsController.remove);
+router.get(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('DEPARTMENT_READ'),
+  departmentsController.findOne,
+);
+router.put(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('DEPARTMENT_UPDATE'),
+  validationMiddleware(UpdateDepartmentDto),
+  departmentsController.update,
+);
+router.delete(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('DEPARTMENT_DELETE'),
+  departmentsController.remove,
+);
 
 export const departmentsRoutes = router;

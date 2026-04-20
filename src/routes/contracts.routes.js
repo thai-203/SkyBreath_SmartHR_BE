@@ -363,7 +363,7 @@ router.put(
 router.put(
   '/:id/terminate',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_UPDATE'),
+  permissionsMiddleware('CONTRACT_TERMINATE'),
   contractsController.terminate,
 );
 

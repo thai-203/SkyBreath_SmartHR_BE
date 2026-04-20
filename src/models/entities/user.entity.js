@@ -28,6 +28,19 @@ export class UserEntity extends BaseEntity {
   @Column({ name: 'refresh_token_expire_at', nullable: true, type: 'datetime' })
   refreshTokenExpireAt;
 
+  @Column({ name: 'must_change_password', default: false, type: 'boolean' })
+  mustChangePassword;
+
+  @Column({ name: 'otp', nullable: true, type: 'varchar' })
+  @Exclude()
+  otp;
+
+  @Column({ name: 'otp_expires_at', nullable: true, type: 'datetime' })
+  otpExpiresAt;
+
+  @Column({ name: 'otp_request_id', nullable: true, type: 'varchar' })
+  otpRequestId;
+
   @OneToMany(() => UserRoleEntity, (userRole) => userRole.user)
   userRoles;
 

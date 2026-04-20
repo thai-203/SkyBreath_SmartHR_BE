@@ -39,6 +39,7 @@ export const errorMiddleware = async (err, req, res, next) => {
         targetRecordId: null,
         status: 'FAILED',
         errorMessage: message,
+        evidenceImageUrl: ctx?.evidenceImageUrl ?? null,
         requestIp: ctx?.ip ?? req.ip,
         userAgent: ctx?.userAgent ?? req.headers['user-agent'],
       });

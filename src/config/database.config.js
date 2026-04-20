@@ -64,6 +64,7 @@ import { AttendanceSecurityConfigEntity } from '../models/entities/attendance-se
 import { AttendanceAllowedIpEntity } from '../models/entities/attendance-allowed-ip.entity.js';
 import { AttendanceBlockingConfigEntity } from '../models/entities/attendance-blocking-config.entity.js';
 import { AttendanceSecurityStatusEntity } from '../models/entities/attendance-security-status.entity.js';
+import { PayrollConfigEntity } from '../models/entities/payroll-config.entity.js';
 export const databaseConfig = {
   type: 'mysql',
   host: config.database.host,
@@ -138,6 +139,7 @@ export const databaseConfig = {
     AiChatMessageEntity,
     AiConfigurationEntity,
     AiPromptEntity,
+    PayrollConfigEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

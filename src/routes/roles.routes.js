@@ -57,8 +57,19 @@ const rolesController = new RolesController(rolesService);
  *       403:
  *         description: Forbidden
  */
-router.post('/', authMiddleware, rolesMiddleware([Role.ADMIN]), validationMiddleware(CreateRoleDto), rolesController.create);
-router.get('/', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.findAll);
+router.post(
+  '/',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  validationMiddleware(CreateRoleDto),
+  rolesController.create,
+);
+router.get(
+  '/',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  rolesController.findAll,
+);
 
 /**
  * @swagger
@@ -133,10 +144,36 @@ router.get('/', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.f
  *       403:
  *         description: Forbidden
  */
-router.get('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.findOne);
-router.put('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), validationMiddleware(UpdateRoleDto), rolesController.update);
-router.delete('/:id', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.remove);
-router.get('/:id/permissions', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.getPermissions);
-router.post('/:id/permissions', authMiddleware, rolesMiddleware([Role.ADMIN]), rolesController.assignPermissions);
+router.get(
+  '/:id',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  rolesController.findOne,
+);
+router.put(
+  '/:id',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  validationMiddleware(UpdateRoleDto),
+  rolesController.update,
+);
+router.delete(
+  '/:id',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  rolesController.remove,
+);
+router.get(
+  '/:id/permissions',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  rolesController.getPermissions,
+);
+router.post(
+  '/:id/permissions',
+  authMiddleware,
+  rolesMiddleware([Role.ADMIN]),
+  rolesController.assignPermissions,
+);
 
 export const rolesRoutes = router;
