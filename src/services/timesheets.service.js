@@ -18,8 +18,10 @@ import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
+import { PenaltyEntity } from '../models/entities/penalty.entity.js';
 import { RequestEntity } from '../models/entities/request.entity.js';
 import { ShiftAssignmentEntity } from '../models/entities/shift-assignment.entity.js';
+import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 
 /** Đơn được hợp nhất vào bảng công khi sync — theo request_groups.code (không gồm OVERTIME). */
