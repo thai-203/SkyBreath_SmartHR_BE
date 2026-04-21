@@ -1,8 +1,8 @@
 import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { AppMessages } from '../common/constants/index.js';
 import { RequestGroupCode } from '../common/enums/request.enum.js';
-import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
 import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
+import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
 
 import {
   BadRequestException,
@@ -346,6 +346,7 @@ export class TimesheetsService {
             totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
             totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
             overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+            standardDays: parseFloat(standardWorkingDays.toFixed(2)),
             isLocked: false,
           });
           updatedCount++;
@@ -357,10 +358,15 @@ export class TimesheetsService {
             totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
             totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
             overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+            standardDays: parseFloat(standardWorkingDays.toFixed(2)),
             isLocked: false,
           });
           generatedCount++;
         }
+
+        // Trigger granular summary update (calculates standardDays, officialDays, etc.)
+        await this.summarizeTimesheet(employee.id, month, year, userContext);
+
         results.push(timesheet);
       } catch (err) {
         console.error(
@@ -512,8 +518,11 @@ export class TimesheetsService {
       totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
       totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
       overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+      standardDays: 0, // Will be updated by summarizeTimesheet below
       isLocked: false,
     });
+
+    await this.summarizeTimesheet(employeeId, month, year);
 
     return timesheet;
   }
@@ -1679,9 +1688,8 @@ export class TimesheetsService {
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day);
       const dayOfWeek = date.getDay();
-      const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      // Skip weekends (0=Sun, 6=Sat) and holidays
-      if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateKey)) {
+      // Skip weekends (0=Sun, 6=Sat)
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         count++;
       }
     }
