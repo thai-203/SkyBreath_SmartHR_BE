@@ -229,6 +229,28 @@ const seed = async () => {
         module: 'Contract',
       },
 
+      // Performance Reviews (KPI)
+      {
+        permissionCode: 'PERFORMANCE_REVIEW_READ',
+        description: 'View performance reviews',
+        module: 'PerformanceReview',
+      },
+      {
+        permissionCode: 'PERFORMANCE_REVIEW_CREATE',
+        description: 'Create performance review',
+        module: 'PerformanceReview',
+      },
+      {
+        permissionCode: 'PERFORMANCE_REVIEW_UPDATE',
+        description: 'Update performance review',
+        module: 'PerformanceReview',
+      },
+      {
+        permissionCode: 'PERFORMANCE_REVIEW_DELETE',
+        description: 'Delete performance review',
+        module: 'PerformanceReview',
+      },
+
       // Positions
       {
         permissionCode: 'POSITION_READ',
@@ -741,6 +763,11 @@ const seed = async () => {
       'PENALTY_READ_OWN',
       'ONBOARDING_PROGRESS_READ_OWN',
       'ONBOARDING_PROGRESS_UPDATE_OWN',
+      // Performance Reviews
+      'PERFORMANCE_REVIEW_READ',
+      'PERFORMANCE_REVIEW_CREATE',
+      'PERFORMANCE_REVIEW_UPDATE',
+      'PERFORMANCE_REVIEW_DELETE',
     ];
     for (const code of managerPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
@@ -879,6 +906,11 @@ const seed = async () => {
       'PENALTY_READ_OWN',
       'ONBOARDING_PROGRESS_READ_OWN',
       'ONBOARDING_PROGRESS_UPDATE_OWN',
+      // Performance Reviews
+      'PERFORMANCE_REVIEW_READ',
+      'PERFORMANCE_REVIEW_CREATE',
+      'PERFORMANCE_REVIEW_UPDATE',
+      'PERFORMANCE_REVIEW_DELETE',
     ];
     for (const code of hrPerms) {
       const p = permissions.find((perm) => perm.permissionCode === code);
