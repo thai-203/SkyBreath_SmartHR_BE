@@ -138,6 +138,9 @@ export class PayrollDetailEntity extends BaseEntity {
     @Column({ name: 'p3_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
     p3Percentage;
 
+    @Column({ name: 'kpi_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
+    kpiPercentage;
+
     @Column({ name: 'performance_salary', type: 'decimal', precision: 15, scale: 2, default: 0 })
     performanceSalary;
 
