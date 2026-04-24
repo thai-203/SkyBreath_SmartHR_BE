@@ -937,6 +937,61 @@ export class PayrollService {
     }
 
     /**
+     * Gửi phiếu lương qua email cho các nhân viên được chọn (theo detailIds)
+     * Không yêu cầu bảng lương phải bị khóa — cho phép gửi ở mọi trạng thái.
+     * @param {number} payrollId
+     * @param {number[]} detailIds - Danh sách ID của payroll_details cần gửi
+     */
+    async sendPayslipsToSelected(payrollId, detailIds = []) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+
+        if (!detailIds || detailIds.length === 0) {
+            throw new BadRequestException('Vui lòng chọn ít nhất một nhân viên để gửi phiếu lương.');
+        }
+
+        const allDetails = await this.payrollDetailRepository.findByPayroll(payrollId);
+        const selectedDetails = allDetails.filter(d => detailIds.includes(d.id));
+
+        if (selectedDetails.length === 0) {
+            throw new BadRequestException('Không tìm thấy dữ liệu phiếu lương cho các nhân viên đã chọn.');
+        }
+
+        let sentCount = 0;
+        const failedEmails = [];
+
+        for (const detail of selectedDetails) {
+            const email = detail.employee?.companyEmail || detail.employee?.user?.email;
+            if (!email) {
+                console.warn(`[PayrollService] Nhân viên ${detail.employee?.fullName} (ID: ${detail.employeeId}) không có email.`);
+                failedEmails.push({ name: detail.employee?.fullName, reason: 'Không có email' });
+                continue;
+            }
+
+            const html = this._buildPayslipHtml(detail, payroll);
+            try {
+                await sendMail(
+                    email,
+                    `Phiếu lương Tháng ${payroll.payrollMonth}/${payroll.payrollYear} - SmartHR`,
+                    '',
+                    html
+                );
+                sentCount++;
+                // Đánh dấu đã gửi cho record này
+                await this.payrollDetailRepository.update(detail.id, { payslipSentAt: new Date() });
+            } catch (err) {
+                console.error(`[PayrollService] Lỗi gửi phiếu lương tới ${email}:`, err.message);
+                failedEmails.push({ name: detail.employee?.fullName, email, reason: err.message });
+            }
+        }
+
+        return {
+            sent: sentCount,
+            total: selectedDetails.length,
+            failed: failedEmails,
+        };
+    }
+
+    /**
      * Xuất file Excel phiếu lương cho từng nhân viên
      */
     async exportPayslips(payrollId) {
@@ -1071,37 +1126,145 @@ export class PayrollService {
      */
     _buildPayslipHtml(detail, payroll) {
         const emp = detail.employee;
-        const fmt = (n) => new Intl.NumberFormat('vi-VN').format(parseFloat(n || 0));
+        const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Math.round(parseFloat(n || 0)));
+        const sentDate = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        return `
-        <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px;">
-            <h2 style="color: #4f46e5; text-align: center; margin-bottom: 4px;">PHIẾU LƯƠNG</h2>
-            <p style="text-align: center; color: #6b7280; margin-top: 0;">Tháng ${payroll.payrollMonth}/${payroll.payrollYear}</p>
-            <hr style="border-color: #e5e7eb; margin: 16px 0;" />
-            <p><strong>Họ và tên:</strong> ${emp?.fullName || ''}</p>
-            <p><strong>Mã nhân viên:</strong> ${emp?.employeeCode || ''}</p>
-            <p><strong>Phòng ban:</strong> ${emp?.department?.departmentName || ''}</p>
-            <hr style="border-color: #e5e7eb; margin: 16px 0;" />
-            <table style="width: 100%; border-collapse: collapse;">
-                <tr style="background: #f9fafb;"><th style="text-align:left;padding:8px;border:1px solid #e5e7eb;">Chỉ tiêu</th><th style="text-align:right;padding:8px;border:1px solid #e5e7eb;">Số tiền</th></tr>
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Ngày công thực tế</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">${detail.workingDays} ngày</td></tr>
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương cơ bản (P1)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">${fmt(detail.baseSalary)} ₫</td></tr>
-                ${(Number(detail.p21Amount) + Number(detail.p22Amount)) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương hiệu năng (P2)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(Number(detail.p21Amount) + Number(detail.p22Amount))} ₫</td></tr>` : ''}
-                ${Number(detail.probationAmount) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương thử việc</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.probationAmount)} ₫</td></tr>` : ''}
-                ${Number(detail.allowanceAmount) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Phụ cấp</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.allowanceAmount)} ₫</td></tr>` : ''}
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Phụ cấp làm thêm giờ</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.overtimePay)} ₫</td></tr>
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Thưởng</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.bonus)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Khấu trừ</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.deduction)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Phạt</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.penalty)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Bảo hiểm (BHXH/YT/TN)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.insuranceDeduction)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Thuế TNCN</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.taxDeduction)} ₫</td></tr>
-                <tr style="background:#ecfdf5; font-weight:bold;">
-                    <td style="padding:10px;border:1px solid #d1fae5; color:#065f46;">THỰC NHẬN</td>
-                    <td style="text-align:right;padding:10px;border:1px solid #d1fae5; color:#065f46;">${fmt(detail.netSalary)} ₫</td>
-                </tr>
-            </table>
-            ${detail.note ? `<p style="margin-top:12px;color:#6b7280;font-style:italic;">Ghi chú: ${detail.note}</p>` : ''}
-            <p style="margin-top:24px;font-size:12px;color:#9ca3af;text-align:center;">Email tự động từ hệ thống SmartHR. Vui lòng không phản hồi.</p>
-        </div>`;
+        const p2Amount = Number(detail.p21Amount || 0) + Number(detail.p22Amount || 0);
+        const totalEarnings = Number(detail.p1Amount || detail.baseSalary || 0) + p2Amount +
+            Number(detail.probationAmount || 0) + Number(detail.allowanceAmount || 0) +
+            Number(detail.overtimePay || 0) + Number(detail.bonus || 0);
+        const totalDeductions = Number(detail.insuranceDeduction || 0) + Number(detail.taxDeduction || 0) +
+            Number(detail.deduction || 0) + Number(detail.penalty || 0);
+
+        const rowStyle = 'padding: 9px 14px; border-bottom: 1px solid #f1f5f9; font-size: 13px;';
+        const labelStyle = `${rowStyle} color: #475569; width: 60%;`;
+        const valueStyle = `${rowStyle} text-align: right; font-weight: 600; color: #1e293b;`;
+        const deductStyle = `${rowStyle} text-align: right; font-weight: 600; color: #dc2626;`;
+
+        const incomeRow = (label, amount) => amount > 0 ? `
+            <tr>
+                <td style="${labelStyle}">${label}</td>
+                <td style="${valueStyle}">+${fmt(amount)} ₫</td>
+            </tr>` : '';
+
+        const deductRow = (label, amount) => amount > 0 ? `
+            <tr>
+                <td style="${labelStyle}">${label}</td>
+                <td style="${deductStyle}">−${fmt(amount)} ₫</td>
+            </tr>` : '';
+
+        return `<!DOCTYPE html>
+<html lang="vi">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Phiếu lương Tháng ${payroll.payrollMonth}/${payroll.payrollYear}</title></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:32px 16px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:600px;width:100%;">
+
+  <!-- Header -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:32px 32px 24px;">
+      <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,0.7);text-transform:uppercase;">SmartHR System</p>
+      <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">PHIẾU LƯƠNG</h1>
+      <p style="margin:6px 0 0;font-size:14px;color:rgba(255,255,255,0.85);">Tháng ${payroll.payrollMonth}/${payroll.payrollYear} &nbsp;•&nbsp; Ngày gửi: ${sentDate}</p>
+    </td>
+  </tr>
+
+  <!-- Employee Info -->
+  <tr>
+    <td style="padding:20px 32px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="width:48px;vertical-align:top;">
+            <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#818cf8,#6366f1);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:white;text-align:center;line-height:42px;">
+              ${(emp?.fullName || 'N')[0].toUpperCase()}
+            </div>
+          </td>
+          <td style="padding-left:12px;vertical-align:top;">
+            <p style="margin:0;font-size:16px;font-weight:800;color:#1e293b;">${emp?.fullName || '—'}</p>
+            <p style="margin:3px 0 0;font-size:12px;color:#64748b;">
+              <span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:20px;font-weight:700;margin-right:8px;">${emp?.employeeCode || '—'}</span>
+              ${emp?.position?.positionName || ''} &nbsp;|&nbsp; ${emp?.department?.departmentName || ''}
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Income Section -->
+  <tr>
+    <td style="padding:24px 32px 0;">
+      <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;">Thu nhập</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+        ${incomeRow('Lương vị trí thực nhận (P1)', detail.p1Amount || detail.baseSalary)}
+        ${incomeRow('Thưởng hiệu quả công việc (P2)', p2Amount)}
+        ${incomeRow('Lương thử việc', detail.probationAmount)}
+        ${incomeRow('Phụ cấp', detail.allowanceAmount)}
+        ${incomeRow('Làm thêm giờ (OT)', detail.overtimePay)}
+        ${incomeRow('Thưởng', detail.bonus)}
+        <tr style="background:#f0fdf4;">
+          <td style="${labelStyle} font-weight:700; color:#166534;">Tổng thu nhập</td>
+          <td style="${valueStyle} color:#16a34a;">+${fmt(totalEarnings)} ₫</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Deduction Section -->
+  <tr>
+    <td style="padding:20px 32px 0;">
+      <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;">Các khoản trừ</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+        ${deductRow('Bảo hiểm xã hội / Y tế / Thất nghiệp', detail.insuranceDeduction)}
+        ${deductRow('Thuế thu nhập cá nhân (TNCN)', detail.taxDeduction)}
+        ${deductRow('Khấu trừ khác', detail.deduction)}
+        ${deductRow('Phạt / Vi phạm', detail.penalty)}
+        <tr style="background:#fff7f7;">
+          <td style="${labelStyle} font-weight:700; color:#991b1b;">Tổng khấu trừ</td>
+          <td style="${deductStyle}">−${fmt(totalDeductions)} ₫</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- NET Salary -->
+  <tr>
+    <td style="padding:20px 32px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:2px solid #6ee7b7;border-radius:12px;overflow:hidden;">
+        <tr>
+          <td style="padding:16px 20px;font-size:15px;font-weight:800;color:#065f46;">THỰC LĨNH (NET)</td>
+          <td style="padding:16px 20px;text-align:right;font-size:20px;font-weight:900;color:#065f46;letter-spacing:-0.5px;">${fmt(detail.netSalary)} ₫</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  ${detail.note ? `
+  <!-- Note -->
+  <tr>
+    <td style="padding:0 32px 16px;">
+      <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;">
+        <p style="margin:0;font-size:12px;color:#92400e;font-style:italic;"><strong>Ghi chú:</strong> ${detail.note}</p>
+      </div>
+    </td>
+  </tr>` : ''}
+
+  <!-- Footer -->
+  <tr>
+    <td style="padding:16px 32px 28px;border-top:1px solid #f1f5f9;">
+      <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;line-height:1.6;">
+        Đây là phiếu lương điện tử được tạo tự động bởi hệ thống <strong style="color:#6366f1;">SmartHR</strong>.<br/>
+        Vui lòng liên hệ phòng Nhân sự nếu có thắc mắc. Không phản hồi email này.
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
     }
 }

@@ -158,6 +158,16 @@ export class PayrollController {
         } catch (error) { next(error); }
     };
 
+    // UC30 - Send selected payslips (by detailIds)
+    sendPayslipsSelected = async (req, res, next) => {
+        try {
+            const payrollId = parseInt(req.params.id);
+            const detailIds = (req.body.detailIds || []).map(Number).filter(Boolean);
+            const result = await this.payrollService.sendPayslipsToSelected(payrollId, detailIds);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Payroll.PAYSLIPS_SENT, result);
+        } catch (error) { next(error); }
+    };
+
     // UC30 - Export payslips Excel
     exportPayslips = async (req, res, next) => {
         try {

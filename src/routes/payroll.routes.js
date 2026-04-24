@@ -138,6 +138,13 @@ router.post(
   payrollController.sendPayslips,
 );
 
+router.post(
+  '/:id/send-payslips-selected',
+  authMiddleware,
+  permissionsMiddleware('PAYROLL_SEND_PAYSLIPS'),
+  payrollController.sendPayslipsSelected,
+);
+
 // UC28 - Import Details Excel
 router.post(
   '/:id/import-details',
