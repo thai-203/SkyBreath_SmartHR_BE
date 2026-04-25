@@ -1,4 +1,5 @@
 import { ContractsService } from '../services/contracts.service.js';
+import { ContractImportService } from '../services/contract-import.service.js';
 import {
   CreateContractDto,
   UpdateContractDto,
@@ -11,6 +12,7 @@ import { AppMessages } from '../common/constants/index.js';
 export class ContractsController {
   constructor() {
     this.contractsService = new ContractsService();
+    this.contractImportService = new ContractImportService();
   }
 
   _prepareAndValidateData(data) {
@@ -134,6 +136,28 @@ export class ContractsController {
         success: true,
         data: contract,
         message: 'Tạo hợp đồng thành công',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  importContract = async (req, res, next) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({
+          success: false,
+          message: 'Vui lòng chọn tệp hợp đồng để import.',
+        });
+      }
+
+      const draft = await this.contractImportService.importFromFile(file);
+
+      return res.status(200).json({
+        success: true,
+        data: draft,
+        message: 'Trích xuất dữ liệu hợp đồng thành công',
       });
     } catch (error) {
       next(error);

@@ -72,18 +72,114 @@ export const uploadMiddleware = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
+const contractImportFileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const allowedExtensions = new Set([
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.pdf',
+    '.docx',
+    '.doc',
+    '.txt',
+  ]);
+  const allowedMimeTypes = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/webp',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'text/plain',
+  ]);
+
+  if (allowedExtensions.has(ext) || allowedMimeTypes.has(file.mimetype)) {
+    cb(null, true);
+    return;
+  }
+
+  cb(
+    new Error('Chỉ cho phép tải lên ảnh, PDF hoặc Word (.doc, .docx)!'),
+    false,
+  );
+};
+
+export const contractImportUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: contractImportFileFilter,
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
 // Excel upload middleware (Memory Storage)
 const excelFileFilter = (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ext === '.xlsx' || ext === '.xls' || file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-        cb(null, true);
-    } else {
-        cb(new Error('Chỉ cho phép tải lên tệp Excel (.xlsx, .xls)!'), false);
-    }
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (
+    ext === '.xlsx' ||
+    ext === '.xls' ||
+    file.mimetype ===
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ) {
+    cb(null, true);
+  } else {
+    cb(new Error('Chỉ cho phép tải lên tệp Excel (.xlsx, .xls)!'), false);
+  }
 };
 
 export const excelUpload = multer({
-    storage: multer.memoryStorage(),
-    fileFilter: excelFileFilter,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  storage: multer.memoryStorage(),
+  fileFilter: excelFileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
+
+// ── Payroll Document Upload (PDF, DOCX, XLSX, ảnh) ──
+const PAYROLL_DOC_ALLOWED_MIMES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'image/jpeg',
+  'image/png',
+  'image/jpg',
+  'image/webp',
+  'text/plain',
+]);
+
+const payrollDocFileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const allowedExts = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.webp', '.txt']);
+  if (PAYROLL_DOC_ALLOWED_MIMES.has(file.mimetype) || allowedExts.has(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Chỉ cho phép tải lên: PDF, Word, Excel, ảnh (JPG/PNG/WEBP), TXT.'), false);
+  }
+};
+
+const payrollDocStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const payrollId = req.params.id || 'unknown';
+    const uploadPath = path.join('uploads', 'payroll', String(payrollId));
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    // Giữ tên gốc có ý nghĩa, thêm timestamp để tránh trùng
+    const uniquePrefix = Date.now() + '-' + Math.round(Math.random() * 1e6);
+    const safeOriginal = file.originalname.replace(/[^a-zA-Z0-9.\-_\u00C0-\u024F\u1E00-\u1EFF]/g, '_');
+    cb(null, uniquePrefix + '-' + safeOriginal);
+  },
+});
+
+export const payrollDocUpload = multer({
+  storage: payrollDocStorage,
+  fileFilter: payrollDocFileFilter,
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20MB mỗi file
+    files: 5,                    // tối đa 5 file / request
+  },
+});
+

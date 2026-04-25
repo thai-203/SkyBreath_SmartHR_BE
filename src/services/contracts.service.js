@@ -13,6 +13,8 @@ import { DepartmentEntity } from '../models/entities/department.entity.js';
 import { PositionEntity } from '../models/entities/position.entity.js';
 import { JobGradeEntity } from '../models/entities/job-grade.entity.js';
 import { ContractEntity } from '../models/entities/contract.entity.js';
+import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
+import { In } from 'typeorm';
 
 export class ContractsService {
   constructor() {
@@ -345,21 +347,79 @@ export class ContractsService {
     const [contracts] =
       await this.contractsRepository.findAll(queryDtoForExport);
 
-    const data = contracts.map((contract, index) => ({
-      index: index + 1,
-      contractNumber: contract.contractNumber,
-      employeeName: contract.employee?.fullName || '',
-      department: contract.employee?.department?.departmentName || '',
-      position: contract.employee?.position?.positionName || '',
-      contractType: contract.contractType,
-      startDate: this.formatDate(contract.startDate),
-      endDate: contract.endDate ? this.formatDate(contract.endDate) : 'N/A',
-      workingHours: contract.workingHours || '',
-      contractStatus: contract.contractStatus,
-      signedDate: contract.signedDate
-        ? this.formatDate(contract.signedDate)
-        : '',
-    }));
+    const employeeIds = [
+      ...new Set(
+        contracts
+          .map((contract) => Number(contract.employeeId))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+
+    const salaryByEmployeeId = new Map();
+    if (employeeIds.length) {
+      const salaries = await AppDataSource.getRepository(
+        EmployeeSalaryEntity,
+      ).find({
+        where: {
+          employeeId: In(employeeIds),
+          isDeleted: false,
+        },
+        order: {
+          effectiveFrom: 'DESC',
+          createdAt: 'DESC',
+        },
+      });
+
+      for (const salary of salaries) {
+        const employeeId = Number(salary.employeeId);
+        if (!salaryByEmployeeId.has(employeeId)) {
+          salaryByEmployeeId.set(employeeId, []);
+        }
+        salaryByEmployeeId.get(employeeId).push(salary);
+      }
+    }
+
+    const data = contracts.map((contract, index) => {
+      const salary = this.pickSalaryForContract(
+        contract,
+        salaryByEmployeeId.get(Number(contract.employeeId)) || [],
+      );
+      const baseSalary = this.toExportNumber(salary?.baseSalary);
+      const performanceSalary = this.toExportNumber(salary?.performanceSalary);
+      const lunchAllowance = this.toExportNumber(salary?.lunchAllowance);
+      const fuelAllowance = this.toExportNumber(salary?.fuelAllowance);
+      const phoneAllowance = this.toExportNumber(salary?.phoneAllowance);
+      const otherAllowance = this.toExportNumber(salary?.otherAllowance);
+
+      return {
+        index: index + 1,
+        contractNumber: contract.contractNumber,
+        employeeName: contract.employee?.fullName || '',
+        department: contract.employee?.department?.departmentName || '',
+        position: contract.employee?.position?.positionName || '',
+        contractType: contract.contractType,
+        startDate: this.formatDate(contract.startDate),
+        endDate: contract.endDate ? this.formatDate(contract.endDate) : 'N/A',
+        workingHours: contract.workingHours || '',
+        contractStatus: contract.contractStatus,
+        signedDate: contract.signedDate
+          ? this.formatDate(contract.signedDate)
+          : '',
+        baseSalary,
+        performanceSalary,
+        lunchAllowance,
+        fuelAllowance,
+        phoneAllowance,
+        otherAllowance,
+        totalIncome:
+          baseSalary +
+          performanceSalary +
+          lunchAllowance +
+          fuelAllowance +
+          phoneAllowance +
+          otherAllowance,
+      };
+    });
 
     const columns = [
       { header: 'STT', key: 'index', width: 8 },
@@ -373,6 +433,13 @@ export class ContractsService {
       { header: 'Giờ làm việc', key: 'workingHours', width: 12 },
       { header: 'Trạng thái', key: 'contractStatus', width: 15 },
       { header: 'Ngày ký', key: 'signedDate', width: 15 },
+      { header: 'Lương cơ bản', key: 'baseSalary', width: 18 },
+      { header: 'Lương KPI/Thưởng', key: 'performanceSalary', width: 18 },
+      { header: 'Phụ cấp ăn trưa', key: 'lunchAllowance', width: 18 },
+      { header: 'Phụ cấp xăng xe', key: 'fuelAllowance', width: 18 },
+      { header: 'Phụ cấp điện thoại', key: 'phoneAllowance', width: 18 },
+      { header: 'Phụ cấp khác', key: 'otherAllowance', width: 18 },
+      { header: 'Tổng thu nhập', key: 'totalIncome', width: 18 },
     ];
 
     return ExcelUtil.export(data, columns, 'Danh sách hợp đồng');
@@ -385,6 +452,44 @@ export class ContractsService {
     const day = String(d.getDate()).padStart(2, '0');
     const year = d.getFullYear();
     return `${day}/${month}/${year}`;
+  }
+
+  toExportNumber(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? 0 : numeric;
+  }
+
+  pickSalaryForContract(contract, salaries) {
+    if (!Array.isArray(salaries) || salaries.length === 0) return null;
+
+    const contractStart = contract?.startDate
+      ? new Date(contract.startDate)
+      : null;
+
+    if (contractStart && !Number.isNaN(contractStart.getTime())) {
+      const byDate = salaries.find((salary) => {
+        const effectiveFrom = salary.effectiveFrom
+          ? new Date(salary.effectiveFrom)
+          : null;
+        const effectiveTo = salary.effectiveTo
+          ? new Date(salary.effectiveTo)
+          : null;
+
+        if (effectiveFrom && contractStart < effectiveFrom) return false;
+        if (effectiveTo && contractStart > effectiveTo) return false;
+        return true;
+      });
+
+      if (byDate) return byDate;
+    }
+
+    const activeSalary = salaries.find(
+      (salary) => String(salary.salaryStatus || '').toUpperCase() === 'ACTIVE',
+    );
+    if (activeSalary) return activeSalary;
+
+    return salaries[0];
   }
 
   async findByContractNumber(contractNumber) {

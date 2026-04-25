@@ -39,40 +39,46 @@ import { Type } from 'class-transformer';
  *           example: Permanent
  */
 export class ContractQueryDto {
-    @IsOptional()
-    @Type(() => Number)
-    @IsInt()
-    @Min(1)
-    page = 1;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
 
-    @IsOptional()
-    @Type(() => Number)
-    @IsInt()
-    @Min(1)
-    @Max(100)
-    limit = 10;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit = 10;
 
-    @IsOptional()
-    @IsString()
-    search;
+  @IsOptional()
+  @IsString()
+  search;
 
-    @IsOptional()
-    @IsString()
-    sortBy;
+  @IsOptional()
+  @IsString()
+  sortBy;
 
-    @IsOptional()
-    @IsString()
-    sortOrder = 'DESC';
+  @IsOptional()
+  @IsString()
+  sortOrder = 'DESC';
 
-    @IsOptional()
-    @IsString()
-    contractStatus;
+  @IsOptional()
+  @IsString()
+  contractStatus;
 
-    @IsOptional()
-    @IsString()
-    contractType;
+  @IsOptional()
+  @IsString()
+  contractType;
 
-    get skip() {
-        return (this.page - 1) * this.limit;
-    }
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  employeeId;
+
+  get skip() {
+    return (this.page - 1) * this.limit;
+  }
 }
