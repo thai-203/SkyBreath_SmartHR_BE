@@ -1,6 +1,6 @@
-import { IsString, IsNotEmpty, IsOptional, IsEmail, IsDate, IsInt, Matches, IsIn, MaxDate } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEmail, IsDate, IsInt, Matches, IsIn, MaxDate, Validate } from 'class-validator';
 import { Type } from 'class-transformer';
-
+import { IsOver18 } from './over-18.validator';
 export class CreateEmployeeDto {
     @IsString()
     @IsNotEmpty({ message: 'Mã nhân viên là bắt buộc' })
@@ -36,7 +36,9 @@ export class CreateEmployeeDto {
     @IsOptional()
     @Type(() => Date)
     @MaxDate(new Date(), { message: 'Ngày sinh không được ở tương lai' })
+    @Validate(IsOver18, { message: 'Nhân viên phải trên 18 tuổi' })  // Sử dụng validator kiểm tra tuổi
     dateOfBirth;
+
 
     @IsString()
     @IsOptional()

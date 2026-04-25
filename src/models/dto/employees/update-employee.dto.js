@@ -1,6 +1,6 @@
-import { IsString, IsOptional, IsEmail, IsDate, IsInt, Matches, IsIn, MaxDate } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsDate, IsInt, Matches, IsIn, MaxDate, Validate } from 'class-validator';
 import { Type, Expose } from 'class-transformer';
-
+import { IsOver18 } from './over-18.validator';
 export class UpdateEmployeeDto {
     @Expose()
     @IsString()
@@ -43,6 +43,7 @@ export class UpdateEmployeeDto {
     @IsOptional()
     @Type(() => Date)
     @MaxDate(new Date(), { message: 'Ngày sinh không được ở tương lai' })
+     @Validate(IsOver18, { message: 'Nhân viên phải trên 18 tuổi' })
     dateOfBirth;
 
     @Expose()
