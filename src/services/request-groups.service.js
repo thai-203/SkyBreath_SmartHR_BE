@@ -4,6 +4,12 @@ import { RequestTypesRepository } from '../repositories/request-types.repository
 import { NotFoundException, ConflictException, BadRequestException } from '../common/exceptions/index.js';
 import { PaginatedResponseDto } from '../common/dto/pagination.dto.js';
 
+/**
+ * Trim + collapse multiple spaces into one
+ * "  Anh    nt  " → "Anh nt"
+ */
+const normalizeText = (str) => (str ? str.trim().replace(/\s+/g, ' ') : str);
+
 export class RequestGroupsService {
     constructor() {
         this.repository = new RequestGroupsRepository();
@@ -43,7 +49,11 @@ export class RequestGroupsService {
      */
     async create(createDto) {
         const { workflows, ...groupData } = createDto;
-        
+
+        //  Normalize text: trim + collapse khoảng trắng
+        if (groupData.code) groupData.code = normalizeText(groupData.code);
+        if (groupData.name) groupData.name = normalizeText(groupData.name);
+
         // Kiểm tra mã nhóm (UC-REQ-GRP-01 BR-01) - Bao gồm cả bản ghi bị xoá mềm
         const existingGroup = await this.repository.findByCodeWithDeleted(groupData.code);
 
@@ -64,7 +74,7 @@ export class RequestGroupsService {
         if (workflows && workflows.length > 0) {
             // Validate thứ tự không trùng lặp (UC-REQ-GRP-07: BR-03)
             this._validateWorkflowLevels(workflows);
-            
+
             const workflowData = workflows.map(wf => ({
                 ...wf,
                 requestGroupId: newGroup.id
@@ -85,6 +95,9 @@ export class RequestGroupsService {
         const group = await this.findById(id);
 
         const { workflows, ...groupData } = updateDto;
+
+        //  Normalize text: trim + collapse khoảng trắng
+        if (groupData.name) groupData.name = normalizeText(groupData.name);
 
         // Mã nhóm không được thay đổi (UC-REQ-GRP-02 BR-01)
         if (groupData.code) {
@@ -109,7 +122,7 @@ export class RequestGroupsService {
             if (workflows.length > 0) {
                 this._validateWorkflowLevels(workflows);
             }
-            
+
             // Xoá luồng cũ
             await this.workflowRepo.deleteByGroupId(id);
 
@@ -142,7 +155,7 @@ export class RequestGroupsService {
 
         // Xóa các luồng duyệt
         await this.workflowRepo.deleteByGroupId(id);
-        
+
         // Soft-delete nhóm đơn
         await this.repository.delete(id);
         return { message: 'Xoá nhóm đơn thành công' };
@@ -200,7 +213,7 @@ export class RequestGroupsService {
                 if (!wf.approverUserId) {
                     throw new BadRequestException(`Cấp duyệt "${wf.levelName}": Khi chọn loại "Theo vai trò", phải chọn người duyệt cụ thể`);
                 }
-                
+
                 if (userIds.has(wf.approverUserId)) {
                     throw new BadRequestException(`Không được chọn trùng lặp người duyệt cho nhiều cấp khác nhau để tránh vòng lặp.`);
                 }
