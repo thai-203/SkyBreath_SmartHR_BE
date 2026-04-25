@@ -8,7 +8,10 @@ import {
   UpdateContractDto,
   ContractQueryDto,
 } from '../models/dto/contracts/index.js';
-import { uploadCloud } from '../common/middleware/upload.middleware.js';
+import {
+  contractImportUpload,
+  uploadCloud,
+} from '../common/middleware/upload.middleware.js';
 
 const router = Router();
 const contractsController = new ContractsController();
@@ -88,6 +91,13 @@ router.post(
   permissionsMiddleware('CONTRACT_CREATE'),
   validationMiddleware(CreateContractDto),
   contractsController.create,
+);
+router.post(
+  '/import',
+  authMiddleware,
+  contractImportUpload.single('file'),
+  permissionsMiddleware('CONTRACT_CREATE'),
+  contractsController.importContract,
 );
 router.get(
   '/',

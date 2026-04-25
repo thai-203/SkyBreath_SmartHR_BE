@@ -157,12 +157,21 @@ export const AppMessages = {
 
   Errors: {
     Auth: {
-      PASSWORD_CHANGE_REQUIRED: { code: 'AUTH_000', message: 'Yêu cầu đổi mật khẩu' },
-      INVALID_CREDENTIALS: { code: 'AUTH_001', message: 'Thông tin đăng nhập không hợp lệ' },
+      PASSWORD_CHANGE_REQUIRED: {
+        code: 'AUTH_000',
+        message: 'Yêu cầu đổi mật khẩu',
+      },
+      INVALID_CREDENTIALS: {
+        code: 'AUTH_001',
+        message: 'Thông tin đăng nhập không hợp lệ',
+      },
       TOKEN_EXPIRED: { code: 'AUTH_002', message: 'Token đã hết hạn' },
       TOKEN_INVALID: { code: 'AUTH_003', message: 'Token không hợp lệ' },
       UNAUTHORIZED: { code: 'AUTH_004', message: 'Không được ủy quyền' },
-      FORBIDDEN: { code: 'AUTH_005', message: 'Bạn không có quyền truy cập tính năng này' },
+      FORBIDDEN: {
+        code: 'AUTH_005',
+        message: 'Bạn không có quyền truy cập tính năng này',
+      },
       RESET_TOKEN_INVALID: {
         code: 'AUTH_006',
         message: 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn',
@@ -450,6 +459,15 @@ export const AppMessages = {
     WorkingShift: {
       NOT_FOUND: { code: 'SH_001', message: 'Không tìm thấy ca làm việc' },
       ALREADY_EXISTS: { code: 'SH_002', message: 'Ca làm việc đã tồn tại' },
+      ASSIGNED: {
+        code: 'SH_003',
+        message: 'Ca làm việc đã được gán cho nhân viên, không thể xóa',
+      },
+      ASSIGNED_TIME_LOCKED: {
+        code: 'SH_004',
+        message:
+          'Ca làm việc đã được gán cho nhân viên, không thể chỉnh sửa khung giờ',
+      },
     },
     ShiftAssignment: {
       NOT_FOUND: { code: 'SA_001', message: 'Không tìm thấy phân ca' },

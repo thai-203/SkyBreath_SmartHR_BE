@@ -31,6 +31,7 @@ import { RequestAttachmentEntity } from '../models/entities/request-attachment.e
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { PayrollEntity } from '../models/entities/payroll.entity.js';
 import { PayrollDetailEntity } from '../models/entities/payroll-detail.entity.js';
+import { PayrollAttachmentEntity } from '../models/entities/payroll-attachment.entity.js';
 import { AICriteriaEntity } from '../models/entities/ai-criteria.entity.js';
 import { AIEvaluationResultEntity } from '../models/entities/ai-evaluation-result.entity.js';
 import { NotificationEntity } from '../models/entities/notification.entity.js';
@@ -57,6 +58,7 @@ import { AiChatConversationEntity } from '../models/entities/ai-chat-conversatio
 import { AiChatMessageEntity } from '../models/entities/ai-chat-message.entity.js';
 import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
 import { AiPromptEntity } from '../models/entities/ai-prompt.entity.js';
+import { PerformanceReviewEntity } from '../models/entities/performance-review.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -108,6 +110,7 @@ export const databaseConfig = {
     HolidayListEntity,
     PayrollEntity,
     PayrollDetailEntity,
+    PayrollAttachmentEntity,
     AICriteriaEntity,
     AIEvaluationResultEntity,
     NotificationEntity,
@@ -140,6 +143,7 @@ export const databaseConfig = {
     AiConfigurationEntity,
     AiPromptEntity,
     PayrollConfigEntity,
+    PerformanceReviewEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],

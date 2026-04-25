@@ -2,6 +2,7 @@ import { ResponseUtil } from '../common/utils/response.util.js';
 import { AppMessages } from '../common/constants/index.js';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import fs from 'fs';
 import {
     CreatePayrollDto,
     UpdatePayrollDetailDto,
@@ -158,6 +159,16 @@ export class PayrollController {
         } catch (error) { next(error); }
     };
 
+    // UC30 - Send selected payslips (by detailIds)
+    sendPayslipsSelected = async (req, res, next) => {
+        try {
+            const payrollId = parseInt(req.params.id);
+            const detailIds = (req.body.detailIds || []).map(Number).filter(Boolean);
+            const result = await this.payrollService.sendPayslipsToSelected(payrollId, detailIds);
+            ResponseUtil.sendResponse(res, AppMessages.Success.Payroll.PAYSLIPS_SENT, result);
+        } catch (error) { next(error); }
+    };
+
     // UC30 - Export payslips Excel
     exportPayslips = async (req, res, next) => {
         try {
@@ -177,6 +188,74 @@ export class PayrollController {
             }
             const result = await this.payrollService.importDetails(parseInt(req.params.id), req.file.buffer);
             ResponseUtil.sendResponse(res, 'Imported payroll details successfully', result);
+        } catch (error) { next(error); }
+    };
+
+    // ── FILE ĐÍNH KÈM ──
+
+    /** GET /:id/attachments — Lấy danh sách file đính kèm */
+    listAttachments = async (req, res, next) => {
+        try {
+            const result = await this.payrollService.getAttachments(parseInt(req.params.id));
+            ResponseUtil.sendResponse(res, 'Lấy danh sách file thành công', result);
+        } catch (error) { next(error); }
+    };
+
+    /** POST /:id/attachments — Upload file đính kèm (multipart/form-data, field: "files") */
+    uploadAttachments = async (req, res, next) => {
+        try {
+            const files = req.files || [];
+            const uploader = req.employee
+                ? { id: req.employee.id, fullName: req.employee.fullName }
+                : req.user
+                    ? { id: req.user.id, fullName: req.user.fullName || req.user.email }
+                    : null;
+
+            const result = await this.payrollService.uploadAttachments(
+                parseInt(req.params.id),
+                files,
+                uploader,
+            );
+            ResponseUtil.sendResponse(res, `Đã upload ${result.length} file thành công`, result, 201);
+        } catch (error) { next(error); }
+    };
+
+    /** DELETE /:id/attachments/:attachmentId — Xóa một file đính kèm */
+    deleteAttachment = async (req, res, next) => {
+        try {
+            const result = await this.payrollService.deleteAttachment(
+                parseInt(req.params.id),
+                parseInt(req.params.attachmentId),
+            );
+            ResponseUtil.sendResponse(res, `Đã xóa file "${result.fileName}"`, result);
+        } catch (error) { next(error); }
+    };
+
+    /** GET /:id/attachments/:attachmentId/download — Download file */
+    downloadAttachment = async (req, res, next) => {
+        try {
+            const fileInfo = await this.payrollService.getAttachmentForDownload(
+                parseInt(req.params.id),
+                parseInt(req.params.attachmentId),
+            );
+
+            res.setHeader('Content-Type', fileInfo.mimeType);
+            res.setHeader(
+                'Content-Disposition',
+                `attachment; filename*=UTF-8''${encodeURIComponent(fileInfo.fileName)}`,
+            );
+            if (fileInfo.fileSize) {
+                res.setHeader('Content-Length', fileInfo.fileSize);
+            }
+
+            const stream = fs.createReadStream(fileInfo.absolutePath);
+            stream.on('error', (err) => {
+                console.error('[PayrollController] Stream error:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ message: 'Lỗi khi đọc file.' });
+                }
+            });
+            stream.pipe(res);
         } catch (error) { next(error); }
     };
 }

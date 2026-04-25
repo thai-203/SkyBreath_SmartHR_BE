@@ -45,6 +45,7 @@ import { payrollTypeRoutes } from './routes/payroll-type.routes.js';
 import { payrollRoutes } from './routes/payroll.routes.js';
 import { penaltiesRoutes } from './routes/penalties.routes.js';
 import { permissionsRoutes } from './routes/permissions.routes.js';
+import { performanceReviewsRoutes } from './routes/performance-reviews.routes.js';
 import { positionsRoutes } from './routes/positions.routes.js';
 import { requestGroupsRoutes } from './routes/request-groups.routes.js';
 import { requestTypesRoutes } from './routes/request-types.routes.js';
@@ -55,6 +56,7 @@ import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { uploadRoutes } from './routes/upload.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
 import { ContractsService } from './services/contracts.service.js';
+
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
   await redis.quit();
@@ -81,6 +83,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.resolve('uploads')));
 app.use(requestContextMiddleware);
+
 // Routes
 app.use(`/${API_PREFIX}/${API_VERSION}/auth`, authRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/users`, usersRoutes);
@@ -114,7 +117,6 @@ app.use(`/${API_PREFIX}/${API_VERSION}/request-types`, requestTypesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai`, aiRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai-configurations`, aiConfigurationsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai-prompts`, aiPromptsRoutes);
-
 app.use(
   `/${API_PREFIX}/${API_VERSION}/face-recognition-config`,
   faceRecognitionConfigRoutes,
@@ -132,7 +134,7 @@ app.use(`/${API_PREFIX}/${API_VERSION}/attendance`, attendanceRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance-blocking-configs`, attendanceBlockingConfigRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/notifications`, notificationsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll-config`, payrollConfigRoutes);
-
+app.use(`/${API_PREFIX}/${API_VERSION}/performance-reviews`, performanceReviewsRoutes);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');
