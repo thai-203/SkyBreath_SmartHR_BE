@@ -582,6 +582,8 @@ export class PayrollService {
         const bonus = parseFloat(dto.bonus ?? detail.bonus ?? 0);
         const penalty = parseFloat(dto.penalty ?? detail.penalty ?? 0);
         const deduction = parseFloat(dto.deduction ?? detail.deduction ?? 0);
+        // Tính thuế TNCN (sử dụng giá trị từ dto hoặc giữ nguyên từ detail)
+        const taxDeduction = parseFloat(dto.taxDeduction ?? detail.taxDeduction ?? 0);
         const netSalary = parseFloat((
             totalOfficialSalary + earnedAllowances + overtimePay + bonus
             - penalty - deduction - insuranceDeduction - taxDeduction
