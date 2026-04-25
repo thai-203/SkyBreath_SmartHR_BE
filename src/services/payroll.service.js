@@ -1,61 +1,104 @@
+/**
+ * PayrollService - Service xử lý nghiệp vụ tính lương
+ *
+ * Cấu trúc lương:
+ * - P1: Lương cơ bản (baseSalary)
+ * - P2: Lương hiệu năng, gồm:
+ *   - P2.1: Điểm tổng hợp (1.1-1.5) từ bảng performance_reviews
+ *   - P2.2: Điểm kết quả (score_result) từ bảng performance_reviews
+ * - P3: Thưởng/Phạt
+ *
+ * Tỷ lệ bảo hiểm cố định theo luật VN:
+ * - BHXH: 8%
+ * - BHYT: 1.5%
+ * - BHTN: 1%
+ * - KPCĐ: 0%
+ */
+
 import { AppMessages } from '../common/constants/index.js';
-import { NotFoundException, ConflictException, BadRequestException } from '../common/exceptions/index.js';
-import { AppDataSource } from '../database/data-source.js';
-import { EmployeeEntity } from '../models/entities/employee.entity.js';
-import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
-import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
-import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
+import { BadRequestException, ConflictException, NotFoundException } from '../common/exceptions/index.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
 import sendMail from '../common/utils/mail.util.js';
-
-import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
-import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
-import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
-import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
+import { AppDataSource } from '../database/data-source.js';
+import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
+import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
+import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
+import { PerformanceReviewEntity } from '../models/entities/performance-review.entity.js';
 import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
+import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { PayrollConfigEntity } from '../models/entities/payroll-config.entity.js';
+import { PayrollAttachmentRepository } from '../repositories/payroll-attachment.repository.js';
+import fs from 'fs';
+import path from 'path';
 
+/**
+ * Trạng thái bảng lương
+ */
 const PAYROLL_STATUS = {
-    DRAFT: 'DRAFT',
-    PENDING_APPROVAL: 'PENDING_APPROVAL',
-    APPROVED: 'APPROVED',
-    LOCKED: 'LOCKED',
+    DRAFT: 'DRAFT',                     // Nháp - có thể chỉnh sửa
+    PENDING_APPROVAL: 'PENDING_APPROVAL', // Chờ duyệt
+    APPROVED: 'APPROVED',               // Đã duyệt
+    LOCKED: 'LOCKED',                   // Đã khóa - không thể chỉnh sửa
 };
 
-// Insurance rates (standard Vietnam)
-// PIT thresholds (VND)
+/**
+ * Tỷ lệ bảo hiểm cố định theo luật Việt Nam
+ * (Không cho phép chỉnh sửa trên giao diện)
+ */
+const INSURANCE_RATES = {
+    SOCIAL: 8,         // BHXH - Bảo hiểm xã hội: 8%
+    HEALTH: 1.5,       // BHYT - Bảo hiểm y tế: 1.5%
+    UNEMPLOYMENT: 1,   // BHTN - Bảo hiểm thất nghiệp: 1%
+    UNION: 0,          // KPCĐ - Kinh phí công đoàn: 0%
+};
+
+/**
+ * Khoản khấu trừ thuế TNCN cá nhân (VND/tháng)
+ */
 const PIT_PERSONAL_DEDUCTION = 11_000_000;
 
+/**
+ * Service xử lý nghiệp vụ Payroll
+ */
 export class PayrollService {
     constructor(payrollRepository, payrollDetailRepository) {
         this.payrollRepository = payrollRepository;
         this.payrollDetailRepository = payrollDetailRepository;
+        this.attachmentRepository = new PayrollAttachmentRepository();
     }
 
-    // ──────────────────────────────────────
-    // UC27 - Payroll Creation & Calculation
-    // ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // UC27 - TẠO BẢNG LƯƠNG & TÍNH LƯƠNG TỰ ĐỘNG
+    // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * Tạo bảng lương mới cho một kỳ lương
+     * @param {Object} dto - { payrollMonth, payrollYear, employeeIds }
+     */
     async create(dto) {
         const { payrollMonth, payrollYear, employeeIds = [] } = dto;
 
+        // Kiểm tra đã tồn tại bảng lương cho kỳ này chưa
         const existing = await this.payrollRepository.findByPeriod(payrollMonth, payrollYear);
         if (existing) {
             throw new ConflictException(AppMessages.Errors.Payroll.ALREADY_EXISTS);
         }
 
+        // Tạo bảng lương mới với trạng thái Nháp
         const payroll = await this.payrollRepository.create({
             payrollMonth,
             payrollYear,
             payrollStatus: PAYROLL_STATUS.DRAFT,
         });
 
-        // Pre-create details for selected employees
+        // Tạo chi tiết lương cho các nhân viên được chọn
         if (employeeIds && employeeIds.length > 0) {
             const detailData = employeeIds.map(id => ({
                 payrollId: payroll.id,
                 employeeId: id,
-                netSalary: 0, // Placeholder
+                netSalary: 0,
             }));
             await this.payrollDetailRepository.bulkCreate(detailData);
         }
@@ -63,34 +106,207 @@ export class PayrollService {
         return payroll;
     }
 
+    /**
+     * Tính lương tự động cho tất cả nhân viên trong bảng lương
+     *
+     * Luồng xử lý:
+     * 1. Lấy danh sách nhân viên trong bảng lương
+     * 2. Fetch performance_reviews để lấy P2
+     * 3. Tính số ngày công chuẩn trong tháng
+     * 4. Fetch timesheets để lấy dữ liệu chấm công
+     * 5. Tính lương chi tiết cho từng nhân viên
+     */
     async autoCalculate(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
 
+        // Không cho tính lương nếu bảng lương đã bị khóa
         if (payroll.payrollStatus === PAYROLL_STATUS.LOCKED) {
             throw new BadRequestException(AppMessages.Errors.Payroll.IS_LOCKED);
         }
 
         const { payrollMonth, payrollYear } = payroll;
-        const startDate = new Date(payrollYear, payrollMonth - 1, 1);
-        const endDate = new Date(payrollYear, payrollMonth, 0, 23, 59, 59);
 
-        // 0. Fetch global insurance configurations
-        const configRepo = AppDataSource.getRepository(PayrollConfigEntity);
-        const config = await configRepo.findOne({ where: { configKey: 'GENERAL', isDeleted: false } });
-        
-        const SOCIAL_RATE = (config?.socialInsuranceRate || 0) / 100;
-        const HEALTH_RATE = (config?.healthInsuranceRate || 0) / 100;
-        const UNEMPLOYMENT_RATE_VAL = (config?.unemploymentInsuranceRate || 0) / 100;
-        const UNION_RATE_VAL = (config?.unionFeeRate || 0) / 100;
-
-        // 1. Get employees assigned to this payroll
+        // ── Bước 1: Lấy danh sách nhân viên ──
         const existingDetails = await this.payrollDetailRepository.findByPayroll(payrollId);
         const employees = existingDetails.map(d => d.employee).filter(Boolean);
         if (employees.length === 0) return { calculated: 0, details: [] };
 
         const empIds = employees.map(e => e.id);
 
-        // 2. Calculate Standard Days for the month (Dynamic)
+        // ── Bước 2: Lấy performance_reviews để tính % KPI ──
+        // performance_reviews chứa điểm đánh giá:
+        // - kpiScore: điểm KPI
+        // - P2.1: sum(1.1-1.5) = scoreCompliance + scoreAttitude + scoreLearning + scoreTeamwork + scoreSkills
+        // - P2.2: scoreResult
+        const perfRepo = AppDataSource.getRepository(PerformanceReviewEntity);
+        const perfReviews = await perfRepo.find({
+            where: {
+                reviewMonth: payrollMonth,
+                reviewYear: payrollYear,
+                employeeId: In(empIds),
+                status: 'SUBMITTED',
+                isDeleted: false,
+            },
+        });
+
+        // ── Bước 3: Tính số ngày công chuẩn ──
+        const startDate = new Date(payrollYear, payrollMonth - 1, 1);
+        const endDate = new Date(payrollYear, payrollMonth, 0, 23, 59, 59);
+        const holidayDates = await this._getHolidayDates(startDate, endDate);
+        const standardDaysMonth = this._countWorkingDays(payrollYear, payrollMonth, holidayDates) || 22;
+
+        // ── Bước 4: Lấy dữ liệu chấm công ──
+        const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
+        const timesheets = await timesheetRepo.find({
+            where: { month: payrollMonth, year: payrollYear, employeeId: In(empIds), isDeleted: false },
+        });
+
+        // ── Bước 5: Lấy quy tắc tính OT ──
+        const { activeRules, ruleDepts } = await this._getOTRules();
+
+        // ── Bước 6: Tính lương cho từng nhân viên ──
+        const details = [];
+        for (const employee of employees) {
+            const existingDetail = existingDetails.find(d => d.employeeId === employee.id);
+
+            // Lấy lương P2 từ bảng employee_salaries
+            const salary = await this._getEmployeeSalary(employee.id);
+            if (!salary) continue;
+
+            // Lấy điểm đánh giá từ performance_reviews
+            const perf = perfReviews.find(p => p.employeeId === employee.id);
+
+            // Lương P2 = performanceSalary từ employee_salaries
+            const performanceSalary = parseFloat(salary.performanceSalary) || 0;
+
+            // Cấu trúc điểm performance_reviews:
+            // 1.1-1.5: Mỗi tiêu chí max 1.0, tổng max = 5.0
+            // 2.1 (scoreResult): max 5.0
+            // Total: max 10.0 → P2.1 max 50%, P2.2 max 50%
+            // Sum điểm 1.1-1.5 (max 5.0) → P2.1%
+            // scoreResult (max 5.0) → P2.2%
+            const sumScore11to15 = perf ? (
+                parseFloat(perf.scoreCompliance || 0) +
+                parseFloat(perf.scoreAttitude || 0) +
+                parseFloat(perf.scoreLearning || 0) +
+                parseFloat(perf.scoreTeamwork || 0) +
+                parseFloat(perf.scoreSkills || 0)
+            ) : 0;
+
+            // % P2.1 = sum(1.1-1.5) / 5 * 50%
+            const p21Percent = perf ? (sumScore11to15 / 5 * 50) : 0;
+            // % P2.2 = scoreResult / 5 * 50%
+            const p22Percent = perf ? (parseFloat(perf.scoreResult || 0) / 5 * 50) : 0;
+
+            // Lấy timesheet
+            const ts = timesheets.find(t => t.employeeId === employee.id);
+            if (!ts) continue;
+
+            const tsStdDays = parseFloat(ts.standardDays) || standardDaysMonth;
+            const workingDays = this._calcWorkingDays(ts);
+
+            // Tính lương OT
+            const overtimePay = this._calcOvertimePay(
+                ts, salary.baseSalary, tsStdDays, employee.departmentId, activeRules, ruleDepts
+            );
+
+            // Tính lương thực nhận (P1, P2.1, P2.2, TV)
+            const { earnedP1, earnedP21, earnedP22, probationSalary } = this._calcEarnedSalaries(
+                salary, ts, tsStdDays, workingDays, p21Percent, p22Percent, employee.employmentStatus
+            );
+
+            // Tính bảo hiểm (dùng tỷ lệ cố định) - KHÔNG bao gồm KPCĐ (KPCĐ là phí công ty, không trừ vào lương NLD)
+            const insuranceBase = Math.min(parseFloat(salary.baseSalary) || 0, 20 * 2_340_000);
+            const socialInsurance = parseFloat((insuranceBase * INSURANCE_RATES.SOCIAL / 100).toFixed(2));
+            const healthInsurance = parseFloat((insuranceBase * INSURANCE_RATES.HEALTH / 100).toFixed(2));
+            const unemploymentInsurance = parseFloat((insuranceBase * INSURANCE_RATES.UNEMPLOYMENT / 100).toFixed(2));
+            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
+
+            // Tính thuế TNCN
+            const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
+            const earnedAllowances = this._calcEarnedAllowances(salary, ts, tsStdDays, workingDays);
+            const taxableIncome = totalOfficialSalary + earnedAllowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
+            const taxDeduction = taxableIncome > 0 ? this._calcPIT(taxableIncome) : 0;
+
+            // Tính lương thực nhận (sau trừ bảo hiểm và thuế)
+            const bonus = parseFloat(existingDetail?.bonus || 0);
+            const penalty = parseFloat(existingDetail?.penalty || 0);
+            const deduction = parseFloat(existingDetail?.deduction || 0);
+            const netSalary = parseFloat((
+                totalOfficialSalary + earnedAllowances + overtimePay + bonus
+                - penalty - deduction - insuranceDeduction - taxDeduction
+            ).toFixed(2));
+
+            // Chi phí công ty (BH phía công ty đóng)
+            const companySocial = parseFloat((insuranceBase * 0.175).toFixed(2));
+            const companyHealth = parseFloat((insuranceBase * 0.03).toFixed(2));
+            const companyUnemployment = parseFloat((insuranceBase * 0.01).toFixed(2));
+            const companyUnion = parseFloat((insuranceBase * 0.02).toFixed(2));
+            const totalHrCost = netSalary + insuranceDeduction + taxDeduction + companySocial + companyHealth + companyUnemployment + companyUnion;
+
+            // Lưu chi tiết lương
+            const detailData = {
+                payrollId, employeeId: employee.id,
+                workingDays, baseSalary: salary.baseSalary, overtimePay: parseFloat(overtimePay.toFixed(2)),
+                bonus, penalty, deduction, insuranceDeduction, taxDeduction, netSalary,
+                allowanceAmount: parseFloat(earnedAllowances.toFixed(2)),
+                standardDays: tsStdDays,
+                officialDays: parseFloat(ts.officialDays || 0),
+                probationDays: parseFloat(ts.probationDays || 0),
+                businessTripDays: parseFloat(ts.businessTripDays || 0),
+                holidayDays: parseFloat(ts.holidayDays || 0),
+                benefitLeaveDays: parseFloat(ts.benefitLeaveDays || 0),
+                waitingDays: parseFloat(ts.waitingDays || 0),
+                nightShiftOfficialDays: parseFloat(ts.nightShiftOfficialDays || 0),
+                nightShiftProbationDays: parseFloat(ts.nightShiftProbationDays || 0),
+                otWeekday: parseFloat(ts.otWeekday || 0),
+                otWeekdayNight: parseFloat(ts.otWeekdayNight || 0),
+                otWeekend: parseFloat(ts.otWeekend || 0),
+                otWeekendNight: parseFloat(ts.otWeekendNight || 0),
+                otHoliday: parseFloat(ts.otHoliday || 0),
+                otHolidayNight: parseFloat(ts.otHolidayNight || 0),
+                totalOtHours: this._sumOTHours(ts),
+                mealCount: parseFloat(ts.mealCount || 0),
+                // Lương P2 từ employee_salaries
+                performanceSalary: performanceSalary,
+                // % P2.1, % P2.2, % KPI tổng từ performance_reviews (đã tính %)
+                p1p2Percentage: p21Percent,
+                p3Percentage: p22Percent,
+                // Lương P2.1, P2.2 thực = performanceSalary × % / 100 × hệ số ngày công
+                p1Amount: earnedP1,
+                p21Amount: earnedP21,
+                p22Amount: earnedP22,
+                probationAmount: probationSalary,
+                socialInsurance, healthInsurance, unemploymentInsurance,
+                socialInsurancePercentage: INSURANCE_RATES.SOCIAL,
+                healthInsurancePercentage: INSURANCE_RATES.HEALTH,
+                unemploymentInsurancePercentage: INSURANCE_RATES.UNEMPLOYMENT,
+                kpiPercentage: p21Percent + p22Percent,
+                taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
+                companySocialInsurance: companySocial,
+                companyHealthInsurance: companyHealth,
+                companyUnemploymentInsurance: companyUnemployment,
+                unionFee: existingDetail?.unionFee ?? companyUnion, // Giữ nguyên giá trị đã nhập, chỉ tính mới nếu chưa có
+                totalHrCost: parseFloat(totalHrCost.toFixed(2)),
+            };
+
+            details.push(
+                existingDetail
+                    ? await this.payrollDetailRepository.update(existingDetail.id, detailData)
+                    : await this.payrollDetailRepository.create(detailData)
+            );
+        }
+        return { calculated: details.length, details };
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CÁC PHƯƠNG THỨC HỖ TRỢ (PRIVATE)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Lấy danh sách ngày lễ trong khoảng thời gian
+     */
+    async _getHolidayDates(startDate, endDate) {
         const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
         const holidays = await holidayRepo.find({
             where: [
@@ -101,197 +317,188 @@ export class PayrollService {
         });
         const holidayDates = new Set();
         holidays.forEach(h => {
-            const current = new Date(h.startDate);
+            let cur = new Date(h.startDate);
             const stop = new Date(h.endDate || h.startDate);
-            while (current <= stop) { holidayDates.add(current.toISOString().split('T')[0]); current.setDate(current.getDate() + 1); }
-        });
-        const standardDays = this._countWorkingDays(payrollYear, payrollMonth, holidayDates);
-
-        // 3. Get summarized TimeSheets
-        const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
-        console.log('DEBUG: typeof In =', typeof In);
-        const timesheets = await timesheetRepo.find({
-            where: {
-                month: payrollMonth,
-                year: payrollYear,
-                employeeId: In(empIds),
-                isDeleted: false
+            while (cur <= stop) {
+                holidayDates.add(cur.toISOString().split('T')[0]);
+                cur.setDate(cur.getDate() + 1);
             }
         });
+        return holidayDates;
+    }
 
-        // 3b. Fetch all potentially active OT Rules for resolving multipliers dynamically
+    /**
+     * Lấy quy tắc tính lương OT (làm thêm giờ)
+     */
+    async _getOTRules() {
         const ruleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
+        const ruleDeptRepo = AppDataSource.getRepository(OvertimeRuleDepartmentEntity);
         const activeRules = await ruleRepo.find({
             where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false },
             relations: ['overtimeType'],
         });
-        
-        const ruleDeptRepo = AppDataSource.getRepository(OvertimeRuleDepartmentEntity);
-        const ruleDepts = await ruleDeptRepo.find({
-            where: { isDeleted: false },
-        });
-
-        // 4. Calculate each detail
-        const details = [];
-        for (const employee of employees) {
-            const salaryRepo = AppDataSource.getRepository(EmployeeSalaryEntity);
-            const empSalaries = await salaryRepo.find({
-                where: { employeeId: employee.id, isDeleted: false },
-                order: { createdAt: 'DESC' },
-            });
-            const preferred = ['ACTIVE', 'APPROVED', 'ACTIVE_MEMBER'];
-            const salary = empSalaries.find(s => preferred.includes(String(s.salaryStatus || '').trim().toUpperCase())) || empSalaries[0];
-            if (!salary) continue;
-
-            // 5. Use prioritized data from TimeSheetEntity
-            const ts = timesheets.find(t => t.employeeId === employee.id);
-            if (!ts) {
-                // If the user wants to ONLY calculate for those with timesheets, 
-                // we skip employees who aren't found in the summarized timesheet table.
-                continue;
-            }
-            
-            // Granular fields (fallback to 0 if no timesheet generated)
-            const officialDays = Number(ts?.officialDays || 0);
-            const probationDays = Number(ts?.probationDays || 0);
-            const businessTripDays = Number(ts?.businessTripDays || 0);
-            const holidayDays = Number(ts?.holidayDays || 0);
-            const benefitLeaveDays = Number(ts?.benefitLeaveDays || 0);
-            const nightShiftOfficialDays = Number(ts?.nightShiftOfficialDays || 0);
-            const nightShiftProbationDays = Number(ts?.nightShiftProbationDays || 0);
-            
-            // OT breakdown from Timesheet
-            const otWeekday = Number(ts?.otWeekday || 0);
-            const otWeekdayNight = Number(ts?.otWeekdayNight || 0);
-            const otWeekend = Number(ts?.otWeekend || 0);
-            const otWeekendNight = Number(ts?.otWeekendNight || 0);
-            const otHoliday = Number(ts?.otHoliday || 0);
-            const otHolidayNight = Number(ts?.otHolidayNight || 0);
-            const totalOtHours = Number(ts?.overtimeHours || (otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight));
-
-            // 6. Calculate Overtime Pay
-            // We still need individual request details if we want completely accurate multiplier resolution, 
-            // but the User wants payroll from "timesheet data table". 
-            // If the table shows breakdown, we should use standard multipliers for these breakdowns.
-            const hourlyRate = (parseFloat(salary.baseSalary) || 0) / (standardDays || (ts?.standardDays > 0 ? ts.standardDays : 26)) / 8;
-            
-            // Standard multipliers if specific rule not found
-            let overtimePay = 0;
-            
-            // Helper to get multiplier for a type
-            const getMultiplier = (typeCode, isNight) => {
-                const rule = activeRules.find(r => r.overtimeType?.code === typeCode && 
-                             (ruleDepts.filter(rd => rd.overtimeRuleId === r.id).length === 0 || 
-                              ruleDepts.some(rd => rd.overtimeRuleId === r.id && rd.departmentId === employee.departmentId)));
-                let m = rule ? parseFloat(rule.salaryMultiplier || 1.5) : (typeCode === 'WEEKDAY' ? 1.5 : (typeCode === 'WEEKEND' ? 2.0 : 3.0));
-                if (isNight) m += 0.1; // Example: night shift bonus 10% (adjust per business rule)
-                return m;
-            };
-
-            overtimePay += otWeekday * hourlyRate * getMultiplier('WEEKDAY', false);
-            overtimePay += otWeekdayNight * hourlyRate * getMultiplier('WEEKDAY', true);
-            overtimePay += otWeekend * hourlyRate * getMultiplier('WEEKEND', false);
-            overtimePay += otWeekendNight * hourlyRate * getMultiplier('WEEKEND', true);
-            overtimePay += otHoliday * hourlyRate * getMultiplier('HOLIDAY', false);
-            overtimePay += otHolidayNight * hourlyRate * getMultiplier('HOLIDAY', true);
-
-            const workingDays = officialDays + probationDays + businessTripDays + holidayDays + benefitLeaveDays;
-            
-            // 7. Salary calculation bases
-            const p1Amount = parseFloat(salary.baseSalary) || 0;
-            const performanceSalaryBase = parseFloat(existingDetail?.performanceSalary) > 0 
-                ? parseFloat(existingDetail.performanceSalary) 
-                : (parseFloat(salary.performanceSalary) || 0);
-
-            const p21Base = performanceSalaryBase * 0.8;
-            const p22Base = performanceSalaryBase * 0.2;
-
-            const p1p2Percentage = parseFloat(existingDetail?.p1p2Percentage ?? 100);
-            const p3Percentage = parseFloat(existingDetail?.p3Percentage ?? 100);
-
-            const isProbation = employee.employmentStatus === 'PROBATION';
-            const fullPayDays = (isProbation ? 0 : businessTripDays) + officialDays + holidayDays + benefitLeaveDays;
-            const probationPayDays = (isProbation ? businessTripDays : 0) + probationDays;
-
-            const earnedP1 = (p1Amount / (standardDays || 26)) * fullPayDays;
-            const earnedP21 = ((p21Base / (standardDays || 26)) * fullPayDays) * (p1p2Percentage / 100);
-            const earnedP22 = ((p22Base / (standardDays || 26)) * fullPayDays) * (p3Percentage / 100);
-            const probationSalary = (p1Amount / (standardDays || 26)) * probationPayDays * 0.85; // 85% for probation base
-
-            const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
-            
-            const totalAllowances = (parseFloat(salary.lunchAllowance || 0) + parseFloat(salary.fuelAllowance || 0) + parseFloat(salary.phoneAllowance || 0) + parseFloat(salary.otherAllowance || 0));
-            const earnedAllowances = (totalAllowances / (standardDays || 26)) * workingDays;
-            const insuranceBase = Math.min(parseFloat(salary.baseSalary) || 0, 20 * 2_340_000);
-            
-            const socialInsurance = parseFloat((insuranceBase * SOCIAL_RATE).toFixed(2));
-            const healthInsurance = parseFloat((insuranceBase * HEALTH_RATE).toFixed(2));
-            const unemploymentInsurance = parseFloat((insuranceBase * UNEMPLOYMENT_RATE_VAL).toFixed(2));
-            const unionFee = parseFloat((insuranceBase * UNION_RATE_VAL).toFixed(2));
-            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
-
-            const taxableIncome = totalOfficialSalary + earnedAllowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
-            const taxDeduction = taxableIncome > 0 ? parseFloat(this._calcPIT(taxableIncome).toFixed(2)) : 0;
-
-            const bonus = parseFloat(existingDetail?.bonus || 0);
-            const penalty = parseFloat(existingDetail?.penalty || 0);
-            const deduction = parseFloat(existingDetail?.deduction || 0);
-
-            // NET SALARY AGREEMENT: Deductions (Insurance/Tax) are NOT subtracted from netSalary
-            // They are borne by the company.
-            const netSalary = parseFloat((totalOfficialSalary + earnedAllowances + overtimePay + bonus - penalty - deduction).toFixed(2));
-
-            // Company Costs
-            const companyUnionFee = parseFloat((insuranceBase * 0.02).toFixed(2));
-            const totalHrCost = netSalary + insuranceDeduction + taxDeduction + companySocialInsurance + companyHealthInsurance + companyUnemploymentInsurance + companyUnionFee;
-
-            const detailData = {
-                payrollId, employeeId: employee.id,
-                workingDays, baseSalary: p1Amount, overtimePay: parseFloat(overtimePay.toFixed(2)),
-                bonus, penalty, deduction, insuranceDeduction, taxDeduction, netSalary,
-                allowanceAmount: parseFloat(earnedAllowances.toFixed(2)),
-                standardDays, officialDays, probationDays, businessTripDays, holidayDays,
-                benefitLeaveDays: benefitLeaveDays,
-                waitingDays: Number(ts?.waitingDays || 0),
-                nightShiftOfficialDays,
-                nightShiftProbationDays,
-                otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight,
-                totalOtHours: otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight,
-                mealCount: Number(ts?.mealCount || 0),
-                // Actual Paid (earned) Amounts per Workdays & KPI
-                p1Amount: earnedP1, p21Amount: earnedP21, p22Amount: earnedP22, p1p2Percentage, p3Percentage,
-                probationAmount: probationSalary,
-                socialInsurance, healthInsurance, unemploymentInsurance,
-                socialInsurancePercentage: parseFloat((SOCIAL_RATE * 100).toFixed(2)),
-                healthInsurancePercentage: parseFloat((HEALTH_RATE * 100).toFixed(2)),
-                unemploymentInsurancePercentage: parseFloat((UNEMPLOYMENT_RATE_VAL * 100).toFixed(2)),
-                unionFeePercentage: parseFloat((UNION_RATE_VAL * 100).toFixed(2)),
-                taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
-                companySocialInsurance,
-                companyHealthInsurance,
-                companyUnemploymentInsurance,
-                companyUnionFee,
-                unionFee: parseFloat(unionFee.toFixed(2)),
-                totalHrCost: parseFloat(totalHrCost.toFixed(2))
-            };
-
-            details.push(existingDetail ? await this.payrollDetailRepository.update(existingDetail.id, detailData) : await this.payrollDetailRepository.create(detailData));
-        }
-        return { calculated: details.length, details };
+        const ruleDepts = await ruleDeptRepo.find({ where: { isDeleted: false } });
+        return { activeRules, ruleDepts };
     }
 
+    /**
+     * Lấy lương của nhân viên (ưu tiên bản ghi có trạng thái ACTIVE)
+     */
+    async _getEmployeeSalary(employeeId) {
+        const salaryRepo = AppDataSource.getRepository(EmployeeSalaryEntity);
+        const salaries = await salaryRepo.find({
+            where: { employeeId, isDeleted: false },
+            order: { createdAt: 'DESC' },
+        });
+        const preferred = ['ACTIVE', 'APPROVED', 'ACTIVE_MEMBER'];
+        return salaries.find(s => preferred.includes(String(s.salaryStatus || '').trim().toUpperCase())) || salaries[0];
+    }
+
+    /**
+     * Đếm số ngày làm việc trong tháng (trừ T7, CN và ngày lễ)
+     */
     _countWorkingDays(year, month, holidayDates) {
         const daysInMonth = new Date(year, month, 0).getDate();
         let count = 0;
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month - 1, day);
             const dayOfWeek = date.getDay();
-            const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateKey)) count++;
+            const dateStr = date.toISOString().split('T')[0];
+            // Trừ Thứ Bảy (6), Chủ Nhật (0) và ngày lễ
+            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateStr)) count++;
         }
         return count;
     }
 
+    /**
+     * Tính tổng ngày công (chính thức + thử việc + công tác + lễ + chế độ)
+     */
+    _calcWorkingDays(ts) {
+        return (
+            parseFloat(ts?.officialDays || 0) +
+            parseFloat(ts?.probationDays || 0) +
+            parseFloat(ts?.businessTripDays || 0) +
+            parseFloat(ts?.holidayDays || 0) +
+            parseFloat(ts?.benefitLeaveDays || 0)
+        );
+    }
+
+    /**
+     * Tính tổng giờ OT
+     */
+    _sumOTHours(ts) {
+        return (
+            parseFloat(ts?.otWeekday || 0) +
+            parseFloat(ts?.otWeekdayNight || 0) +
+            parseFloat(ts?.otWeekend || 0) +
+            parseFloat(ts?.otWeekendNight || 0) +
+            parseFloat(ts?.otHoliday || 0) +
+            parseFloat(ts?.otHolidayNight || 0)
+        );
+    }
+
+    /**
+     * Lấy hệ số nhân lương OT theo loại
+     * WEEKDAY: ngày thường (mặc định 1.5)
+     * WEEKEND: cuối tuần (mặc định 2.0)
+     * HOLIDAY: ngày lễ (mặc định 3.0)
+     * Làm đêm: +0.1
+     */
+    _getOTMultiplier(typeCode, isNight, departmentId, activeRules, ruleDepts) {
+        const rule = activeRules.find(r =>
+            r.overtimeType?.code === typeCode &&
+            (ruleDepts.filter(rd => rd.overtimeRuleId === r.id).length === 0 ||
+                ruleDepts.some(rd => rd.overtimeRuleId === r.id && rd.departmentId === departmentId))
+        );
+        let m = rule ? parseFloat(rule.salaryMultiplier || 1.5) : (typeCode === 'WEEKDAY' ? 1.5 : typeCode === 'WEEKEND' ? 2.0 : 3.0);
+        if (isNight) m += 0.1;
+        return m;
+    }
+
+    /**
+     * Tính lương làm thêm giờ (OT)
+     * Công thức: Giờ OT × Lương giờ × Hệ số nhân
+     * Lương giờ = Lương cơ bản / (Số ngày công chuẩn × 8)
+     */
+    _calcOvertimePay(ts, baseSalary, standardDays, departmentId, activeRules, ruleDepts) {
+        const hourlyRate = standardDays > 0 ? parseFloat(baseSalary || 0) / (standardDays * 8) : 0;
+        const { otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight } = {
+            otWeekday: parseFloat(ts?.otWeekday || 0),
+            otWeekdayNight: parseFloat(ts?.otWeekdayNight || 0),
+            otWeekend: parseFloat(ts?.otWeekend || 0),
+            otWeekendNight: parseFloat(ts?.otWeekendNight || 0),
+            otHoliday: parseFloat(ts?.otHoliday || 0),
+            otHolidayNight: parseFloat(ts?.otHolidayNight || 0),
+        };
+        let pay = 0;
+        pay += otWeekday * hourlyRate * this._getOTMultiplier('WEEKDAY', false, departmentId, activeRules, ruleDepts);
+        pay += otWeekdayNight * hourlyRate * this._getOTMultiplier('WEEKDAY', true, departmentId, activeRules, ruleDepts);
+        pay += otWeekend * hourlyRate * this._getOTMultiplier('WEEKEND', false, departmentId, activeRules, ruleDepts);
+        pay += otWeekendNight * hourlyRate * this._getOTMultiplier('WEEKEND', true, departmentId, activeRules, ruleDepts);
+        pay += otHoliday * hourlyRate * this._getOTMultiplier('HOLIDAY', false, departmentId, activeRules, ruleDepts);
+        pay += otHolidayNight * hourlyRate * this._getOTMultiplier('HOLIDAY', true, departmentId, activeRules, ruleDepts);
+        return pay;
+    }
+
+    /**
+     * Tính lương thực nhận theo ngày công
+     *
+     * Công thức:
+     * - P1 thực nhận = (Lương P1 / Công chuẩn) × Ngày công đủ
+     * - P2.1 thực nhận = (P2 × %P2.1 / 100 / Công chuẩn) × Ngày công đủ
+     * - P2.2 thực nhận = (P2 × %P2.2 / 100 / Công chuẩn) × Ngày công đủ
+     * - Lương TV = (Lương P1 / Công chuẩn) × Ngày công TV × 85%
+     */
+    _calcEarnedSalaries(salary, ts, standardDays, workingDays, p21Percent, p22Percent, employmentStatus) {
+        const p1Amount = parseFloat(salary.baseSalary) || 0;
+        const performanceSalary = parseFloat(salary.performanceSalary) || 0;
+
+        // P2.1 base = performanceSalary × %P2.1 / 100
+        // p21Percent đã là % (ví dụ: 45 = 45%)
+        const p21Base = performanceSalary * p21Percent / 100;
+        // P2.2 base = performanceSalary × %P2.2 / 100
+        const p22Base = performanceSalary * p22Percent / 100;
+
+        const isProbation = employmentStatus === 'PROBATION';
+        const fullPayDays = (isProbation ? 0 : parseFloat(ts?.businessTripDays || 0)) +
+            parseFloat(ts?.officialDays || 0) +
+            parseFloat(ts?.holidayDays || 0) +
+            parseFloat(ts?.benefitLeaveDays || 0);
+        const probationPayDays = (isProbation ? parseFloat(ts?.businessTripDays || 0) : 0) +
+            parseFloat(ts?.probationDays || 0);
+
+        // Hệ số ngày công = ngày công thực tế / công chuẩn
+        const dayFactor = standardDays > 0 ? fullPayDays / standardDays : 0;
+
+        const earnedP1 = p1Amount * dayFactor;
+        const earnedP21 = p21Base * dayFactor;
+        const earnedP22 = p22Base * dayFactor;
+        const probationSalary = standardDays > 0 ? (p1Amount / standardDays) * probationPayDays * 0.85 : 0;
+
+        return { earnedP1, earnedP21, earnedP22, probationSalary };
+    }
+
+    /**
+     * Tính phụ cấp thực nhận theo ngày công
+     */
+    _calcEarnedAllowances(salary, ts, standardDays, workingDays) {
+        const totalAllowances = (
+            parseFloat(salary.lunchAllowance || 0) +
+            parseFloat(salary.fuelAllowance || 0) +
+            parseFloat(salary.phoneAllowance || 0) +
+            parseFloat(salary.otherAllowance || 0)
+        );
+        return standardDays > 0 ? (totalAllowances / standardDays) * workingDays : 0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CẬP NHẬT CHI TIẾT LƯƠNG (KHI USER CHỈNH SỬA TRÊN GIAO DIỆN)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Cập nhật chi tiết lương khi user chỉnh sửa thủ công
+     * Chỉ áp dụng với các trường cho phép sửa (thưởng, phạt, phụ cấp, etc.)
+     */
     async updateDetail(detailId, dto) {
         const detail = await this.payrollDetailRepository.findById(detailId);
         if (!detail) throw new NotFoundException(AppMessages.Errors.Payroll.DETAIL_NOT_FOUND);
@@ -301,91 +508,113 @@ export class PayrollService {
             throw new BadRequestException(AppMessages.Errors.Payroll.IS_LOCKED);
         }
 
-        const bonus = dto.bonus !== undefined ? parseFloat(dto.bonus) : parseFloat(detail.bonus);
-        const deduction = dto.deduction !== undefined ? parseFloat(dto.deduction) : parseFloat(detail.deduction);
-        const penalty = dto.penalty !== undefined ? parseFloat(dto.penalty) : parseFloat(detail.penalty);
+        // Các trường ngày công
+        const standardDays = parseFloat(dto.standardDays ?? detail.standardDays ?? 22);
+        const workingDays = parseFloat(dto.workingDays ?? detail.workingDays ?? 0);
+        const officialDays = parseFloat(dto.officialDays ?? detail.officialDays ?? 0);
+        const probationDays = parseFloat(dto.probationDays ?? detail.probationDays ?? 0);
+        const businessTripDays = parseFloat(dto.businessTripDays ?? detail.businessTripDays ?? 0);
+        const holidayDays = parseFloat(dto.holidayDays ?? detail.holidayDays ?? 0);
+        const benefitLeaveDays = parseFloat(dto.benefitLeaveDays ?? detail.benefitLeaveDays ?? 0);
 
-        // Standard attendance fields
-        const standardDays = dto.standardDays !== undefined ? parseFloat(dto.standardDays) : parseFloat(detail.standardDays || 26);
-        const workingDays = dto.workingDays !== undefined ? parseFloat(dto.workingDays) : parseFloat(detail.workingDays || 0);
-        const officialDays = dto.officialDays !== undefined ? parseFloat(dto.officialDays) : parseFloat(detail.officialDays || 0);
-        const probationDays = dto.probationDays !== undefined ? parseFloat(dto.probationDays) : parseFloat(detail.probationDays || 0);
-        const businessTripDays = dto.businessTripDays !== undefined ? parseFloat(dto.businessTripDays) : parseFloat(detail.businessTripDays || 0);
-        const holidayDays = dto.holidayDays !== undefined ? parseFloat(dto.holidayDays) : parseFloat(detail.holidayDays || 0);
-        const benefitLeaveDays = dto.benefitLeaveDays !== undefined ? parseFloat(dto.benefitLeaveDays) : parseFloat(detail.benefitLeaveDays || 0);
-        const p3Percentage = dto.p3Percentage !== undefined ? parseFloat(dto.p3Percentage) : parseFloat(detail.p3Percentage || 100);
-        const performanceSalary = dto.performanceSalary !== undefined ? parseFloat(dto.performanceSalary) : parseFloat(detail.performanceSalary || 0);
+        // Các trường OT
+        let otWeekday = parseFloat(dto.otWeekday ?? detail.otWeekday ?? 0);
+        let otWeekdayNight = parseFloat(dto.otWeekdayNight ?? detail.otWeekdayNight ?? 0);
+        let otWeekend = parseFloat(dto.otWeekend ?? detail.otWeekend ?? 0);
+        let otWeekendNight = parseFloat(dto.otWeekendNight ?? detail.otWeekendNight ?? 0);
+        let otHoliday = parseFloat(dto.otHoliday ?? detail.otHoliday ?? 0);
+        let otHolidayNight = parseFloat(dto.otHolidayNight ?? detail.otHolidayNight ?? 0);
+        const totalOtHours = dto.totalOtHours !== undefined
+            ? parseFloat(dto.totalOtHours)
+            : (otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight);
 
-        // Individual Insurance & Tax manual overrides
-        // Fallback chain: DTO -> Existing Detail -> Global Config -> Default Values
-        const configRepo = AppDataSource.getRepository(PayrollConfigEntity);
-        const config = await configRepo.findOne({ where: { configKey: 'GENERAL', isDeleted: false } });
+        // Fallback: nếu chỉ cập nhật totalOtHours mà không có breakdown
+        const breakdownSum = otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight;
+        if (dto.totalOtHours !== undefined && breakdownSum === 0 && totalOtHours > 0) {
+            otWeekday = totalOtHours;
+        }
 
-        const socialInsurancePercentage = dto.socialInsurancePercentage !== undefined ? parseFloat(dto.socialInsurancePercentage) : (parseFloat(detail.socialInsurancePercentage) || (config?.socialInsuranceRate || 0));
-        const healthInsurancePercentage = dto.healthInsurancePercentage !== undefined ? parseFloat(dto.healthInsurancePercentage) : (parseFloat(detail.healthInsurancePercentage) || (config?.healthInsuranceRate || 0));
-        const unemploymentInsurancePercentage = dto.unemploymentInsurancePercentage !== undefined ? parseFloat(dto.unemploymentInsurancePercentage) : (parseFloat(detail.unemploymentInsurancePercentage) || (config?.unemploymentInsuranceRate || 0));
-        const unionFeePercentage = dto.unionFeePercentage !== undefined ? parseFloat(dto.unionFeePercentage) : (parseFloat(detail.unionFeePercentage) || (config?.unionFeeRate || 0));
-        
+        // P2 từ employee_salaries (đã lưu từ autoCalculate hoặc mặc định)
+        // % KPI, % P2.1, % P2.2 từ performance_reviews (đã được tính % khi autoCalculate)
+        const p21Percent = parseFloat(dto.p1p2Percentage ?? detail.p1p2Percentage ?? 0);
+        const p22Percent = parseFloat(dto.p3Percentage ?? detail.p3Percentage ?? 0);
+
+        // Tỷ lệ bảo hiểm - cho phép override từ dto
+        const socialInsurancePercentage = dto.socialInsurancePercentage ?? INSURANCE_RATES.SOCIAL;
+        const healthInsurancePercentage = dto.healthInsurancePercentage ?? INSURANCE_RATES.HEALTH;
+        const unemploymentInsurancePercentage = dto.unemploymentInsurancePercentage ?? INSURANCE_RATES.UNEMPLOYMENT;
+
+        // Tính bảo hiểm
         const insuranceBase = Math.min(parseFloat(detail.baseSalary) || 0, 20 * 2_340_000);
-        const socialInsurance = parseFloat((insuranceBase * (socialInsurancePercentage / 100)).toFixed(2));
-        const healthInsurance = parseFloat((insuranceBase * (healthInsurancePercentage / 100)).toFixed(2));
-        const unemploymentInsurance = parseFloat((insuranceBase * (unemploymentInsurancePercentage / 100)).toFixed(2));
-        const unionFee = parseFloat((insuranceBase * (unionFeePercentage / 100)).toFixed(2));
-        
-        const taxDeduction = dto.taxDeduction !== undefined ? parseFloat(dto.taxDeduction) : parseFloat(detail.taxDeduction || 0);
-        
-        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
+        const socialInsurance = parseFloat((insuranceBase * socialInsurancePercentage / 100).toFixed(2));
+        const healthInsurance = parseFloat((insuranceBase * healthInsurancePercentage / 100).toFixed(2));
+        const unemploymentInsurance = parseFloat((insuranceBase * unemploymentInsurancePercentage / 100).toFixed(2));
+        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
 
-        // Recalculate salary if attendance changed or other factors changed
-        // This is a simplified version of autoCalculate logic
-        const p1Amount = parseFloat(detail.baseSalary) || 0;
-        const hourlyRate = p1Amount / (standardDays || 26) / 8;
-        
-        // Use auto-calculate logic for netSalary if needed, otherwise use simple sum
-        // For individual updates, we'll keep it simple or allow a full recalculation call
-        const netSalary = parseFloat((
-            parseFloat(detail.p1Amount || 0) +
-            parseFloat(detail.overtimePay || 0) +
-            parseFloat(detail.p21Amount || 0) +
-            parseFloat(detail.p22Amount || 0) +
-            parseFloat(detail.probationAmount || 0) +
-            parseFloat(detail.allowanceAmount || 0) +
-            bonus -
-            deduction -
-            penalty -
-            insuranceDeduction -
-            taxDeduction
-        ).toFixed(2));
+        // Tính OT
+        const { activeRules, ruleDepts } = await this._getOTRules();
+        const ts = {
+            officialDays, probationDays, businessTripDays, holidayDays, benefitLeaveDays,
+            otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight
+        };
+        const overtimePay = this._calcOvertimePay(ts, detail.baseSalary, standardDays,
+            detail.employee?.departmentId, activeRules, ruleDepts);
 
-        return this.payrollDetailRepository.update(detailId, {
-            bonus,
-            deduction,
-            penalty,
+        // Tính lương thực nhận (dùng _calcEarnedSalaries để nhất quán)
+        const { earnedP1, earnedP21, earnedP22, probationSalary } = this._calcEarnedSalaries(
+            { baseSalary: detail.baseSalary, performanceSalary: detail.performanceSalary },
+            ts,
             standardDays,
             workingDays,
-            officialDays,
-            probationDays,
-            businessTripDays,
-            holidayDays,
-            benefitLeaveDays,
-            p1p2Percentage,
-            p3Percentage,
-            performanceSalary,
-            socialInsurance,
-            healthInsurance,
-            unemploymentInsurance,
-            unionFee,
-            socialInsurancePercentage,
-            healthInsurancePercentage,
-            unemploymentInsurancePercentage,
-            unionFeePercentage,
-            insuranceDeduction,
-            taxDeduction,
-            netSalary,
-            note: dto.note !== undefined ? dto.note : detail.note,
+            p21Percent,
+            p22Percent,
+            detail.employee?.employmentStatus
+        );
+
+        const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
+        const earnedAllowances = this._calcEarnedAllowances({
+            lunchAllowance: detail.lunchAllowance,
+            fuelAllowance: detail.fuelAllowance,
+            phoneAllowance: detail.phoneAllowance,
+            otherAllowance: detail.otherAllowance
+        }, { standardDays: detail.standardDays }, standardDays, workingDays);
+
+        const bonus = parseFloat(dto.bonus ?? detail.bonus ?? 0);
+        const penalty = parseFloat(dto.penalty ?? detail.penalty ?? 0);
+        const deduction = parseFloat(dto.deduction ?? detail.deduction ?? 0);
+        // Tính thuế TNCN (sử dụng giá trị từ dto hoặc giữ nguyên từ detail)
+        const taxDeduction = parseFloat(dto.taxDeduction ?? detail.taxDeduction ?? 0);
+        const netSalary = parseFloat((
+            totalOfficialSalary + earnedAllowances + overtimePay + bonus
+            - penalty - deduction - insuranceDeduction - taxDeduction
+        ).toFixed(2));
+
+        // KPCĐ công ty - dùng trực tiếp từ dto (giữ nguyên giá trị input)
+        const unionFeeValue = dto.unionFee !== undefined ? parseFloat(dto.unionFee) : 0;
+
+        return this.payrollDetailRepository.update(detailId, {
+            bonus, deduction, penalty,
+            standardDays, workingDays, officialDays, probationDays, businessTripDays, holidayDays, benefitLeaveDays,
+            otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight, totalOtHours,
+            overtimePay: parseFloat(overtimePay.toFixed(2)),
+            p1Amount: earnedP1, p21Amount: earnedP21, p22Amount: earnedP22, probationAmount: probationSalary,
+            p1p2Percentage: p21Percent, p3Percentage: p22Percent,
+            performanceSalary: detail.performanceSalary,
+            socialInsurance, healthInsurance, unemploymentInsurance,
+            socialInsurancePercentage, healthInsurancePercentage, unemploymentInsurancePercentage,
+            insuranceDeduction, netSalary,
+            unionFee: unionFeeValue, // KPCĐ lưu trực tiếp vào cột union_fee
+            note: dto.note ?? detail.note,
         });
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // UC28 - QUẢN LÝ DỮ LIỆU BẢNG LƯƠNG (IMPORT/EXPORT)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Import chi tiết lương từ file Excel
+     */
     async importDetails(payrollId, fileBuffer) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus === PAYROLL_STATUS.LOCKED) {
@@ -394,7 +623,7 @@ export class PayrollService {
 
         const ExcelJS = await import('exceljs');
         const workbook = new ExcelJS.default.Workbook();
-        
+
         try {
             await workbook.xlsx.load(fileBuffer);
         } catch (err) {
@@ -404,11 +633,11 @@ export class PayrollService {
             throw err;
         }
 
-        const worksheet = workbook.getWorksheet(1); // Standard: first sheet
-
+        const worksheet = workbook.getWorksheet(1);
         const importedData = [];
+
         worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber === 1) return; // Skip header
+            if (rowNumber === 1) return; // Bỏ header
 
             const employeeCode = row.getCell(2).value?.toString() || row.getCell(2).text;
             if (!employeeCode) return;
@@ -442,18 +671,22 @@ export class PayrollService {
             if (!detail) continue;
 
             const netSalary = parseFloat((
-                parseFloat(detail.baseSalary) +
-                parseFloat(detail.overtimePay) +
+                parseFloat(detail.p1Amount || 0) +
+                parseFloat(detail.p21Amount || 0) +
+                parseFloat(detail.p22Amount || 0) +
+                parseFloat(detail.probationAmount || 0) +
+                parseFloat(detail.allowanceAmount || 0) +
+                parseFloat(detail.overtimePay || 0) +
                 data.bonus -
-                data.deduction -
                 data.penalty -
-                parseFloat(detail.insuranceDeduction) -
-                parseFloat(detail.taxDeduction)
+                data.deduction -
+                parseFloat(detail.insuranceDeduction || 0) -
+                parseFloat(detail.taxDeduction || 0)
             ).toFixed(2));
 
             const updated = await this.payrollDetailRepository.update(detail.id, {
                 ...data,
-                employeeCode: undefined, // Don't update this
+                employeeCode: undefined,
                 netSalary,
             });
             results.push(updated);
@@ -462,10 +695,13 @@ export class PayrollService {
         return { importedCount: results.length };
     }
 
-    // ──────────────────────────────────────
-    // UC28 - Payroll Data Management
-    // ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // UC28 - XEM DANH SÁCH BẢNG LƯƠNG
+    // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * Lấy danh sách bảng lương (có phân trang)
+     */
     async findAll(queryDto) {
         const result = await this.payrollRepository.findAll({
             month: queryDto.month,
@@ -476,7 +712,7 @@ export class PayrollService {
             take: queryDto.take,
         });
 
-        // Enrich with detail counts
+        // Bổ sung số nhân viên và tổng lương cho mỗi bảng lương
         const enriched = await Promise.all(result.items.map(async (p) => {
             const details = await this.payrollDetailRepository.findByPayroll(p.id);
             const totalNetSalary = details.reduce((sum, d) => sum + parseFloat(d.netSalary || 0), 0);
@@ -496,6 +732,9 @@ export class PayrollService {
         };
     }
 
+    /**
+     * Lấy chi tiết một bảng lương
+     */
     async findById(id) {
         const payroll = await this._findPayrollOrFail(id);
         const details = await this.payrollDetailRepository.findByPayroll(id);
@@ -509,6 +748,9 @@ export class PayrollService {
         };
     }
 
+    /**
+     * Cập nhật thông tin header của bảng lương
+     */
     async update(id, data) {
         const payroll = await this._findPayrollOrFail(id);
         if (payroll.payrollStatus === PAYROLL_STATUS.LOCKED) {
@@ -517,11 +759,17 @@ export class PayrollService {
         return this.payrollRepository.update(id, data);
     }
 
+    /**
+     * Lấy chi tiết lương theo phòng ban
+     */
     async getDetailsByDepartment(payrollId, departmentId) {
         await this._findPayrollOrFail(payrollId);
         return this.payrollDetailRepository.findByPayrollAndDepartment(payrollId, departmentId);
     }
 
+    /**
+     * Xuất file Excel tổng hợp bảng lương
+     */
     async exportSummary(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         const details = await this.payrollDetailRepository.findByPayroll(payrollId);
@@ -586,10 +834,13 @@ export class PayrollService {
         );
     }
 
-    // ──────────────────────────────────────
-    // UC29 - Payroll Submission & Approval
-    // ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // UC29 - GỬI PHÊ DUYỆT & DUYỆT BẢNG LƯƠNG
+    // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * Gửi bảng lương để phê duyệt (Nháp → Chờ duyệt)
+     */
     async submitForApproval(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus !== PAYROLL_STATUS.DRAFT) {
@@ -601,13 +852,16 @@ export class PayrollService {
         });
     }
 
+    /**
+     * Duyệt bảng lương (Chờ duyệt → Đã duyệt)
+     */
     async approve(payrollId, userId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus !== PAYROLL_STATUS.PENDING_APPROVAL) {
             throw new BadRequestException(AppMessages.Errors.Payroll.INVALID_STATUS_TRANSITION);
         }
 
-        // Resolve approvedBy employee id
+        // Tìm employee từ userId để lưu người duyệt
         const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
         const employee = await employeeRepo.findOne({ where: { userId, isDeleted: false } });
 
@@ -618,6 +872,9 @@ export class PayrollService {
         });
     }
 
+    /**
+     * Từ chối bảng lương (Chờ duyệt → Nháp)
+     */
     async reject(payrollId, userId, reason) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus !== PAYROLL_STATUS.PENDING_APPROVAL) {
@@ -630,10 +887,14 @@ export class PayrollService {
         });
     }
 
-    // ──────────────────────────────────────
-    // UC30 - Payroll Locking & Payslip Distribution
-    // ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // UC30 - KHÓA BẢNG LƯƠNG & GỬI PHIẾU LƯƠNG
+    // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * Khóa bảng lương (Đã duyệt → Đã khóa)
+     * Sau khi khóa không thể chỉnh sửa
+     */
     async lock(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus !== PAYROLL_STATUS.APPROVED) {
@@ -642,6 +903,9 @@ export class PayrollService {
         return this.payrollRepository.update(payrollId, { payrollStatus: PAYROLL_STATUS.LOCKED });
     }
 
+    /**
+     * Mở khóa bảng lương (Đã khóa → Đã duyệt)
+     */
     async unlock(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus !== PAYROLL_STATUS.LOCKED) {
@@ -650,6 +914,10 @@ export class PayrollService {
         return this.payrollRepository.update(payrollId, { payrollStatus: PAYROLL_STATUS.APPROVED });
     }
 
+    /**
+     * Gửi phiếu lương qua email cho tất cả nhân viên
+     * Chỉ thực hiện khi bảng lương đã bị khóa
+     */
     async sendPayslips(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         if (payroll.payrollStatus !== PAYROLL_STATUS.LOCKED) {
@@ -658,6 +926,7 @@ export class PayrollService {
 
         const details = await this.payrollDetailRepository.findByPayroll(payrollId);
         let sentCount = 0;
+        const sentAt = new Date();
 
         for (const detail of details) {
             const email = detail.employee?.companyEmail || detail.employee?.user?.email;
@@ -671,18 +940,75 @@ export class PayrollService {
                     '',
                     html
                 );
+                // Chỉ đánh dấu đã gửi khi email thực sự thành công
+                await this.payrollDetailRepository.update(detail.id, { payslipSentAt: sentAt });
                 sentCount++;
             } catch (err) {
                 console.error(`[PayrollService] Failed to send payslip to ${email}:`, err.message);
             }
         }
 
-        // Mark all details as sent
-        await this.payrollDetailRepository.bulkUpdateSentAt(payrollId, new Date());
-
         return { sent: sentCount, total: details.length };
     }
 
+    /**
+     * Gửi phiếu lương qua email cho các nhân viên được chọn (theo detailIds)
+     * Không yêu cầu bảng lương phải bị khóa — cho phép gửi ở mọi trạng thái.
+     * @param {number} payrollId
+     * @param {number[]} detailIds - Danh sách ID của payroll_details cần gửi
+     */
+    async sendPayslipsToSelected(payrollId, detailIds = []) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+
+        if (!detailIds || detailIds.length === 0) {
+            throw new BadRequestException('Vui lòng chọn ít nhất một nhân viên để gửi phiếu lương.');
+        }
+
+        const allDetails = await this.payrollDetailRepository.findByPayroll(payrollId);
+        const selectedDetails = allDetails.filter(d => detailIds.includes(d.id));
+
+        if (selectedDetails.length === 0) {
+            throw new BadRequestException('Không tìm thấy dữ liệu phiếu lương cho các nhân viên đã chọn.');
+        }
+
+        let sentCount = 0;
+        const failedEmails = [];
+
+        for (const detail of selectedDetails) {
+            const email = detail.employee?.companyEmail || detail.employee?.user?.email;
+            if (!email) {
+                console.warn(`[PayrollService] Nhân viên ${detail.employee?.fullName} (ID: ${detail.employeeId}) không có email.`);
+                failedEmails.push({ name: detail.employee?.fullName, reason: 'Không có email' });
+                continue;
+            }
+
+            const html = this._buildPayslipHtml(detail, payroll);
+            try {
+                await sendMail(
+                    email,
+                    `Phiếu lương Tháng ${payroll.payrollMonth}/${payroll.payrollYear} - SmartHR`,
+                    '',
+                    html
+                );
+                sentCount++;
+                // Đánh dấu đã gửi cho record này
+                await this.payrollDetailRepository.update(detail.id, { payslipSentAt: new Date() });
+            } catch (err) {
+                console.error(`[PayrollService] Lỗi gửi phiếu lương tới ${email}:`, err.message);
+                failedEmails.push({ name: detail.employee?.fullName, email, reason: err.message });
+            }
+        }
+
+        return {
+            sent: sentCount,
+            total: selectedDetails.length,
+            failed: failedEmails,
+        };
+    }
+
+    /**
+     * Xuất file Excel phiếu lương cho từng nhân viên
+     */
     async exportPayslips(payrollId) {
         const payroll = await this._findPayrollOrFail(payrollId);
         const details = await this.payrollDetailRepository.findByPayroll(payrollId);
@@ -693,12 +1019,12 @@ export class PayrollService {
         for (const detail of details) {
             const emp = detail.employee;
             const sheetName = (emp?.employeeCode || emp?.fullName || `NV${detail.employeeId}`)
-                .replace(/[*?:\\/\[\]]/g, '')
+                .replace(/[*?:\/\\[\]]/g, '')
                 .substring(0, 31);
 
             const ws = workbook.addWorksheet(sheetName);
 
-            // Title
+            // Tiêu đề
             ws.mergeCells('A1:D1');
             const titleCell = ws.getCell('A1');
             titleCell.value = `PHIẾU LƯƠNG - Tháng ${payroll.payrollMonth}/${payroll.payrollYear}`;
@@ -706,41 +1032,75 @@ export class PayrollService {
             titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
             ws.getRow(1).height = 30;
 
-            // Employee info
+            // Thông tin nhân viên
             ws.mergeCells('A2:D2');
             const empCell = ws.getCell('A2');
             empCell.value = `Nhân viên: ${emp?.fullName || ''} (${emp?.employeeCode || ''}) | Phòng ban: ${emp?.department?.departmentName || ''}`;
             empCell.font = { italic: true, size: 11 };
             empCell.alignment = { horizontal: 'center' };
 
-            // Salary breakdown rows
+            // Tính các khoản trừ chi tiết
+            const bhxhRate = parseFloat(detail.socialInsurancePercentage) || 8;
+            const bhytRate = parseFloat(detail.healthInsurancePercentage) || 1.5;
+            const bhtnRate = parseFloat(detail.unemploymentInsurancePercentage) || 1;
+            const bhxh = parseFloat(detail.socialInsurance || 0);
+            const bhyt = bhxh > 0 ? bhxh * bhytRate / bhxhRate : 0;
+            const bhtn = bhxh > 0 ? bhxh * bhtnRate / bhxhRate : 0;
+            const kpcd = parseFloat(detail.unionFee || 0);
+            const dangPhi = parseFloat(detail.partyFee || 0);
+            const truyThuBH = parseFloat(detail.insuranceAdjustment || 0);
+            const thueTNCN = parseFloat(detail.taxDeduction || 0);
+            const truyThuThue = parseFloat(detail.taxAdjustment || 0);
+            const khauTruKhac = parseFloat(detail.deduction || 0);
+            const phat = parseFloat(detail.penalty || 0);
+            const totalDeductions = bhxh + bhyt + bhtn + kpcd + dangPhi + truyThuBH + thueTNCN + truyThuThue + khauTruKhac + phat;
+
+            // Chi tiết lương
             const rows = [
-                ['Chỉ tiêu', 'Số tiền (VND)'],
-                ['Ngày công thực tế', detail.workingDays || 0],
-                ['Lương cơ bản (P1)', parseFloat(detail.baseSalary || 0)],
-                ['Lương hiệu năng (P2)', parseFloat(Number(detail.p21Amount || 0) + Number(detail.p22Amount || 0))],
-                ['Lương thử việc', parseFloat(detail.probationAmount || 0)],
-                ['Phụ cấp', parseFloat(detail.allowanceAmount || 0)],
-                ['Phụ cấp làm thêm giờ', parseFloat(detail.overtimePay || 0)],
-                ['Thưởng', parseFloat(detail.bonus || 0)],
-                ['Khấu trừ', -parseFloat(detail.deduction || 0)],
-                ['Phạt', -parseFloat(detail.penalty || 0)],
-                ['Bảo hiểm (BHXH/YT/TN)', -parseFloat(detail.insuranceDeduction || 0)],
-                ['Thuế TNCN', -parseFloat(detail.taxDeduction || 0)],
-                ['THỰC NHẬN', parseFloat(detail.netSalary || 0)],
+                ['THU NHẬP', '', ''],
+                ['Ngày công chuẩn', '', detail.standardDays || 0],
+                ['Ngày công thực tế', '', detail.workingDays || 0],
+                ['Lương P1 thực nhận', '', parseFloat(detail.p1Amount || 0)],
+                ['Lương P2.1 thực nhận', '', parseFloat(detail.p21Amount || 0)],
+                ['Lương P2.2 thực nhận', '', parseFloat(detail.p22Amount || 0)],
+                ['Lương thử việc', '', parseFloat(detail.probationAmount || 0)],
+                ['Phụ cấp', '', parseFloat(detail.allowanceAmount || 0)],
+                ['OT', '', parseFloat(detail.overtimePay || 0)],
+                ['Thưởng', '', parseFloat(detail.bonus || 0)],
+                ['TỔNG THU NHẬP', '', parseFloat(detail.netSalary || 0) + totalDeductions],
+                ['', '', ''],
+                ['CÁC KHOẢN TRỪ', '', ''],
+                ['BHXH', `(${bhxhRate}%)`, -bhxh],
+                ['BHYT', `(${bhytRate}%)`, -bhyt],
+                ['BHTN', `(${bhtnRate}%)`, -bhtn],
+                ['KPCĐ', '', -kpcd],
+                ['Đảng phí', '', -dangPhi],
+                ['Truy thu BH', '', -truyThuBH],
+                ['Thuế TNCN', '', -thueTNCN],
+                ['Truy thu thuế', '', -truyThuThue],
+                ['Khấu trừ khác', '', -khauTruKhac],
+                ['Phạt', '', -phat],
+                ['TỔNG CÁC KHOẢN TRỪ', '', -totalDeductions],
+                ['', '', ''],
+                ['THỰC LĨNH (NET)', '', parseFloat(detail.netSalary || 0)],
             ];
 
             rows.forEach((row, idx) => {
                 const wsRow = ws.getRow(4 + idx);
                 wsRow.getCell(1).value = row[0];
-                wsRow.getCell(4).value = row[1];
-                wsRow.getCell(1).font = { bold: idx === 0 || idx === rows.length - 1 };
-                wsRow.getCell(4).font = { bold: idx === 0 || idx === rows.length - 1 };
-                if (idx === rows.length - 1) {
+                wsRow.getCell(2).value = row[1];
+                wsRow.getCell(4).value = row[2];
+                const isHeader = row[0] === 'THU NHẬP' || row[0] === 'CÁC KHOẢN TRỪ';
+                const isTotal = row[0]?.startsWith('TỔNG') || row[0] === 'THỰC LĨNH (NET)';
+                wsRow.getCell(1).font = { bold: isHeader || isTotal };
+                wsRow.getCell(2).font = { bold: isHeader || isTotal };
+                wsRow.getCell(4).font = { bold: isHeader || isTotal };
+                if (isTotal) {
                     wsRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+                    wsRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
                     wsRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
                 }
-                [1, 4].forEach(col => {
+                [1, 2, 4].forEach(col => {
                     wsRow.getCell(col).border = {
                         top: { style: 'thin' }, left: { style: 'thin' },
                         bottom: { style: 'thin' }, right: { style: 'thin' }
@@ -749,7 +1109,7 @@ export class PayrollService {
             });
 
             ws.columns = [
-                { width: 30 }, { width: 5 }, { width: 5 }, { width: 20 }
+                { width: 25 }, { width: 12 }, { width: 5 }, { width: 18 }
             ];
 
             if (detail.note) {
@@ -763,18 +1123,32 @@ export class PayrollService {
         return await workbook.xlsx.writeBuffer();
     }
 
-    // ──────────────────────────────────────
-    // Private helpers
-    // ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // PRIVATE HELPERS
+    // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * Tìm bảng lương hoặc throw NotFoundException
+     */
     async _findPayrollOrFail(id) {
         const payroll = await this.payrollRepository.findById(id);
         if (!payroll) throw new NotFoundException(AppMessages.Errors.Payroll.NOT_FOUND);
         return payroll;
     }
 
+    /**
+     * Tính thuế TNCN theo biểu thuế lũy tiến từng phần
+     *
+     * Bậc thuế:
+     * - Đến 5 triệu: 5%
+     * - Trên 5 đến 10 triệu: 10%
+     * - Trên 10 đến 18 triệu: 15%
+     * - Trên 18 đến 32 triệu: 20%
+     * - Trên 32 đến 52 triệu: 25%
+     * - Trên 52 đến 80 triệu: 30%
+     * - Trên 80 triệu: 35%
+     */
     _calcPIT(taxableIncome) {
-        // Progressive PIT brackets (VND/month)
         const brackets = [
             { max: 5_000_000, rate: 0.05 },
             { max: 10_000_000, rate: 0.10 },
@@ -796,39 +1170,354 @@ export class PayrollService {
         return tax;
     }
 
+    /**
+     * Tạo HTML cho phiếu lương email - Full 36 KPI indicators
+     */
     _buildPayslipHtml(detail, payroll) {
         const emp = detail.employee;
-        const fmt = (n) => new Intl.NumberFormat('vi-VN').format(parseFloat(n || 0));
+        const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Math.round(parseFloat(n || 0)));
+        const f = (n) => parseFloat(n || 0);
+        const sentDate = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        return `
-        <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px;">
-            <h2 style="color: #4f46e5; text-align: center; margin-bottom: 4px;">PHIẾU LƯƠNG</h2>
-            <p style="text-align: center; color: #6b7280; margin-top: 0;">Tháng ${payroll.payrollMonth}/${payroll.payrollYear}</p>
-            <hr style="border-color: #e5e7eb; margin: 16px 0;" />
-            <p><strong>Họ và tên:</strong> ${emp?.fullName || ''}</p>
-            <p><strong>Mã nhân viên:</strong> ${emp?.employeeCode || ''}</p>
-            <p><strong>Phòng ban:</strong> ${emp?.department?.departmentName || ''}</p>
-            <hr style="border-color: #e5e7eb; margin: 16px 0;" />
-            <table style="width: 100%; border-collapse: collapse;">
-                <tr style="background: #f9fafb;"><th style="text-align:left;padding:8px;border:1px solid #e5e7eb;">Chỉ tiêu</th><th style="text-align:right;padding:8px;border:1px solid #e5e7eb;">Số tiền</th></tr>
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Ngày công thực tế</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">${detail.workingDays} ngày</td></tr>
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương cơ bản (P1)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">${fmt(detail.baseSalary)} ₫</td></tr>
-                ${(Number(detail.p21Amount) + Number(detail.p22Amount)) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương hiệu năng (P2)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(Number(detail.p21Amount) + Number(detail.p22Amount))} ₫</td></tr>` : ''}
-                ${Number(detail.probationAmount) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Lương thử việc</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.probationAmount)} ₫</td></tr>` : ''}
-                ${Number(detail.allowanceAmount) > 0 ? `<tr><td style="padding:8px;border:1px solid #e5e7eb;">Phụ cấp</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.allowanceAmount)} ₫</td></tr>` : ''}
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Phụ cấp làm thêm giờ</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.overtimePay)} ₫</td></tr>
-                <tr><td style="padding:8px;border:1px solid #e5e7eb;">Thưởng</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">+${fmt(detail.bonus)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Khấu trừ</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.deduction)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Phạt</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.penalty)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Bảo hiểm (BHXH/YT/TN)</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.insuranceDeduction)} ₫</td></tr>
-                <tr style="color:#dc2626;"><td style="padding:8px;border:1px solid #e5e7eb;">Thuế TNCN</td><td style="text-align:right;padding:8px;border:1px solid #e5e7eb;">-${fmt(detail.taxDeduction)} ₫</td></tr>
-                <tr style="background:#ecfdf5; font-weight:bold;">
-                    <td style="padding:10px;border:1px solid #d1fae5; color:#065f46;">THỰC NHẬN</td>
-                    <td style="text-align:right;padding:10px;border:1px solid #d1fae5; color:#065f46;">${fmt(detail.netSalary)} ₫</td>
-                </tr>
-            </table>
-            ${detail.note ? `<p style="margin-top:12px;color:#6b7280;font-style:italic;">Ghi chú: ${detail.note}</p>` : ''}
-            <p style="margin-top:24px;font-size:12px;color:#9ca3af;text-align:center;">Email tự động từ hệ thống SmartHR. Vui lòng không phản hồi.</p>
-        </div>`;
+        // ── I. Định mức Hợp đồng & Công (1-5) ──
+        const lươngĐóngBHXH = f(detail.baseSalary);
+        const lươngVịTrí = f(detail.performanceSalary);
+        const thưởngHQCV = f(detail.p21Amount) || 0;
+        const khoánCV = f(detail.p22Amount) || 0;
+        const lươngThửViệc = f(detail.probationAmount);
+
+        // ── II. Dữ liệu công chốt (6-9) ──
+        const côngChuẩn = f(detail.standardDays) || 26;
+        const côngChínhThức = f(detail.officialDays);
+        const côngThửViệc = f(detail.probationDays);
+        const côngKhác = f(detail.benefitLeaveDays) + f(detail.holidayDays) + f(detail.businessTripDays) + f(detail.annualLeaveDays);
+
+        // ── III. Thu nhập thực nhận (10-15) ──
+        const p21Percent = f(detail.p1p2Percentage);
+        const p22Percent = f(detail.p3Percentage);
+        const kpiPercent = p21Percent + p22Percent;
+        const p1ThựcNhận = f(detail.p1Amount);
+        const p21Thực = f(detail.p21Amount);
+        const p22Thực = f(detail.p22Amount);
+        const pTVThực = f(detail.probationAmount);
+        const tổngLươngChính = p1ThựcNhận + p21Thực + p22Thực + pTVThực;
+
+        // ── IV. Thu nhập khác & Phụ cấp (16-21) ──
+        const thưởngP3 = f(detail.bonus);
+        const phụCấp = f(detail.allowanceAmount);
+        const tăngCaOT = f(detail.overtimePay);
+        const truyThuTínhThuế = f(detail.otherTaxableIncome) || 0;
+        const truyThuKoThuế = f(detail.otherNonTaxableIncome) || 0;
+        const khácKoThuế = f(detail.adjustmentNonTaxable) || 0;
+
+        // ── V. Tổng thu nhập (22) ──
+        const tổngThuNhập = tổngLươngChính + thưởngP3 + phụCấp + tăngCaOT + truyThuTínhThuế + truyThuKoThuế + khácKoThuế;
+
+        // ── VI. Khấu trừ & Thuế (23-32) ──
+        const insuranceBase = Math.min(lươngĐóngBHXH, 20 * 2340000);
+        const siRate = f(detail.socialInsurancePercentage) || 8;
+        const hiRate = f(detail.healthInsurancePercentage) || 1.5;
+        const uiRate = f(detail.unemploymentInsurancePercentage) || 1;
+
+        const bhxhNLĐ = f(detail.socialInsurance) || (insuranceBase * (siRate + hiRate + uiRate) / 100);
+        const partyFee = f(detail.partyFee) || 0;
+        const insuranceAdjustment = f(detail.insuranceAdjustment) || 0;
+        const taxAdjustment = f(detail.taxAdjustment) || 0;
+        const giảmTrừGiaCảnh = f(detail.taxableIncomePaid) || 11000000;
+        const tnTínhThuế = Math.max(0, tổngThuNhập - bhxhNLĐ - giảmTrừGiaCảnh);
+        const thuếTNCN = f(detail.taxDeduction);
+        const khấuTrừKhác = f(detail.penalty) + f(detail.deduction);
+        const tổngKhấuTrừ = bhxhNLĐ + insuranceAdjustment + partyFee + thuếTNCN + taxAdjustment + khấuTrừKhác;
+
+        // ── VII. Thực lĩnh (33) ──
+        const thựcLĩnh = tổngThuNhập - tổngKhấuTrừ;
+
+        // ── VIII. Chi phí Doanh nghiệp (34-36) ──
+        const kpcđCty = f(detail.unionFee) || (insuranceBase * 0.02);
+        const bhxhCty = f(detail.companyInsurance) || (insuranceBase * 0.175);
+        const tổngChiPhíNS = thựcLĩnh + kpcđCty + bhxhCty;
+
+        // Styles
+        const sectionTitle = 'font-size:10px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;margin:0 0 8px;';
+        const tableStyle = 'width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);';
+        const thStyle = 'padding:6px 10px;text-align:center;font-weight:700;font-size:9px;';
+        const tdLabel = 'padding:5px 10px;font-size:11px;color:#475569;';
+        const tdValue = 'padding:5px 10px;text-align:right;font-weight:600;font-size:11px;color:#1e293b;';
+        const tdValueRed = 'padding:5px 10px;text-align:right;font-weight:600;font-size:11px;color:#dc2626;';
+
+        const section = (title, bgColor, content) => `
+        <tr>
+            <td style="padding:16px 24px 0;">
+                <p style="${sectionTitle}">${title}</p>
+                <table style="${tableStyle}">
+                    <thead>
+                        <tr style="background:${bgColor};color:#fff;">
+                            <th style="${thStyle}">Chỉ tiêu</th>
+                            <th style="${thStyle}">Giá trị</th>
+                        </tr>
+                    </thead>
+                    <tbody>${content}</tbody>
+                </table>
+            </td>
+        </tr>`;
+
+        const row = (label, value, isRed = false, isBold = false) => `
+            <tr style="border-bottom:1px solid #f1f5f9;${isBold ? 'background:#f8fafc;' : ''}">
+                <td style="${tdLabel}${isBold ? 'font-weight:700;' : ''}">${label}</td>
+                <td style="${isRed ? tdValueRed : tdValue}${isBold ? 'font-weight:700;' : ''}">${isRed ? '−' : ''}${fmt(value)} ${isRed ? '₫' : ''}</td>
+            </tr>`;
+
+        const subtotalRow = (label, value, bgColor, textColor) => `
+            <tr style="background:${bgColor};">
+                <td style="padding:6px 10px;font-weight:800;font-size:12px;color:${textColor};">${label}</td>
+                <td style="padding:6px 10px;text-align:right;font-weight:800;font-size:13px;color:${textColor};">${fmt(value)} ₫</td>
+            </tr>`;
+
+        const html = `<!DOCTYPE html>
+<html lang="vi">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Phiếu Lương Chi Tiết Tháng ${payroll.payrollMonth}/${payroll.payrollYear}</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 16px;">
+<tr><td align="center">
+<table width="700" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);max-width:700px;width:100%;">
+
+  <!-- Header -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:28px 28px 20px;">
+      <p style="margin:0 0 4px;font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,0.7);text-transform:uppercase;">SmartHR System</p>
+      <h1 style="margin:0;font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">PHIẾU LƯƠNG CHI TIẾT</h1>
+      <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">Tháng ${payroll.payrollMonth}/${payroll.payrollYear} &nbsp;|&nbsp; Ngày gửi: ${sentDate}</p>
+    </td>
+  </tr>
+
+  <!-- Employee Info -->
+  <tr>
+    <td style="padding:16px 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="width:44px;">
+            <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:white;text-align:center;line-height:42px;">
+              ${(emp?.fullName || 'N')[0].toUpperCase()}
+            </div>
+          </td>
+          <td style="padding-left:12px;">
+            <p style="margin:0;font-size:15px;font-weight:800;color:#1e293b;">${emp?.fullName || '—'}</p>
+            <p style="margin:3px 0 0;font-size:11px;color:#64748b;">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:20px;font-weight:700;margin-right:8px;">${emp?.employeeCode || '—'}</span>
+              ${emp?.position?.positionName || ''} &nbsp;|&nbsp; ${emp?.department?.departmentName || ''}
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- I. Định mức Hợp đồng & Công (1-5) -->
+  ${section('I. Định mức Hợp đồng & Công', '#fef3c7', `
+    ${row('1.1 Lương đóng BHXH', lươngĐóngBHXH)}
+    ${row('11 Lương vị trí (P2)', lươngVịTrí)}
+    ${row('12 Thưởng hiệu quả công việc (P2.1)', thưởngHQCV)}
+    ${row('13 Khoán công việc (P2.2)', khoánCV)}
+    ${row('14 Lương thử việc', lươngThửViệc)}
+  `)}
+
+  <!-- II. Dữ liệu công chốt (6-9) -->
+  ${section('II. Dữ liệu Công Chốt', '#f0fdf4', `
+    ${row('Công chuẩn tháng', côngChuẩn)}
+    ${row('22 Công chính thức', côngChínhThức)}
+    ${row('23 Công thử việc', côngThửViệc)}
+    ${row('26+ Công khác (phép, lễ, công tác)', côngKhác)}
+  `)}
+
+  <!-- III. Thu nhập thực nhận (10-15) -->
+  ${section('III. Thu nhập Thực nhận', '#dbeafe', `
+    ${row('10 % KPI (P2.1 + P2.2)', kpiPercent)}
+    ${row('31 Lương P1 thực nhận', p1ThựcNhận)}
+    ${row('32 Thưởng P2.1 thực', p21Thực)}
+    ${row('33 Khoán P2.2 thực', p22Thực)}
+    ${row('34 Thử việc thực', pTVThực)}
+    ${subtotalRow('36 Tổng lương chính', tổngLươngChính, '#eff6ff', '#1e40af')}
+  `)}
+
+  <!-- IV. Thu nhập khác & Phụ cấp (16-21) -->
+  ${section('IV. Thu nhập Khác & Phụ cấp', '#ede9fe', `
+    ${row('36.1 Thưởng P3', thưởngP3)}
+    ${row('43 Phụ cấp (ăn trưa, xăng, điện thoại...)', phụCấp)}
+    ${row('45 Tăng ca OT', tăngCaOT)}
+    ${row('46 Truy thu tính thuế', truyThuTínhThuế)}
+    ${row('47 Truy thu không thuế', truyThuKoThuế)}
+    ${row('50.1 Khác không thuế', khácKoThuế)}
+  `)}
+
+  <!-- V. Tổng thu nhập (22) -->
+  <tr>
+    <td style="padding:16px 24px 0;">
+      <table style="${tableStyle}">
+        <tbody>
+          ${subtotalRow('51 TỔNG THU NHẬP', tổngThuNhập, '#dcfce7', '#166534')}
+        </tbody>
+      </table>
+    </td>
+  </tr>
+
+  <!-- VI. Khấu trừ & Thuế (23-32) -->
+  ${section('V. Khấu trừ & Thuế', '#ffe4e6', `
+    ${row('52 BHXH người lao động (8%)', bhxhNLĐ, true)}
+    ${row('53 Truy thu BH', insuranceAdjustment, true)}
+    ${row('55 Đảng phí', partyFee, true)}
+    ${row('12.2 Giảm trừ gia cảnh', giảmTrừGiaCảnh)}
+    ${row('12.3 Thu nhập tính thuế', tnTínhThuế)}
+    ${row('63 Thuế TNCN', thuếTNCN, true)}
+    ${row('64 Truy thu thuế', taxAdjustment, true)}
+    ${row('65 Trừ khác (phạt, khấu trừ...)', khấuTrừKhác, true)}
+    ${subtotalRow('65.1 Tổng khấu trừ', tổngKhấuTrừ, '#fef2f2', '#991b1b')}
+  `)}
+
+  <!-- VII. Thực lĩnh (33) -->
+  <tr>
+    <td style="padding:20px 24px 0;">
+      <table style="${tableStyle}">
+        <tbody>
+          <tr style="background:linear-gradient(135deg,#166534,#15803d);">
+            <td style="padding:14px 16px;font-size:14px;font-weight:800;color:#ffffff;">66 LƯƠNG THỰC NHẬN (NET)</td>
+            <td style="padding:14px 16px;text-align:right;font-size:18px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">${fmt(thựcLĩnh)} ₫</td>
+          </tr>
+        </tbody>
+      </table>
+    </td>
+  </tr>
+
+  <!-- VIII. Chi phí Doanh nghiệp (34-36) -->
+  ${section('VI. Chi phí Doanh nghiệp', '#f1f5f9', `
+    ${row('71 KPCĐ công ty (2%)', kpcđCty)}
+    ${row('75 BHXH công ty (17.5%)', bhxhCty)}
+    ${subtotalRow('79.1 TỔNG CHI PHÍ NHÂN SỰ', tổngChiPhíNS, '#e2e8f0', '#334155')}
+  `)}
+
+  <!-- Note -->
+  ${detail.note ? `
+  <tr>
+    <td style="padding:16px 24px 0;">
+      <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;">
+        <p style="margin:0;font-size:11px;color:#92400e;"><strong>Ghi chú:</strong> ${detail.note}</p>
+      </div>
+    </td>
+  </tr>` : ''}
+
+  <!-- Footer -->
+  <tr>
+    <td style="padding:20px 24px 24px;border-top:1px solid #f1f5f9;">
+      <p style="margin:0;font-size:10px;color:#94a3b8;text-align:center;line-height:1.6;">
+        Đây là phiếu lương điện tử được tạo tự động bởi hệ thống <strong style="color:#3b82f6;">SmartHR</strong>.<br/>
+        Vui lòng liên hệ phòng Nhân sự nếu có thắc mắc về lương tháng này.
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+        return html;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FILE ĐÍNH KÈM (PAYROLL ATTACHMENTS)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Lấy danh sách file đính kèm của bảng lương
+     */
+    async getAttachments(payrollId) {
+        await this._findPayrollOrFail(payrollId);
+        return this.attachmentRepository.findByPayroll(payrollId);
+    }
+
+    /**
+     * Upload một hoặc nhiều file đính kèm vào bảng lương.
+     * @param {number} payrollId
+     * @param {Express.Multer.File[]} files  - Mảng file từ multer
+     * @param {{ id: number, fullName: string }} uploader
+     */
+    async uploadAttachments(payrollId, files, uploader) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+
+        if (!files || files.length === 0) {
+            throw new BadRequestException('Không có file nào được tải lên.');
+        }
+
+        const saved = [];
+        for (const file of files) {
+            const record = await this.attachmentRepository.create({
+                payrollId,
+                fileName: file.originalname,
+                filePath: file.path.replace(/\\/g, '/'), // normalize path
+                fileSize: file.size,
+                mimeType: file.mimetype,
+                uploadedBy: uploader?.id || null,
+                uploadedByName: uploader?.fullName || null,
+            });
+            saved.push(record);
+        }
+
+        return saved;
+    }
+
+    /**
+     * Xóa một file đính kèm (soft delete + xóa file vật lý).
+     * Không cho phép xóa nếu bảng lương đã LOCKED.
+     */
+    async deleteAttachment(payrollId, attachmentId) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+
+        if (payroll.payrollStatus === PAYROLL_STATUS.LOCKED) {
+            throw new BadRequestException('Không thể xóa file đính kèm khi bảng lương đã bị khóa.');
+        }
+
+        const attachment = await this.attachmentRepository.findById(attachmentId);
+        if (!attachment || attachment.payrollId !== payrollId) {
+            throw new NotFoundException('Không tìm thấy file đính kèm.');
+        }
+
+        // Xóa file vật lý trên disk (bỏ qua lỗi nếu file không tồn tại)
+        try {
+            if (fs.existsSync(attachment.filePath)) {
+                fs.unlinkSync(attachment.filePath);
+            }
+        } catch (err) {
+            console.warn(`[PayrollService] Không thể xóa file vật lý ${attachment.filePath}:`, err.message);
+        }
+
+        // Soft delete trong DB
+        await this.attachmentRepository.softDelete(attachmentId);
+        return { deleted: true, fileName: attachment.fileName };
+    }
+
+    /**
+     * Trả về thông tin file để download.
+     * @returns {{ filePath: string, fileName: string, mimeType: string }}
+     */
+    async getAttachmentForDownload(payrollId, attachmentId) {
+        await this._findPayrollOrFail(payrollId);
+
+        const attachment = await this.attachmentRepository.findById(attachmentId);
+        if (!attachment || attachment.payrollId !== payrollId) {
+            throw new NotFoundException('Không tìm thấy file đính kèm.');
+        }
+
+        const absolutePath = path.resolve(attachment.filePath);
+        if (!fs.existsSync(absolutePath)) {
+            throw new NotFoundException('File vật lý không tồn tại trên server. Vui lòng liên hệ quản trị.');
+        }
+
+        return {
+            absolutePath,
+            fileName: attachment.fileName,
+            mimeType: attachment.mimeType || 'application/octet-stream',
+            fileSize: attachment.fileSize,
+        };
     }
 }
