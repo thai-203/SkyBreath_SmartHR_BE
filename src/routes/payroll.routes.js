@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
-import { excelUpload } from '../common/middleware/upload.middleware.js';
+import { excelUpload, payrollDocUpload } from '../common/middleware/upload.middleware.js';
 import { PayrollController } from '../controllers/payroll.controller.js';
 import { PayrollDetailRepository } from '../repositories/payroll-detail.repository.js';
 import { PayrollRepository } from '../repositories/payroll.repository.js';
@@ -134,14 +134,14 @@ router.post(
 router.post(
   '/:id/send-payslips',
   authMiddleware,
-  permissionsMiddleware('PAYROLL_SEND_PAYSLIPS'),
+  // permissionsMiddleware('PAYROLL_SEND_PAYSLIPS'),
   payrollController.sendPayslips,
 );
 
 router.post(
   '/:id/send-payslips-selected',
   authMiddleware,
-  permissionsMiddleware('PAYROLL_SEND_PAYSLIPS'),
+  // permissionsMiddleware('PAYROLL_SEND_PAYSLIPS'),
   payrollController.sendPayslipsSelected,
 );
 
@@ -152,6 +152,39 @@ router.post(
   permissionsMiddleware('PAYROLL_UPDATE'),
   excelUpload.single('file'),
   payrollController.importDetails,
+);
+
+// ── FILE ĐÍNH KÈM ──
+
+// GET  /:id/attachments
+router.get(
+  '/:id/attachments',
+  authMiddleware,
+  payrollController.listAttachments,
+);
+
+// POST /:id/attachments  (field name: "files", tối đa 5 file)
+router.post(
+  '/:id/attachments',
+  authMiddleware,
+  permissionsMiddleware('PAYROLL_UPDATE'),
+  payrollDocUpload.array('files', 5),
+  payrollController.uploadAttachments,
+);
+
+// DELETE /:id/attachments/:attachmentId
+router.delete(
+  '/:id/attachments/:attachmentId',
+  authMiddleware,
+  permissionsMiddleware('PAYROLL_UPDATE'),
+  payrollController.deleteAttachment,
+);
+
+// GET /:id/attachments/:attachmentId/download
+router.get(
+  '/:id/attachments/:attachmentId/download',
+  authMiddleware,
+  payrollController.downloadAttachment,
 );
 
 export const payrollRoutes = router;

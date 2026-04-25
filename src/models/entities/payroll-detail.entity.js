@@ -153,9 +153,6 @@ export class PayrollDetailEntity extends BaseEntity {
     @Column({ name: 'unemployment_insurance', type: 'decimal', precision: 15, scale: 2, default: 0 })
     unemploymentInsurance;
 
-    @Column({ name: 'union_fee', type: 'decimal', precision: 15, scale: 2, default: 0 })
-    unionFee;
-
     @Column({ name: 'party_fee', type: 'decimal', precision: 15, scale: 2, default: 0 })
     partyFee;
 

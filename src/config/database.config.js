@@ -31,6 +31,7 @@ import { RequestAttachmentEntity } from '../models/entities/request-attachment.e
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { PayrollEntity } from '../models/entities/payroll.entity.js';
 import { PayrollDetailEntity } from '../models/entities/payroll-detail.entity.js';
+import { PayrollAttachmentEntity } from '../models/entities/payroll-attachment.entity.js';
 import { AICriteriaEntity } from '../models/entities/ai-criteria.entity.js';
 import { AIEvaluationResultEntity } from '../models/entities/ai-evaluation-result.entity.js';
 import { NotificationEntity } from '../models/entities/notification.entity.js';
@@ -109,6 +110,7 @@ export const databaseConfig = {
     HolidayListEntity,
     PayrollEntity,
     PayrollDetailEntity,
+    PayrollAttachmentEntity,
     AICriteriaEntity,
     AIEvaluationResultEntity,
     NotificationEntity,

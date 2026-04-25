@@ -29,6 +29,9 @@ import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { PayrollConfigEntity } from '../models/entities/payroll-config.entity.js';
+import { PayrollAttachmentRepository } from '../repositories/payroll-attachment.repository.js';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Trạng thái bảng lương
@@ -63,6 +66,7 @@ export class PayrollService {
     constructor(payrollRepository, payrollDetailRepository) {
         this.payrollRepository = payrollRepository;
         this.payrollDetailRepository = payrollDetailRepository;
+        this.attachmentRepository = new PayrollAttachmentRepository();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -211,13 +215,12 @@ export class PayrollService {
                 salary, ts, tsStdDays, workingDays, p21Percent, p22Percent, employee.employmentStatus
             );
 
-            // Tính bảo hiểm (dùng tỷ lệ cố định)
+            // Tính bảo hiểm (dùng tỷ lệ cố định) - KHÔNG bao gồm KPCĐ (KPCĐ là phí công ty, không trừ vào lương NLD)
             const insuranceBase = Math.min(parseFloat(salary.baseSalary) || 0, 20 * 2_340_000);
             const socialInsurance = parseFloat((insuranceBase * INSURANCE_RATES.SOCIAL / 100).toFixed(2));
             const healthInsurance = parseFloat((insuranceBase * INSURANCE_RATES.HEALTH / 100).toFixed(2));
             const unemploymentInsurance = parseFloat((insuranceBase * INSURANCE_RATES.UNEMPLOYMENT / 100).toFixed(2));
-            const unionFee = parseFloat((insuranceBase * INSURANCE_RATES.UNION / 100).toFixed(2));
-            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
+            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
 
             // Tính thuế TNCN
             const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
@@ -225,11 +228,14 @@ export class PayrollService {
             const taxableIncome = totalOfficialSalary + earnedAllowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
             const taxDeduction = taxableIncome > 0 ? this._calcPIT(taxableIncome) : 0;
 
-            // Tính lương thực nhận
+            // Tính lương thực nhận (sau trừ bảo hiểm và thuế)
             const bonus = parseFloat(existingDetail?.bonus || 0);
             const penalty = parseFloat(existingDetail?.penalty || 0);
             const deduction = parseFloat(existingDetail?.deduction || 0);
-            const netSalary = parseFloat((totalOfficialSalary + earnedAllowances + overtimePay + bonus - penalty - deduction).toFixed(2));
+            const netSalary = parseFloat((
+                totalOfficialSalary + earnedAllowances + overtimePay + bonus
+                - penalty - deduction - insuranceDeduction - taxDeduction
+            ).toFixed(2));
 
             // Chi phí công ty (BH phía công ty đóng)
             const companySocial = parseFloat((insuranceBase * 0.175).toFixed(2));
@@ -266,7 +272,6 @@ export class PayrollService {
                 // % P2.1, % P2.2, % KPI tổng từ performance_reviews (đã tính %)
                 p1p2Percentage: p21Percent,
                 p3Percentage: p22Percent,
-                kpiPercentage: p21Percent + p22Percent,  // Tổng KPI = P2.1 + P2.2
                 // Lương P2.1, P2.2 thực = performanceSalary × % / 100 × hệ số ngày công
                 p1Amount: earnedP1,
                 p21Amount: earnedP21,
@@ -276,13 +281,12 @@ export class PayrollService {
                 socialInsurancePercentage: INSURANCE_RATES.SOCIAL,
                 healthInsurancePercentage: INSURANCE_RATES.HEALTH,
                 unemploymentInsurancePercentage: INSURANCE_RATES.UNEMPLOYMENT,
-                unionFeePercentage: INSURANCE_RATES.UNION,
+                kpiPercentage: p21Percent + p22Percent,
                 taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
                 companySocialInsurance: companySocial,
                 companyHealthInsurance: companyHealth,
                 companyUnemploymentInsurance: companyUnemployment,
-                companyUnionFee: companyUnion,
-                unionFee,
+                unionFee: existingDetail?.unionFee ?? companyUnion, // Giữ nguyên giá trị đã nhập, chỉ tính mới nếu chưa có
                 totalHrCost: parseFloat(totalHrCost.toFixed(2)),
             };
 
@@ -359,8 +363,9 @@ export class PayrollService {
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month - 1, day);
             const dayOfWeek = date.getDay();
-            // Trừ Thứ Bảy (6) và Chủ Nhật (0)
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) count++;
+            const dateStr = date.toISOString().split('T')[0];
+            // Trừ Thứ Bảy (6), Chủ Nhật (0) và ngày lễ
+            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateStr)) count++;
         }
         return count;
     }
@@ -534,19 +539,17 @@ export class PayrollService {
         const p21Percent = parseFloat(dto.p1p2Percentage ?? detail.p1p2Percentage ?? 0);
         const p22Percent = parseFloat(dto.p3Percentage ?? detail.p3Percentage ?? 0);
 
-        // Tỷ lệ bảo hiểm cố định
-        const socialInsurancePercentage = INSURANCE_RATES.SOCIAL;
-        const healthInsurancePercentage = INSURANCE_RATES.HEALTH;
-        const unemploymentInsurancePercentage = INSURANCE_RATES.UNEMPLOYMENT;
-        const unionFeePercentage = INSURANCE_RATES.UNION;
+        // Tỷ lệ bảo hiểm - cho phép override từ dto
+        const socialInsurancePercentage = dto.socialInsurancePercentage ?? INSURANCE_RATES.SOCIAL;
+        const healthInsurancePercentage = dto.healthInsurancePercentage ?? INSURANCE_RATES.HEALTH;
+        const unemploymentInsurancePercentage = dto.unemploymentInsurancePercentage ?? INSURANCE_RATES.UNEMPLOYMENT;
 
         // Tính bảo hiểm
         const insuranceBase = Math.min(parseFloat(detail.baseSalary) || 0, 20 * 2_340_000);
         const socialInsurance = parseFloat((insuranceBase * socialInsurancePercentage / 100).toFixed(2));
         const healthInsurance = parseFloat((insuranceBase * healthInsurancePercentage / 100).toFixed(2));
         const unemploymentInsurance = parseFloat((insuranceBase * unemploymentInsurancePercentage / 100).toFixed(2));
-        const unionFee = parseFloat((insuranceBase * unionFeePercentage / 100).toFixed(2));
-        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance + unionFee;
+        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
 
         // Tính OT
         const { activeRules, ruleDepts } = await this._getOTRules();
@@ -579,7 +582,13 @@ export class PayrollService {
         const bonus = parseFloat(dto.bonus ?? detail.bonus ?? 0);
         const penalty = parseFloat(dto.penalty ?? detail.penalty ?? 0);
         const deduction = parseFloat(dto.deduction ?? detail.deduction ?? 0);
-        const netSalary = parseFloat((totalOfficialSalary + earnedAllowances + overtimePay + bonus - penalty - deduction).toFixed(2));
+        const netSalary = parseFloat((
+            totalOfficialSalary + earnedAllowances + overtimePay + bonus
+            - penalty - deduction - insuranceDeduction - taxDeduction
+        ).toFixed(2));
+
+        // KPCĐ công ty - dùng trực tiếp từ dto (giữ nguyên giá trị input)
+        const unionFeeValue = dto.unionFee !== undefined ? parseFloat(dto.unionFee) : 0;
 
         return this.payrollDetailRepository.update(detailId, {
             bonus, deduction, penalty,
@@ -588,11 +597,11 @@ export class PayrollService {
             overtimePay: parseFloat(overtimePay.toFixed(2)),
             p1Amount: earnedP1, p21Amount: earnedP21, p22Amount: earnedP22, probationAmount: probationSalary,
             p1p2Percentage: p21Percent, p3Percentage: p22Percent,
-            kpiPercentage: p21Percent + p22Percent,  // Tổng KPI = P2.1 + P2.2
             performanceSalary: detail.performanceSalary,
-            socialInsurance, healthInsurance, unemploymentInsurance, unionFee,
-            socialInsurancePercentage, healthInsurancePercentage, unemploymentInsurancePercentage, unionFeePercentage,
+            socialInsurance, healthInsurance, unemploymentInsurance,
+            socialInsurancePercentage, healthInsurancePercentage, unemploymentInsurancePercentage,
             insuranceDeduction, netSalary,
+            unionFee: unionFeeValue, // KPCĐ lưu trực tiếp vào cột union_fee
             note: dto.note ?? detail.note,
         });
     }
@@ -660,13 +669,17 @@ export class PayrollService {
             if (!detail) continue;
 
             const netSalary = parseFloat((
-                parseFloat(detail.baseSalary) +
-                parseFloat(detail.overtimePay) +
+                parseFloat(detail.p1Amount || 0) +
+                parseFloat(detail.p21Amount || 0) +
+                parseFloat(detail.p22Amount || 0) +
+                parseFloat(detail.probationAmount || 0) +
+                parseFloat(detail.allowanceAmount || 0) +
+                parseFloat(detail.overtimePay || 0) +
                 data.bonus -
-                data.deduction -
                 data.penalty -
-                parseFloat(detail.insuranceDeduction) -
-                parseFloat(detail.taxDeduction)
+                data.deduction -
+                parseFloat(detail.insuranceDeduction || 0) -
+                parseFloat(detail.taxDeduction || 0)
             ).toFixed(2));
 
             const updated = await this.payrollDetailRepository.update(detail.id, {
@@ -911,6 +924,7 @@ export class PayrollService {
 
         const details = await this.payrollDetailRepository.findByPayroll(payrollId);
         let sentCount = 0;
+        const sentAt = new Date();
 
         for (const detail of details) {
             const email = detail.employee?.companyEmail || detail.employee?.user?.email;
@@ -924,14 +938,13 @@ export class PayrollService {
                     '',
                     html
                 );
+                // Chỉ đánh dấu đã gửi khi email thực sự thành công
+                await this.payrollDetailRepository.update(detail.id, { payslipSentAt: sentAt });
                 sentCount++;
             } catch (err) {
                 console.error(`[PayrollService] Failed to send payslip to ${email}:`, err.message);
             }
         }
-
-        // Đánh dấu tất cả details đã được gửi
-        await this.payrollDetailRepository.bulkUpdateSentAt(payrollId, new Date());
 
         return { sent: sentCount, total: details.length };
     }
@@ -1024,34 +1037,68 @@ export class PayrollService {
             empCell.font = { italic: true, size: 11 };
             empCell.alignment = { horizontal: 'center' };
 
+            // Tính các khoản trừ chi tiết
+            const bhxhRate = parseFloat(detail.socialInsurancePercentage) || 8;
+            const bhytRate = parseFloat(detail.healthInsurancePercentage) || 1.5;
+            const bhtnRate = parseFloat(detail.unemploymentInsurancePercentage) || 1;
+            const bhxh = parseFloat(detail.socialInsurance || 0);
+            const bhyt = bhxh > 0 ? bhxh * bhytRate / bhxhRate : 0;
+            const bhtn = bhxh > 0 ? bhxh * bhtnRate / bhxhRate : 0;
+            const kpcd = parseFloat(detail.unionFee || 0);
+            const dangPhi = parseFloat(detail.partyFee || 0);
+            const truyThuBH = parseFloat(detail.insuranceAdjustment || 0);
+            const thueTNCN = parseFloat(detail.taxDeduction || 0);
+            const truyThuThue = parseFloat(detail.taxAdjustment || 0);
+            const khauTruKhac = parseFloat(detail.deduction || 0);
+            const phat = parseFloat(detail.penalty || 0);
+            const totalDeductions = bhxh + bhyt + bhtn + kpcd + dangPhi + truyThuBH + thueTNCN + truyThuThue + khauTruKhac + phat;
+
             // Chi tiết lương
             const rows = [
-                ['Chỉ tiêu', 'Số tiền (VND)'],
-                ['Ngày công thực tế', detail.workingDays || 0],
-                ['Lương cơ bản (P1)', parseFloat(detail.baseSalary || 0)],
-                ['Lương hiệu năng (P2)', parseFloat(Number(detail.p21Amount || 0) + Number(detail.p22Amount || 0))],
-                ['Lương thử việc', parseFloat(detail.probationAmount || 0)],
-                ['Phụ cấp', parseFloat(detail.allowanceAmount || 0)],
-                ['Phụ cấp làm thêm giờ', parseFloat(detail.overtimePay || 0)],
-                ['Thưởng', parseFloat(detail.bonus || 0)],
-                ['Khấu trừ', -parseFloat(detail.deduction || 0)],
-                ['Phạt', -parseFloat(detail.penalty || 0)],
-                ['Bảo hiểm (BHXH/YT/TN)', -parseFloat(detail.insuranceDeduction || 0)],
-                ['Thuế TNCN', -parseFloat(detail.taxDeduction || 0)],
-                ['THỰC NHẬN', parseFloat(detail.netSalary || 0)],
+                ['THU NHẬP', '', ''],
+                ['Ngày công chuẩn', '', detail.standardDays || 0],
+                ['Ngày công thực tế', '', detail.workingDays || 0],
+                ['Lương P1 thực nhận', '', parseFloat(detail.p1Amount || 0)],
+                ['Lương P2.1 thực nhận', '', parseFloat(detail.p21Amount || 0)],
+                ['Lương P2.2 thực nhận', '', parseFloat(detail.p22Amount || 0)],
+                ['Lương thử việc', '', parseFloat(detail.probationAmount || 0)],
+                ['Phụ cấp', '', parseFloat(detail.allowanceAmount || 0)],
+                ['OT', '', parseFloat(detail.overtimePay || 0)],
+                ['Thưởng', '', parseFloat(detail.bonus || 0)],
+                ['TỔNG THU NHẬP', '', parseFloat(detail.netSalary || 0) + totalDeductions],
+                ['', '', ''],
+                ['CÁC KHOẢN TRỪ', '', ''],
+                ['BHXH', `(${bhxhRate}%)`, -bhxh],
+                ['BHYT', `(${bhytRate}%)`, -bhyt],
+                ['BHTN', `(${bhtnRate}%)`, -bhtn],
+                ['KPCĐ', '', -kpcd],
+                ['Đảng phí', '', -dangPhi],
+                ['Truy thu BH', '', -truyThuBH],
+                ['Thuế TNCN', '', -thueTNCN],
+                ['Truy thu thuế', '', -truyThuThue],
+                ['Khấu trừ khác', '', -khauTruKhac],
+                ['Phạt', '', -phat],
+                ['TỔNG CÁC KHOẢN TRỪ', '', -totalDeductions],
+                ['', '', ''],
+                ['THỰC LĨNH (NET)', '', parseFloat(detail.netSalary || 0)],
             ];
 
             rows.forEach((row, idx) => {
                 const wsRow = ws.getRow(4 + idx);
                 wsRow.getCell(1).value = row[0];
-                wsRow.getCell(4).value = row[1];
-                wsRow.getCell(1).font = { bold: idx === 0 || idx === rows.length - 1 };
-                wsRow.getCell(4).font = { bold: idx === 0 || idx === rows.length - 1 };
-                if (idx === rows.length - 1) {
+                wsRow.getCell(2).value = row[1];
+                wsRow.getCell(4).value = row[2];
+                const isHeader = row[0] === 'THU NHẬP' || row[0] === 'CÁC KHOẢN TRỪ';
+                const isTotal = row[0]?.startsWith('TỔNG') || row[0] === 'THỰC LĨNH (NET)';
+                wsRow.getCell(1).font = { bold: isHeader || isTotal };
+                wsRow.getCell(2).font = { bold: isHeader || isTotal };
+                wsRow.getCell(4).font = { bold: isHeader || isTotal };
+                if (isTotal) {
                     wsRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+                    wsRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
                     wsRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
                 }
-                [1, 4].forEach(col => {
+                [1, 2, 4].forEach(col => {
                     wsRow.getCell(col).border = {
                         top: { style: 'thin' }, left: { style: 'thin' },
                         bottom: { style: 'thin' }, right: { style: 'thin' }
@@ -1060,7 +1107,7 @@ export class PayrollService {
             });
 
             ws.columns = [
-                { width: 30 }, { width: 5 }, { width: 5 }, { width: 20 }
+                { width: 25 }, { width: 12 }, { width: 5 }, { width: 18 }
             ];
 
             if (detail.note) {
@@ -1122,69 +1169,140 @@ export class PayrollService {
     }
 
     /**
-     * Tạo HTML cho phiếu lương email
+     * Tạo HTML cho phiếu lương email - Full 36 KPI indicators
      */
     _buildPayslipHtml(detail, payroll) {
         const emp = detail.employee;
         const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Math.round(parseFloat(n || 0)));
+        const f = (n) => parseFloat(n || 0);
         const sentDate = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        const p2Amount = Number(detail.p21Amount || 0) + Number(detail.p22Amount || 0);
-        const totalEarnings = Number(detail.p1Amount || detail.baseSalary || 0) + p2Amount +
-            Number(detail.probationAmount || 0) + Number(detail.allowanceAmount || 0) +
-            Number(detail.overtimePay || 0) + Number(detail.bonus || 0);
-        const totalDeductions = Number(detail.insuranceDeduction || 0) + Number(detail.taxDeduction || 0) +
-            Number(detail.deduction || 0) + Number(detail.penalty || 0);
+        // ── I. Định mức Hợp đồng & Công (1-5) ──
+        const lươngĐóngBHXH = f(detail.baseSalary);
+        const lươngVịTrí = f(detail.performanceSalary);
+        const thưởngHQCV = f(detail.p21Amount) || 0;
+        const khoánCV = f(detail.p22Amount) || 0;
+        const lươngThửViệc = f(detail.probationAmount);
 
-        const rowStyle = 'padding: 9px 14px; border-bottom: 1px solid #f1f5f9; font-size: 13px;';
-        const labelStyle = `${rowStyle} color: #475569; width: 60%;`;
-        const valueStyle = `${rowStyle} text-align: right; font-weight: 600; color: #1e293b;`;
-        const deductStyle = `${rowStyle} text-align: right; font-weight: 600; color: #dc2626;`;
+        // ── II. Dữ liệu công chốt (6-9) ──
+        const côngChuẩn = f(detail.standardDays) || 26;
+        const côngChínhThức = f(detail.officialDays);
+        const côngThửViệc = f(detail.probationDays);
+        const côngKhác = f(detail.benefitLeaveDays) + f(detail.holidayDays) + f(detail.businessTripDays) + f(detail.annualLeaveDays);
 
-        const incomeRow = (label, amount) => amount > 0 ? `
-            <tr>
-                <td style="${labelStyle}">${label}</td>
-                <td style="${valueStyle}">+${fmt(amount)} ₫</td>
-            </tr>` : '';
+        // ── III. Thu nhập thực nhận (10-15) ──
+        const p21Percent = f(detail.p1p2Percentage);
+        const p22Percent = f(detail.p3Percentage);
+        const kpiPercent = p21Percent + p22Percent;
+        const p1ThựcNhận = f(detail.p1Amount);
+        const p21Thực = f(detail.p21Amount);
+        const p22Thực = f(detail.p22Amount);
+        const pTVThực = f(detail.probationAmount);
+        const tổngLươngChính = p1ThựcNhận + p21Thực + p22Thực + pTVThực;
 
-        const deductRow = (label, amount) => amount > 0 ? `
-            <tr>
-                <td style="${labelStyle}">${label}</td>
-                <td style="${deductStyle}">−${fmt(amount)} ₫</td>
-            </tr>` : '';
+        // ── IV. Thu nhập khác & Phụ cấp (16-21) ──
+        const thưởngP3 = f(detail.bonus);
+        const phụCấp = f(detail.allowanceAmount);
+        const tăngCaOT = f(detail.overtimePay);
+        const truyThuTínhThuế = f(detail.otherTaxableIncome) || 0;
+        const truyThuKoThuế = f(detail.otherNonTaxableIncome) || 0;
+        const khácKoThuế = f(detail.adjustmentNonTaxable) || 0;
 
-        return `<!DOCTYPE html>
+        // ── V. Tổng thu nhập (22) ──
+        const tổngThuNhập = tổngLươngChính + thưởngP3 + phụCấp + tăngCaOT + truyThuTínhThuế + truyThuKoThuế + khácKoThuế;
+
+        // ── VI. Khấu trừ & Thuế (23-32) ──
+        const insuranceBase = Math.min(lươngĐóngBHXH, 20 * 2340000);
+        const siRate = f(detail.socialInsurancePercentage) || 8;
+        const hiRate = f(detail.healthInsurancePercentage) || 1.5;
+        const uiRate = f(detail.unemploymentInsurancePercentage) || 1;
+
+        const bhxhNLĐ = f(detail.socialInsurance) || (insuranceBase * (siRate + hiRate + uiRate) / 100);
+        const partyFee = f(detail.partyFee) || 0;
+        const insuranceAdjustment = f(detail.insuranceAdjustment) || 0;
+        const taxAdjustment = f(detail.taxAdjustment) || 0;
+        const giảmTrừGiaCảnh = f(detail.taxableIncomePaid) || 11000000;
+        const tnTínhThuế = Math.max(0, tổngThuNhập - bhxhNLĐ - giảmTrừGiaCảnh);
+        const thuếTNCN = f(detail.taxDeduction);
+        const khấuTrừKhác = f(detail.penalty) + f(detail.deduction);
+        const tổngKhấuTrừ = bhxhNLĐ + insuranceAdjustment + partyFee + thuếTNCN + taxAdjustment + khấuTrừKhác;
+
+        // ── VII. Thực lĩnh (33) ──
+        const thựcLĩnh = tổngThuNhập - tổngKhấuTrừ;
+
+        // ── VIII. Chi phí Doanh nghiệp (34-36) ──
+        const kpcđCty = f(detail.unionFee) || (insuranceBase * 0.02);
+        const bhxhCty = f(detail.companyInsurance) || (insuranceBase * 0.175);
+        const tổngChiPhíNS = thựcLĩnh + kpcđCty + bhxhCty;
+
+        // Styles
+        const sectionTitle = 'font-size:10px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;margin:0 0 8px;';
+        const tableStyle = 'width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);';
+        const thStyle = 'padding:6px 10px;text-align:center;font-weight:700;font-size:9px;';
+        const tdLabel = 'padding:5px 10px;font-size:11px;color:#475569;';
+        const tdValue = 'padding:5px 10px;text-align:right;font-weight:600;font-size:11px;color:#1e293b;';
+        const tdValueRed = 'padding:5px 10px;text-align:right;font-weight:600;font-size:11px;color:#dc2626;';
+
+        const section = (title, bgColor, content) => `
+        <tr>
+            <td style="padding:16px 24px 0;">
+                <p style="${sectionTitle}">${title}</p>
+                <table style="${tableStyle}">
+                    <thead>
+                        <tr style="background:${bgColor};color:#fff;">
+                            <th style="${thStyle}">Chỉ tiêu</th>
+                            <th style="${thStyle}">Giá trị</th>
+                        </tr>
+                    </thead>
+                    <tbody>${content}</tbody>
+                </table>
+            </td>
+        </tr>`;
+
+        const row = (label, value, isRed = false, isBold = false) => `
+            <tr style="border-bottom:1px solid #f1f5f9;${isBold ? 'background:#f8fafc;' : ''}">
+                <td style="${tdLabel}${isBold ? 'font-weight:700;' : ''}">${label}</td>
+                <td style="${isRed ? tdValueRed : tdValue}${isBold ? 'font-weight:700;' : ''}">${isRed ? '−' : ''}${fmt(value)} ${isRed ? '₫' : ''}</td>
+            </tr>`;
+
+        const subtotalRow = (label, value, bgColor, textColor) => `
+            <tr style="background:${bgColor};">
+                <td style="padding:6px 10px;font-weight:800;font-size:12px;color:${textColor};">${label}</td>
+                <td style="padding:6px 10px;text-align:right;font-weight:800;font-size:13px;color:${textColor};">${fmt(value)} ₫</td>
+            </tr>`;
+
+        const html = `<!DOCTYPE html>
 <html lang="vi">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Phiếu lương Tháng ${payroll.payrollMonth}/${payroll.payrollYear}</title></head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:32px 16px;">
+<title>Phiếu Lương Chi Tiết Tháng ${payroll.payrollMonth}/${payroll.payrollYear}</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 16px;">
 <tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:600px;width:100%;">
+<table width="700" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);max-width:700px;width:100%;">
 
   <!-- Header -->
   <tr>
-    <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:32px 32px 24px;">
-      <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,0.7);text-transform:uppercase;">SmartHR System</p>
-      <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">PHIẾU LƯƠNG</h1>
-      <p style="margin:6px 0 0;font-size:14px;color:rgba(255,255,255,0.85);">Tháng ${payroll.payrollMonth}/${payroll.payrollYear} &nbsp;•&nbsp; Ngày gửi: ${sentDate}</p>
+    <td style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:28px 28px 20px;">
+      <p style="margin:0 0 4px;font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,0.7);text-transform:uppercase;">SmartHR System</p>
+      <h1 style="margin:0;font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">PHIẾU LƯƠNG CHI TIẾT</h1>
+      <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">Tháng ${payroll.payrollMonth}/${payroll.payrollYear} &nbsp;|&nbsp; Ngày gửi: ${sentDate}</p>
     </td>
   </tr>
 
   <!-- Employee Info -->
   <tr>
-    <td style="padding:20px 32px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+    <td style="padding:16px 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
-          <td style="width:48px;vertical-align:top;">
-            <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#818cf8,#6366f1);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:white;text-align:center;line-height:42px;">
+          <td style="width:44px;">
+            <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:white;text-align:center;line-height:42px;">
               ${(emp?.fullName || 'N')[0].toUpperCase()}
             </div>
           </td>
-          <td style="padding-left:12px;vertical-align:top;">
-            <p style="margin:0;font-size:16px;font-weight:800;color:#1e293b;">${emp?.fullName || '—'}</p>
-            <p style="margin:3px 0 0;font-size:12px;color:#64748b;">
-              <span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:20px;font-weight:700;margin-right:8px;">${emp?.employeeCode || '—'}</span>
+          <td style="padding-left:12px;">
+            <p style="margin:0;font-size:15px;font-weight:800;color:#1e293b;">${emp?.fullName || '—'}</p>
+            <p style="margin:3px 0 0;font-size:11px;color:#64748b;">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:20px;font-weight:700;margin-right:8px;">${emp?.employeeCode || '—'}</span>
               ${emp?.position?.positionName || ''} &nbsp;|&nbsp; ${emp?.department?.departmentName || ''}
             </p>
           </td>
@@ -1193,70 +1311,104 @@ export class PayrollService {
     </td>
   </tr>
 
-  <!-- Income Section -->
+  <!-- I. Định mức Hợp đồng & Công (1-5) -->
+  ${section('I. Định mức Hợp đồng & Công', '#fef3c7', `
+    ${row('1.1 Lương đóng BHXH', lươngĐóngBHXH)}
+    ${row('11 Lương vị trí (P2)', lươngVịTrí)}
+    ${row('12 Thưởng hiệu quả công việc (P2.1)', thưởngHQCV)}
+    ${row('13 Khoán công việc (P2.2)', khoánCV)}
+    ${row('14 Lương thử việc', lươngThửViệc)}
+  `)}
+
+  <!-- II. Dữ liệu công chốt (6-9) -->
+  ${section('II. Dữ liệu Công Chốt', '#f0fdf4', `
+    ${row('Công chuẩn tháng', côngChuẩn)}
+    ${row('22 Công chính thức', côngChínhThức)}
+    ${row('23 Công thử việc', côngThửViệc)}
+    ${row('26+ Công khác (phép, lễ, công tác)', côngKhác)}
+  `)}
+
+  <!-- III. Thu nhập thực nhận (10-15) -->
+  ${section('III. Thu nhập Thực nhận', '#dbeafe', `
+    ${row('10 % KPI (P2.1 + P2.2)', kpiPercent)}
+    ${row('31 Lương P1 thực nhận', p1ThựcNhận)}
+    ${row('32 Thưởng P2.1 thực', p21Thực)}
+    ${row('33 Khoán P2.2 thực', p22Thực)}
+    ${row('34 Thử việc thực', pTVThực)}
+    ${subtotalRow('36 Tổng lương chính', tổngLươngChính, '#eff6ff', '#1e40af')}
+  `)}
+
+  <!-- IV. Thu nhập khác & Phụ cấp (16-21) -->
+  ${section('IV. Thu nhập Khác & Phụ cấp', '#ede9fe', `
+    ${row('36.1 Thưởng P3', thưởngP3)}
+    ${row('43 Phụ cấp (ăn trưa, xăng, điện thoại...)', phụCấp)}
+    ${row('45 Tăng ca OT', tăngCaOT)}
+    ${row('46 Truy thu tính thuế', truyThuTínhThuế)}
+    ${row('47 Truy thu không thuế', truyThuKoThuế)}
+    ${row('50.1 Khác không thuế', khácKoThuế)}
+  `)}
+
+  <!-- V. Tổng thu nhập (22) -->
   <tr>
-    <td style="padding:24px 32px 0;">
-      <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;">Thu nhập</p>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
-        ${incomeRow('Lương vị trí thực nhận (P1)', detail.p1Amount || detail.baseSalary)}
-        ${incomeRow('Thưởng hiệu quả công việc (P2)', p2Amount)}
-        ${incomeRow('Lương thử việc', detail.probationAmount)}
-        ${incomeRow('Phụ cấp', detail.allowanceAmount)}
-        ${incomeRow('Làm thêm giờ (OT)', detail.overtimePay)}
-        ${incomeRow('Thưởng', detail.bonus)}
-        <tr style="background:#f0fdf4;">
-          <td style="${labelStyle} font-weight:700; color:#166534;">Tổng thu nhập</td>
-          <td style="${valueStyle} color:#16a34a;">+${fmt(totalEarnings)} ₫</td>
-        </tr>
+    <td style="padding:16px 24px 0;">
+      <table style="${tableStyle}">
+        <tbody>
+          ${subtotalRow('51 TỔNG THU NHẬP', tổngThuNhập, '#dcfce7', '#166534')}
+        </tbody>
       </table>
     </td>
   </tr>
 
-  <!-- Deduction Section -->
+  <!-- VI. Khấu trừ & Thuế (23-32) -->
+  ${section('V. Khấu trừ & Thuế', '#ffe4e6', `
+    ${row('52 BHXH người lao động (8%)', bhxhNLĐ, true)}
+    ${row('53 Truy thu BH', insuranceAdjustment, true)}
+    ${row('55 Đảng phí', partyFee, true)}
+    ${row('12.2 Giảm trừ gia cảnh', giảmTrừGiaCảnh)}
+    ${row('12.3 Thu nhập tính thuế', tnTínhThuế)}
+    ${row('63 Thuế TNCN', thuếTNCN, true)}
+    ${row('64 Truy thu thuế', taxAdjustment, true)}
+    ${row('65 Trừ khác (phạt, khấu trừ...)', khấuTrừKhác, true)}
+    ${subtotalRow('65.1 Tổng khấu trừ', tổngKhấuTrừ, '#fef2f2', '#991b1b')}
+  `)}
+
+  <!-- VII. Thực lĩnh (33) -->
   <tr>
-    <td style="padding:20px 32px 0;">
-      <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;">Các khoản trừ</p>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
-        ${deductRow('Bảo hiểm xã hội / Y tế / Thất nghiệp', detail.insuranceDeduction)}
-        ${deductRow('Thuế thu nhập cá nhân (TNCN)', detail.taxDeduction)}
-        ${deductRow('Khấu trừ khác', detail.deduction)}
-        ${deductRow('Phạt / Vi phạm', detail.penalty)}
-        <tr style="background:#fff7f7;">
-          <td style="${labelStyle} font-weight:700; color:#991b1b;">Tổng khấu trừ</td>
-          <td style="${deductStyle}">−${fmt(totalDeductions)} ₫</td>
-        </tr>
+    <td style="padding:20px 24px 0;">
+      <table style="${tableStyle}">
+        <tbody>
+          <tr style="background:linear-gradient(135deg,#166534,#15803d);">
+            <td style="padding:14px 16px;font-size:14px;font-weight:800;color:#ffffff;">66 LƯƠNG THỰC NHẬN (NET)</td>
+            <td style="padding:14px 16px;text-align:right;font-size:18px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">${fmt(thựcLĩnh)} ₫</td>
+          </tr>
+        </tbody>
       </table>
     </td>
   </tr>
 
-  <!-- NET Salary -->
-  <tr>
-    <td style="padding:20px 32px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:2px solid #6ee7b7;border-radius:12px;overflow:hidden;">
-        <tr>
-          <td style="padding:16px 20px;font-size:15px;font-weight:800;color:#065f46;">THỰC LĨNH (NET)</td>
-          <td style="padding:16px 20px;text-align:right;font-size:20px;font-weight:900;color:#065f46;letter-spacing:-0.5px;">${fmt(detail.netSalary)} ₫</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
+  <!-- VIII. Chi phí Doanh nghiệp (34-36) -->
+  ${section('VI. Chi phí Doanh nghiệp', '#f1f5f9', `
+    ${row('71 KPCĐ công ty (2%)', kpcđCty)}
+    ${row('75 BHXH công ty (17.5%)', bhxhCty)}
+    ${subtotalRow('79.1 TỔNG CHI PHÍ NHÂN SỰ', tổngChiPhíNS, '#e2e8f0', '#334155')}
+  `)}
 
-  ${detail.note ? `
   <!-- Note -->
+  ${detail.note ? `
   <tr>
-    <td style="padding:0 32px 16px;">
+    <td style="padding:16px 24px 0;">
       <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;">
-        <p style="margin:0;font-size:12px;color:#92400e;font-style:italic;"><strong>Ghi chú:</strong> ${detail.note}</p>
+        <p style="margin:0;font-size:11px;color:#92400e;"><strong>Ghi chú:</strong> ${detail.note}</p>
       </div>
     </td>
   </tr>` : ''}
 
   <!-- Footer -->
   <tr>
-    <td style="padding:16px 32px 28px;border-top:1px solid #f1f5f9;">
-      <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;line-height:1.6;">
-        Đây là phiếu lương điện tử được tạo tự động bởi hệ thống <strong style="color:#6366f1;">SmartHR</strong>.<br/>
-        Vui lòng liên hệ phòng Nhân sự nếu có thắc mắc. Không phản hồi email này.
+    <td style="padding:20px 24px 24px;border-top:1px solid #f1f5f9;">
+      <p style="margin:0;font-size:10px;color:#94a3b8;text-align:center;line-height:1.6;">
+        Đây là phiếu lương điện tử được tạo tự động bởi hệ thống <strong style="color:#3b82f6;">SmartHR</strong>.<br/>
+        Vui lòng liên hệ phòng Nhân sự nếu có thắc mắc về lương tháng này.
       </p>
     </td>
   </tr>
@@ -1266,5 +1418,104 @@ export class PayrollService {
 </table>
 </body>
 </html>`;
+
+        return html;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FILE ĐÍNH KÈM (PAYROLL ATTACHMENTS)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Lấy danh sách file đính kèm của bảng lương
+     */
+    async getAttachments(payrollId) {
+        await this._findPayrollOrFail(payrollId);
+        return this.attachmentRepository.findByPayroll(payrollId);
+    }
+
+    /**
+     * Upload một hoặc nhiều file đính kèm vào bảng lương.
+     * @param {number} payrollId
+     * @param {Express.Multer.File[]} files  - Mảng file từ multer
+     * @param {{ id: number, fullName: string }} uploader
+     */
+    async uploadAttachments(payrollId, files, uploader) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+
+        if (!files || files.length === 0) {
+            throw new BadRequestException('Không có file nào được tải lên.');
+        }
+
+        const saved = [];
+        for (const file of files) {
+            const record = await this.attachmentRepository.create({
+                payrollId,
+                fileName: file.originalname,
+                filePath: file.path.replace(/\\/g, '/'), // normalize path
+                fileSize: file.size,
+                mimeType: file.mimetype,
+                uploadedBy: uploader?.id || null,
+                uploadedByName: uploader?.fullName || null,
+            });
+            saved.push(record);
+        }
+
+        return saved;
+    }
+
+    /**
+     * Xóa một file đính kèm (soft delete + xóa file vật lý).
+     * Không cho phép xóa nếu bảng lương đã LOCKED.
+     */
+    async deleteAttachment(payrollId, attachmentId) {
+        const payroll = await this._findPayrollOrFail(payrollId);
+
+        if (payroll.payrollStatus === PAYROLL_STATUS.LOCKED) {
+            throw new BadRequestException('Không thể xóa file đính kèm khi bảng lương đã bị khóa.');
+        }
+
+        const attachment = await this.attachmentRepository.findById(attachmentId);
+        if (!attachment || attachment.payrollId !== payrollId) {
+            throw new NotFoundException('Không tìm thấy file đính kèm.');
+        }
+
+        // Xóa file vật lý trên disk (bỏ qua lỗi nếu file không tồn tại)
+        try {
+            if (fs.existsSync(attachment.filePath)) {
+                fs.unlinkSync(attachment.filePath);
+            }
+        } catch (err) {
+            console.warn(`[PayrollService] Không thể xóa file vật lý ${attachment.filePath}:`, err.message);
+        }
+
+        // Soft delete trong DB
+        await this.attachmentRepository.softDelete(attachmentId);
+        return { deleted: true, fileName: attachment.fileName };
+    }
+
+    /**
+     * Trả về thông tin file để download.
+     * @returns {{ filePath: string, fileName: string, mimeType: string }}
+     */
+    async getAttachmentForDownload(payrollId, attachmentId) {
+        await this._findPayrollOrFail(payrollId);
+
+        const attachment = await this.attachmentRepository.findById(attachmentId);
+        if (!attachment || attachment.payrollId !== payrollId) {
+            throw new NotFoundException('Không tìm thấy file đính kèm.');
+        }
+
+        const absolutePath = path.resolve(attachment.filePath);
+        if (!fs.existsSync(absolutePath)) {
+            throw new NotFoundException('File vật lý không tồn tại trên server. Vui lòng liên hệ quản trị.');
+        }
+
+        return {
+            absolutePath,
+            fileName: attachment.fileName,
+            mimeType: attachment.mimeType || 'application/octet-stream',
+            fileSize: attachment.fileSize,
+        };
     }
 }
