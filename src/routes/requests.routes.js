@@ -25,7 +25,7 @@ router.get(
 router.get(
   '/pending',
   authMiddleware,
-  permissionsMiddleware('REQUEST_READ'),
+  permissionsMiddleware(['REQUEST_READ', 'REQUEST_APPROVE', 'REQUEST_READ_OWN']),
   requestsController.getPendingApprovals,
 );
 
@@ -79,7 +79,7 @@ router.post(
 router.post(
   '/:id/cancel',
   authMiddleware,
-  permissionsMiddleware('REQUEST_CANCEL'),
+  permissionsMiddleware(['REQUEST_CANCEL', 'REQUEST_READ_OWN']),
   requestsController.cancel,
 );
 
@@ -87,7 +87,7 @@ router.post(
 router.post(
   '/:id/approve',
   authMiddleware,
-  permissionsMiddleware('REQUEST_APPROVE'),
+  permissionsMiddleware(['REQUEST_APPROVE', 'REQUEST_READ_OWN']),
   requestsController.approve,
 );
 
@@ -95,7 +95,7 @@ router.post(
 router.post(
   '/:id/reject',
   authMiddleware,
-  permissionsMiddleware('REQUEST_APPROVE'),
+  permissionsMiddleware(['REQUEST_APPROVE', 'REQUEST_READ_OWN']),
   requestsController.reject,
 );
 
@@ -103,7 +103,7 @@ router.post(
 router.post(
   '/:id/revoke',
   authMiddleware,
-  permissionsMiddleware('REQUEST_UPDATE'),
+  permissionsMiddleware(['REQUEST_UPDATE', 'REQUEST_READ_OWN']),
   requestsController.revoke,
 );
 
