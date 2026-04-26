@@ -24,7 +24,7 @@ export class AttendanceRecordEntity extends BaseEntity {
   @Column({ name: 'employee_id', type: 'int' })
   employeeId;
 
-  @Column({ name: 'work_date', type: 'date', nullable:true })
+  @Column({ name: 'work_date', type: 'date', nullable: true })
   workDate;
 
   @Column({ name: 'shift_schedule_id', type: 'int', nullable: true })
@@ -69,6 +69,6 @@ export class AttendanceRecordEntity extends BaseEntity {
   employee;
 
   @ManyToOne(() => ShiftScheduleEntity)
-  @JoinColumn({ name: 'shift_schedule_id' })
+  @JoinColumn({ name: 'shift_schedule_id', nullable: true })
   shiftSchedule;
 }

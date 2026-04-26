@@ -7,14 +7,13 @@ export class AttendanceAllowedIpRepository {
   }
 
   async findAllActive() {
-    return this.repository.find({ where: { isDeleted: false, isActive: true }, order: { createdAt: 'DESC' } });
+    return this.repository.find({ where: { isDeleted: false }, order: { createdAt: 'DESC' } });
   }
 
   async findAllActiveByConfigId(configId) {
     return this.repository.find({
       where: {
         isDeleted: false,
-        isActive: true,
         config: { id: configId },
       },
       order: { createdAt: 'DESC' },

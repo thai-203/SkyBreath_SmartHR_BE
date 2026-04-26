@@ -4,6 +4,8 @@ import { UserResponseDto } from '../models/dto/users/user-response.dto.js';
 import { ResponseUtil } from '../common/utils/response.util.js';
 import { AppMessages } from '../common/constants/index.js';
 import { SearchUserDto } from '../models/dto/users/search-user.dto.js';
+import { CreateUserDto } from '../models/dto/users/create-user.dto.js';
+import { UpdateUserDto } from '../models/dto/users/update-user.dto.js';
 
 export class UsersController {
   constructor() {
@@ -12,7 +14,8 @@ export class UsersController {
 
   create = async (req, res, next) => {
     try {
-      const result = await this.usersService.create(req.body, req);
+      const createUserDto = plainToInstance(CreateUserDto, req.body);
+      const result = await this.usersService.create(createUserDto, req);
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.User.CREATED,
@@ -71,9 +74,10 @@ export class UsersController {
 
   update = async (req, res, next) => {
     try {
+      const updateUserDto = plainToInstance(UpdateUserDto, req.body);
       const result = await this.usersService.update(
         parseInt(req.params.id),
-        req.body,
+        updateUserDto,
       );
       ResponseUtil.sendResponse(res, AppMessages.Success.User.UPDATED, result);
     } catch (error) {
@@ -133,12 +137,13 @@ export class UsersController {
     try {
       const currentUserId = req.user.id;
       const userId = parseInt(req.params.id);
-      const result = await this.usersService.resetPassword(userId, currentUserId);
-      ResponseUtil.sendResponse(
-        res,
-        result.message,
-        { otpRequestId: result.otpRequestId },
+      const result = await this.usersService.resetPassword(
+        userId,
+        currentUserId,
       );
+      ResponseUtil.sendResponse(res, result.message, {
+        otpRequestId: result.otpRequestId,
+      });
     } catch (error) {
       next(error);
     }

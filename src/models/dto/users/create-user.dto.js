@@ -1,16 +1,3 @@
-import { Type } from 'class-transformer';
-import {
-  IsEmail,
-  IsString,
-  MinLength,
-  MaxLength,
-  IsOptional,
-  IsArray,
-  IsNotEmpty,
-  IsInt,
-  Matches,
-} from 'class-validator';
-
 /**
  * @swagger
  * components:
@@ -39,38 +26,19 @@ import {
  *         roleIds:
  *           type: array
  *           items:
- *             type: string
- *             format: uuid
+ *             type: integer
  *           description: Array of Role IDs
- *           example: ["uuid-1", "uuid-2"]
+ *           example: [1, 2]
+ *         status:
+ *           type: string
+ *           maxLength: 20
+ *           description: User status
+ *           example: ACTIVE
  */
 export class CreateUserDto {
-  @IsEmail()
   email;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(50)
   username;
-
-  @IsString()
-  @MinLength(8)
-  @IsNotEmpty()
-  @MaxLength(50)
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).+$/, {
-    message:
-      'Password must contain at least 1 uppercase, 1 lowercase, 1 number and 1 special character',
-  })
   password;
-
-  @IsOptional()
-  @IsArray()
-  @IsInt({ each: true })
-  @Type(() => Number) // QUAN TRỌNG
   roleIds;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
   status;
 }

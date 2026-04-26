@@ -7,11 +7,7 @@ export class AttendanceAllowedIpEntity extends BaseEntity {
   @Column({ name: 'ip_range', type: 'varchar', length: 50 })
   ipRange; // vd: 192.168.1.0/24
 
-  @Column({ name: 'description', type: 'varchar', nullable: true })
-  description;
 
-  @Column({ name: 'is_active', type: 'boolean', default: true })
-  isActive;
 
   @ManyToOne(() => AttendanceSecurityConfigEntity, (config) => config.allowedIps, {
     nullable: false,

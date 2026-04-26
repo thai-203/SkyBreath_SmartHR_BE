@@ -1,8 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { AttendanceSecurityConfigController } from '../controllers/attendance-security-config.controller.js';
-import { UpdateAttendanceSecurityConfigDto } from '../models/dto/attendance-security-config/update-attendance-security-config.dto.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = express.Router();
@@ -17,7 +15,6 @@ router.get(
 router.put(
   '/',
   authMiddleware,
-  validationMiddleware(UpdateAttendanceSecurityConfigDto),
   permissionsMiddleware('ATTENDANCE_SECURITY_CONFIG_UPDATE'),
   (req, res, next) => controller.updateConfig(req, res, next),
 );
