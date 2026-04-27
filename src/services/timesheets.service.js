@@ -2235,6 +2235,8 @@ export class TimesheetsService {
       const shift = record.shiftSchedule?.shift ?? null;
       const shiftStartTime = shift?.startTime || '08:00:00';
       const shiftEndTime = shift?.endTime || '17:00:00';
+      const breakStartTime = shift?.breakStartTime || null;
+      const breakEndTime = shift?.breakEndTime || null;
       const workingShiftId = shift?.id ?? null;
       if (!existing) {
         empMap.set(dateKey, {
@@ -2243,6 +2245,8 @@ export class TimesheetsService {
           checkOutTime: record.checkOutTime || null,
           shiftStartTime,
           shiftEndTime,
+          breakStartTime,
+          breakEndTime,
           workingShiftId,
         });
       } else {
@@ -2266,6 +2270,8 @@ export class TimesheetsService {
           existing.workingShiftId = workingShiftId;
           existing.shiftStartTime = shiftStartTime;
           existing.shiftEndTime = shiftEndTime;
+          existing.breakStartTime = breakStartTime;
+          existing.breakEndTime = breakEndTime;
         }
       }
     }
@@ -2551,6 +2557,8 @@ export class TimesheetsService {
         const raw = empRawMap.get(dateStr);
         const shiftStartStr = raw?.shiftStartTime || '08:00:00';
         const shiftEndStr = raw?.shiftEndTime || '17:00:00';
+        const breakStartStr = raw?.breakStartTime || null;
+        const breakEndStr = raw?.breakEndTime || null;
         const workingShiftId = raw?.workingShiftId ?? null;
         const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
         const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
@@ -2603,13 +2611,15 @@ export class TimesheetsService {
           // (tránh trường hợp chấm 2 phút nhưng vẫn ra 1 công).
           attendanceStatus = 'X';
 
-          // Build a minimal "shift" object for hour calculation (supports break time if present later)
+          // Build shift object với break time để tính đúng giờ làm thực tế
           const shiftForCalc = {
             startTime: shiftStartStr,
             endTime: shiftEndStr,
+            breakStartTime: breakStartStr,
+            breakEndTime: breakEndStr,
           };
           const shiftHours = this._calcShiftHours(shiftForCalc);
-          const actualHours = this._calcActualHours(checkIn, checkOut, null);
+          const actualHours = this._calcActualHours(checkIn, checkOut, shiftForCalc);
           workValue = this._calcWorkingDay(actualHours, shiftHours);
 
           // Apply penalty conversion rules (late/early) on top of hour-based value.

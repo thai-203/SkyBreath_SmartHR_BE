@@ -223,7 +223,7 @@ export class PayrollService {
             const insuranceDeduction = insurance.total; // (52) = 10.5%
 
             // ── Phụ cấp thực nhận (43) ──
-            const earnedAllowances = this._calcEarnedAllowances(salary, ts, tsStdDays, workingDays);
+            const earnedAllowances = this._calcTotalAllowances(salary);
 
             // ── Các khoản nhập tay đã có từ lần tính trước ──
             const bonus               = parseFloat(existingDetail?.bonus                || 0); // (36.1) Thưởng P3
@@ -539,16 +539,17 @@ export class PayrollService {
     }
 
     /**
-     * Tính phụ cấp thực nhận theo ngày công
+     * Tính phụ cấp thực nhận
+     * Phụ cấp = lunch_allowance + fuel_allowance + phone_allowance + other_allowance
+     * Là tổng cố định mỗi tháng, KHÔNG nhân với số công
      */
-    _calcEarnedAllowances(salary, ts, standardDays, workingDays) {
-        const totalAllowances = (
+    _calcTotalAllowances(salary) {
+        return (
             parseFloat(salary.lunchAllowance || 0) +
             parseFloat(salary.fuelAllowance || 0) +
             parseFloat(salary.phoneAllowance || 0) +
             parseFloat(salary.otherAllowance || 0)
         );
-        return standardDays > 0 ? (totalAllowances / standardDays) * workingDays : 0;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -632,12 +633,12 @@ export class PayrollService {
         );
 
         // ── Phụ cấp (43) ──
-        const earnedAllowances = this._calcEarnedAllowances({
+        const earnedAllowances = this._calcTotalAllowances({
             lunchAllowance: detail.lunchAllowance,
             fuelAllowance : detail.fuelAllowance,
             phoneAllowance: detail.phoneAllowance,
             otherAllowance: detail.otherAllowance,
-        }, ts, standardDays, workingDays);
+        });
 
         // ── Các khoản nhập tay ──
         const bonus                = parseFloat(dto.bonus                ?? detail.bonus                ?? 0); // (36.1)
