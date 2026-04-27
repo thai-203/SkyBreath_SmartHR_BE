@@ -215,79 +215,123 @@ export class PayrollService {
                 salary, ts, tsStdDays, workingDays, p21Percent, p22Percent, employee.employmentStatus
             );
 
-            // Tính bảo hiểm (dùng tỷ lệ cố định) - KHÔNG bao gồm KPCĐ (KPCĐ là phí công ty, không trừ vào lương NLD)
-            const insuranceBase = Math.min(parseFloat(salary.baseSalary) || 0, 20 * 2_340_000);
-            const socialInsurance = parseFloat((insuranceBase * INSURANCE_RATES.SOCIAL / 100).toFixed(2));
-            const healthInsurance = parseFloat((insuranceBase * INSURANCE_RATES.HEALTH / 100).toFixed(2));
-            const unemploymentInsurance = parseFloat((insuranceBase * INSURANCE_RATES.UNEMPLOYMENT / 100).toFixed(2));
-            const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
+            // ── Tính bảo hiểm (52) ──
+            // Mức đóng BH giới hạn trần 46.8 triệu (20 × mức lương cơ sở)
+            const insuranceBase = this._calcInsuranceBase(salary.baseSalary);
+            const insurance = this._calcEmployeeInsurance(insuranceBase);
+            const { social: socialInsurance, health: healthInsurance, unemployment: unemploymentInsurance } = insurance;
+            const insuranceDeduction = insurance.total; // (52) = 10.5%
 
-            // Tính thuế TNCN
-            const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
+            // ── Phụ cấp thực nhận (43) ──
             const earnedAllowances = this._calcEarnedAllowances(salary, ts, tsStdDays, workingDays);
-            const taxableIncome = totalOfficialSalary + earnedAllowances + overtimePay - insuranceDeduction - PIT_PERSONAL_DEDUCTION;
-            const taxDeduction = taxableIncome > 0 ? this._calcPIT(taxableIncome) : 0;
 
-            // Tính lương thực nhận (sau trừ bảo hiểm và thuế)
-            const bonus = parseFloat(existingDetail?.bonus || 0);
-            const penalty = parseFloat(existingDetail?.penalty || 0);
-            const deduction = parseFloat(existingDetail?.deduction || 0);
-            const netSalary = parseFloat((
-                totalOfficialSalary + earnedAllowances + overtimePay + bonus
-                - penalty - deduction - insuranceDeduction - taxDeduction
-            ).toFixed(2));
+            // ── Các khoản nhập tay đã có từ lần tính trước ──
+            const bonus               = parseFloat(existingDetail?.bonus                || 0); // (36.1) Thưởng P3
+            const insuranceAdjustment = parseFloat(existingDetail?.insuranceAdjustment || 0); // (53) Truy thu BH
+            const employeeUnionFee    = parseFloat(existingDetail?.employeeUnionFee    || 0); // (54) CĐ phí NLĐ
+            const partyFee            = parseFloat(existingDetail?.partyFee            || 0); // (55) Đảng phí
+            const taxAdjustment       = parseFloat(existingDetail?.taxAdjustment       || 0); // (64) Truy thu thuế
+            const otherDeduction      = parseFloat(existingDetail?.otherDeduction      || 0); // (65) Trừ khác
+            const adjustmentTaxable   = parseFloat(existingDetail?.adjustmentTaxable   || 0); // (46) Truy thu tính thuế
+            const adjustmentNonTaxable= parseFloat(existingDetail?.adjustmentNonTaxable|| 0); // (47) Truy thu không thuế
+            const otherNonTaxable     = parseFloat(existingDetail?.otherNonTaxable     || 0); // (50.1) Khác không thuế
 
-            // Chi phí công ty (BH phía công ty đóng)
-            const companySocial = parseFloat((insuranceBase * 0.175).toFixed(2));
-            const companyHealth = parseFloat((insuranceBase * 0.03).toFixed(2));
-            const companyUnemployment = parseFloat((insuranceBase * 0.01).toFixed(2));
-            const companyUnion = parseFloat((insuranceBase * 0.02).toFixed(2));
-            const totalHrCost = netSalary + insuranceDeduction + taxDeduction + companySocial + companyHealth + companyUnemployment + companyUnion;
+            // ── Tổng thu nhập (51) ──
+            const totalGrossIncome = this._calcTotalGrossIncome({
+                earnedP1, earnedP21, earnedP22, probationSalary,
+                bonus,
+                allowanceAmount: earnedAllowances,
+                overtimePay,
+                adjustmentTaxable,
+                adjustmentNonTaxable,
+                otherNonTaxable,
+            });
 
-            // Lưu chi tiết lương
+            // ── Giảm trừ gia cảnh (12.2) ──
+            // Số NPT lấy từ dữ liệu đã nhập trước (mặc định 0 nếu chưa có)
+            const dependentCount  = parseInt(existingDetail?.dependentCount || 0);
+            const familyDeduction = this._calcFamilyDeduction(dependentCount); // = NPT×4.4tr + 11tr
+
+            // ── Thu nhập tính thuế (12.3) & Thuế TNCN (63) ──
+            const taxableIncome = this._calcTaxableIncome(totalGrossIncome, insuranceDeduction, familyDeduction);
+            const taxDeduction  = taxableIncome > 0 ? this._calcPIT(taxableIncome) : 0; // (63)
+
+            // ── Tổng khấu trừ (65.1) & Lương thực nhận NET (66) ──
+            const totalDeduction = this._calcTotalDeduction({
+                insuranceDeduction, insuranceAdjustment, employeeUnionFee,
+                partyFee, taxDeduction, taxAdjustment, otherDeduction,
+            });
+            const netSalary = this._calcNetSalary(totalGrossIncome, totalDeduction); // (66)
+
+            // ── Chi phí phía công ty ──
+            // BH công ty đóng: BHXH 17.5% + BHYT 3% + BHTN 1% = 21.5%
+            const companySocial       = parseFloat((insuranceBase * 0.175).toFixed(2)); // 17.5% BHXH
+            const companyHealth       = parseFloat((insuranceBase * 0.03 ).toFixed(2)); // 3%    BHYT
+            const companyUnemployment = parseFloat((insuranceBase * 0.01 ).toFixed(2)); // 1%    BHTN
+            const companyUnion        = parseFloat((insuranceBase * 0.02 ).toFixed(2)); // 2%    KPCĐ (71)
+            const companyInsurance    = companySocial + companyHealth + companyUnemployment; // (75)
+            // (79.1) = (51) + (71) + (75) — dùng totalGrossIncome chứ không phải netSalary
+            const totalHrCost = this._calcTotalHrCost(totalGrossIncome, companyUnion, companyInsurance);
+
+            // ── Lưu chi tiết lương ──
             const detailData = {
                 payrollId, employeeId: employee.id,
-                workingDays, baseSalary: salary.baseSalary, overtimePay: parseFloat(overtimePay.toFixed(2)),
-                bonus, penalty, deduction, insuranceDeduction, taxDeduction, netSalary,
-                allowanceAmount: parseFloat(earnedAllowances.toFixed(2)),
-                standardDays: tsStdDays,
-                officialDays: parseFloat(ts.officialDays || 0),
-                probationDays: parseFloat(ts.probationDays || 0),
-                businessTripDays: parseFloat(ts.businessTripDays || 0),
-                holidayDays: parseFloat(ts.holidayDays || 0),
-                benefitLeaveDays: parseFloat(ts.benefitLeaveDays || 0),
-                waitingDays: parseFloat(ts.waitingDays || 0),
-                nightShiftOfficialDays: parseFloat(ts.nightShiftOfficialDays || 0),
-                nightShiftProbationDays: parseFloat(ts.nightShiftProbationDays || 0),
-                otWeekday: parseFloat(ts.otWeekday || 0),
-                otWeekdayNight: parseFloat(ts.otWeekdayNight || 0),
-                otWeekend: parseFloat(ts.otWeekend || 0),
-                otWeekendNight: parseFloat(ts.otWeekendNight || 0),
-                otHoliday: parseFloat(ts.otHoliday || 0),
-                otHolidayNight: parseFloat(ts.otHolidayNight || 0),
-                totalOtHours: this._sumOTHours(ts),
-                mealCount: parseFloat(ts.mealCount || 0),
+                workingDays,
+                baseSalary        : salary.baseSalary,
+                overtimePay       : parseFloat(overtimePay.toFixed(2)),
+                bonus, insuranceDeduction, taxDeduction, netSalary,
+                allowanceAmount   : parseFloat(earnedAllowances.toFixed(2)),
+                standardDays      : tsStdDays,
+                officialDays      : parseFloat(ts.officialDays       || 0),
+                probationDays     : parseFloat(ts.probationDays      || 0),
+                businessTripDays  : parseFloat(ts.businessTripDays   || 0),
+                holidayDays       : parseFloat(ts.holidayDays        || 0),
+                benefitLeaveDays  : parseFloat(ts.benefitLeaveDays   || 0),
+                annualLeaveDays   : parseFloat(ts.annualLeaveDays    || 0),
+                waitingDays       : parseFloat(ts.waitingDays        || 0),
+                nightShiftOfficialDays  : parseFloat(ts.nightShiftOfficialDays   || 0),
+                nightShiftProbationDays : parseFloat(ts.nightShiftProbationDays  || 0),
+                otWeekday         : parseFloat(ts.otWeekday          || 0),
+                otWeekdayNight    : parseFloat(ts.otWeekdayNight     || 0),
+                otWeekend         : parseFloat(ts.otWeekend          || 0),
+                otWeekendNight    : parseFloat(ts.otWeekendNight     || 0),
+                otHoliday         : parseFloat(ts.otHoliday          || 0),
+                otHolidayNight    : parseFloat(ts.otHolidayNight     || 0),
+                totalOtHours      : this._sumOTHours(ts),
+                mealCount         : parseFloat(ts.mealCount          || 0),
                 // Lương P2 từ employee_salaries
-                performanceSalary: performanceSalary,
-                // % P2.1, % P2.2, % KPI tổng từ performance_reviews (đã tính %)
-                p1p2Percentage: p21Percent,
-                p3Percentage: p22Percent,
-                // Lương P2.1, P2.2 thực = performanceSalary × % / 100 × hệ số ngày công
-                p1Amount: earnedP1,
-                p21Amount: earnedP21,
-                p22Amount: earnedP22,
-                probationAmount: probationSalary,
+                performanceSalary,
+                // % P2.1, % P2.2 từ performance_reviews
+                p1p2Percentage    : p21Percent,
+                p3Percentage      : p22Percent,
+                kpiPercentage     : p21Percent + p22Percent,
+                // Lương thực nhận từng khoản
+                p1Amount          : earnedP1,
+                p21Amount         : earnedP21,
+                p22Amount         : earnedP22,
+                probationAmount   : probationSalary,
+                // Bảo hiểm chi tiết
                 socialInsurance, healthInsurance, unemploymentInsurance,
-                socialInsurancePercentage: INSURANCE_RATES.SOCIAL,
-                healthInsurancePercentage: INSURANCE_RATES.HEALTH,
+                socialInsurancePercentage      : INSURANCE_RATES.SOCIAL,
+                healthInsurancePercentage      : INSURANCE_RATES.HEALTH,
                 unemploymentInsurancePercentage: INSURANCE_RATES.UNEMPLOYMENT,
-                kpiPercentage: p21Percent + p22Percent,
-                taxableIncomePaid: taxableIncome > 0 ? taxableIncome : 0,
-                companySocialInsurance: companySocial,
-                companyHealthInsurance: companyHealth,
+                // Thuế
+                taxableIncomePaid : taxableIncome,
+                dependentCount,
+                familyDeduction,
+                // Các khoản nhập tay giữ nguyên từ lần tính trước
+                insuranceAdjustment, employeeUnionFee, partyFee,
+                taxAdjustment, otherDeduction,
+                adjustmentTaxable, adjustmentNonTaxable, otherNonTaxable,
+                // Tổng hợp
+                totalGrossIncome,
+                totalDeduction,
+                // Chi phí công ty
+                companySocialInsurance    : companySocial,
+                companyHealthInsurance    : companyHealth,
                 companyUnemploymentInsurance: companyUnemployment,
-                unionFee: existingDetail?.unionFee ?? companyUnion, // Giữ nguyên giá trị đã nhập, chỉ tính mới nếu chưa có
-                totalHrCost: parseFloat(totalHrCost.toFixed(2)),
+                unionFee                  : existingDetail?.unionFee ?? companyUnion,
+                totalHrCost,
             };
 
             details.push(
@@ -443,11 +487,15 @@ export class PayrollService {
     /**
      * Tính lương thực nhận theo ngày công
      *
-     * Công thức:
-     * - P1 thực nhận = (Lương P1 / Công chuẩn) × Ngày công đủ
-     * - P2.1 thực nhận = (P2 × %P2.1 / 100 / Công chuẩn) × Ngày công đủ
-     * - P2.2 thực nhận = (P2 × %P2.2 / 100 / Công chuẩn) × Ngày công đủ
-     * - Lương TV = (Lương P1 / Công chuẩn) × Ngày công TV × 85%
+     * Công thức theo tài liệu:
+     * (31) P1 thực nhận  = (baseSalary / NC_chuẩn) × payableDays
+     * (32) P2.1 thực nhận = (performanceSalary × %P2.1 / 100 / NC_chuẩn) × payableDays
+     * (33) P2.2 thực nhận = (performanceSalary × %P2.2 / 100 / NC_chuẩn) × payableDays
+     * (34) TV thực nhận  = (baseSalary / NC_chuẩn) × probationPayDays  ← KHÔNG nhân 0.85
+     *
+     * payableDays (ngày công tính lương) = 22 + 26 + 26.1 + 27 + 28
+     *   = officialDays + annualLeaveDays + benefitLeaveDays + holidayDays + businessTripDays
+     *   (chỉ áp dụng cho NV chính thức; NV thử việc = 0)
      */
     _calcEarnedSalaries(salary, ts, standardDays, workingDays, p21Percent, p22Percent, employmentStatus) {
         const p1Amount = parseFloat(salary.baseSalary) || 0;
@@ -460,20 +508,32 @@ export class PayrollService {
         const p22Base = performanceSalary * p22Percent / 100;
 
         const isProbation = employmentStatus === 'PROBATION';
-        const fullPayDays = (isProbation ? 0 : parseFloat(ts?.businessTripDays || 0)) +
-            parseFloat(ts?.officialDays || 0) +
-            parseFloat(ts?.holidayDays || 0) +
-            parseFloat(ts?.benefitLeaveDays || 0);
-        const probationPayDays = (isProbation ? parseFloat(ts?.businessTripDays || 0) : 0) +
-            parseFloat(ts?.probationDays || 0);
 
-        // Hệ số ngày công = ngày công thực tế / công chuẩn
+        // (31)(32)(33): Ngày công tính lương = 22 + 26 + 26.1 + 27 + 28
+        // annualLeaveDays (26) được tính vào ngày công hưởng lương theo chính sách công ty
+        const fullPayDays = isProbation ? 0 : (
+            parseFloat(ts?.officialDays    || 0) +   // (22) Công chính thức
+            parseFloat(ts?.annualLeaveDays || 0) +   // (26) Nghỉ phép năm
+            parseFloat(ts?.benefitLeaveDays|| 0) +   // (26.1) Nghỉ chế độ (ốm, thai sản...)
+            parseFloat(ts?.holidayDays     || 0) +   // (27) Lễ/Tết
+            parseFloat(ts?.businessTripDays|| 0)     // (28) Công tác / Học tập
+        );
+
+        // (34): Ngày công TV = probationDays + businessTripDays (nếu đang TV)
+        const probationPayDays =
+            parseFloat(ts?.probationDays    || 0) +  // (23) Công thử việc
+            (isProbation ? parseFloat(ts?.businessTripDays || 0) : 0); // (28) nếu TV
+
+        // Hệ số ngày công = ngày thực tế / ngày chuẩn
         const dayFactor = standardDays > 0 ? fullPayDays / standardDays : 0;
 
-        const earnedP1 = p1Amount * dayFactor;
-        const earnedP21 = p21Base * dayFactor;
-        const earnedP22 = p22Base * dayFactor;
-        const probationSalary = standardDays > 0 ? (p1Amount / standardDays) * probationPayDays * 0.85 : 0;
+        const earnedP1  = p1Amount  * dayFactor;                  // (31)
+        const earnedP21 = p21Base   * dayFactor;                  // (32)
+        const earnedP22 = p22Base   * dayFactor;                  // (33)
+        // (34) Lương TV = baseSalary / NC_chuẩn × công TV — KHÔNG nhân 0.85
+        const probationSalary = standardDays > 0
+            ? (p1Amount / standardDays) * probationPayDays
+            : 0;
 
         return { earnedP1, earnedP21, earnedP22, probationSalary };
     }
@@ -539,71 +599,108 @@ export class PayrollService {
         const p21Percent = parseFloat(dto.p1p2Percentage ?? detail.p1p2Percentage ?? 0);
         const p22Percent = parseFloat(dto.p3Percentage ?? detail.p3Percentage ?? 0);
 
-        // Tỷ lệ bảo hiểm - cho phép override từ dto
-        const socialInsurancePercentage = dto.socialInsurancePercentage ?? INSURANCE_RATES.SOCIAL;
-        const healthInsurancePercentage = dto.healthInsurancePercentage ?? INSURANCE_RATES.HEALTH;
-        const unemploymentInsurancePercentage = dto.unemploymentInsurancePercentage ?? INSURANCE_RATES.UNEMPLOYMENT;
+        // ── Bảo hiểm (52) ──
+        // Dùng helper để nhất quán với autoCalculate; tỷ lệ có thể override từ dto
+        const socialInsurancePercentage      = dto.socialInsurancePercentage      ?? INSURANCE_RATES.SOCIAL;
+        const healthInsurancePercentage      = dto.healthInsurancePercentage      ?? INSURANCE_RATES.HEALTH;
+        const unemploymentInsurancePercentage= dto.unemploymentInsurancePercentage ?? INSURANCE_RATES.UNEMPLOYMENT;
 
-        // Tính bảo hiểm
-        const insuranceBase = Math.min(parseFloat(detail.baseSalary) || 0, 20 * 2_340_000);
-        const socialInsurance = parseFloat((insuranceBase * socialInsurancePercentage / 100).toFixed(2));
-        const healthInsurance = parseFloat((insuranceBase * healthInsurancePercentage / 100).toFixed(2));
+        const insuranceBase     = this._calcInsuranceBase(detail.baseSalary);
+        const socialInsurance   = parseFloat((insuranceBase * socialInsurancePercentage      / 100).toFixed(2));
+        const healthInsurance   = parseFloat((insuranceBase * healthInsurancePercentage      / 100).toFixed(2));
         const unemploymentInsurance = parseFloat((insuranceBase * unemploymentInsurancePercentage / 100).toFixed(2));
-        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance;
+        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance; // (52)
 
-        // Tính OT
+        // ── OT ──
         const { activeRules, ruleDepts } = await this._getOTRules();
         const ts = {
             officialDays, probationDays, businessTripDays, holidayDays, benefitLeaveDays,
-            otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight
+            // Đảm bảo annualLeaveDays được truyền vào để _calcEarnedSalaries tính đúng
+            annualLeaveDays: parseFloat(dto.annualLeaveDays ?? detail.annualLeaveDays ?? 0),
+            otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight,
         };
-        const overtimePay = this._calcOvertimePay(ts, detail.baseSalary, standardDays,
-            detail.employee?.departmentId, activeRules, ruleDepts);
+        const overtimePay = this._calcOvertimePay(
+            ts, detail.baseSalary, standardDays,
+            detail.employee?.departmentId, activeRules, ruleDepts
+        );
 
-        // Tính lương thực nhận (dùng _calcEarnedSalaries để nhất quán)
+        // ── Lương thực nhận (31-34) ──
         const { earnedP1, earnedP21, earnedP22, probationSalary } = this._calcEarnedSalaries(
             { baseSalary: detail.baseSalary, performanceSalary: detail.performanceSalary },
-            ts,
-            standardDays,
-            workingDays,
-            p21Percent,
-            p22Percent,
+            ts, standardDays, workingDays, p21Percent, p22Percent,
             detail.employee?.employmentStatus
         );
 
-        const totalOfficialSalary = earnedP1 + earnedP21 + earnedP22 + probationSalary;
+        // ── Phụ cấp (43) ──
         const earnedAllowances = this._calcEarnedAllowances({
             lunchAllowance: detail.lunchAllowance,
-            fuelAllowance: detail.fuelAllowance,
+            fuelAllowance : detail.fuelAllowance,
             phoneAllowance: detail.phoneAllowance,
-            otherAllowance: detail.otherAllowance
-        }, { standardDays: detail.standardDays }, standardDays, workingDays);
+            otherAllowance: detail.otherAllowance,
+        }, ts, standardDays, workingDays);
 
-        const bonus = parseFloat(dto.bonus ?? detail.bonus ?? 0);
-        const penalty = parseFloat(dto.penalty ?? detail.penalty ?? 0);
-        const deduction = parseFloat(dto.deduction ?? detail.deduction ?? 0);
-        // Tính thuế TNCN (sử dụng giá trị từ dto hoặc giữ nguyên từ detail)
-        const taxDeduction = parseFloat(dto.taxDeduction ?? detail.taxDeduction ?? 0);
-        const netSalary = parseFloat((
-            totalOfficialSalary + earnedAllowances + overtimePay + bonus
-            - penalty - deduction - insuranceDeduction - taxDeduction
-        ).toFixed(2));
+        // ── Các khoản nhập tay ──
+        const bonus                = parseFloat(dto.bonus                ?? detail.bonus                ?? 0); // (36.1)
+        const insuranceAdjustment  = parseFloat(dto.insuranceAdjustment  ?? detail.insuranceAdjustment  ?? 0); // (53)
+        const employeeUnionFee     = parseFloat(dto.employeeUnionFee     ?? detail.employeeUnionFee     ?? 0); // (54)
+        const partyFee             = parseFloat(dto.partyFee             ?? detail.partyFee             ?? 0); // (55)
+        const taxAdjustment        = parseFloat(dto.taxAdjustment        ?? detail.taxAdjustment        ?? 0); // (64)
+        const otherDeduction       = parseFloat(dto.otherDeduction       ?? detail.otherDeduction       ?? 0); // (65)
+        const adjustmentTaxable    = parseFloat(dto.adjustmentTaxable    ?? detail.adjustmentTaxable    ?? 0); // (46)
+        const adjustmentNonTaxable = parseFloat(dto.adjustmentNonTaxable ?? detail.adjustmentNonTaxable ?? 0); // (47)
+        const otherNonTaxable      = parseFloat(dto.otherNonTaxable      ?? detail.otherNonTaxable      ?? 0); // (50.1)
 
-        // KPCĐ công ty - dùng trực tiếp từ dto (giữ nguyên giá trị input)
-        const unionFeeValue = dto.unionFee !== undefined ? parseFloat(dto.unionFee) : 0;
+        // ── Tổng thu nhập (51) ──
+        const totalGrossIncome = this._calcTotalGrossIncome({
+            earnedP1, earnedP21, earnedP22, probationSalary,
+            bonus, allowanceAmount: earnedAllowances, overtimePay,
+            adjustmentTaxable, adjustmentNonTaxable, otherNonTaxable,
+        });
+
+        // ── Giảm trừ gia cảnh (12.2) ──
+        const dependentCount  = parseInt(dto.dependentCount ?? detail.dependentCount ?? 0);
+        const familyDeduction = this._calcFamilyDeduction(dependentCount);
+
+        // ── Thu nhập tính thuế (12.3) & Thuế TNCN (63) ──
+        // Thuế được tính lại tự động khi ngày công/lương thay đổi;
+        // nếu HR muốn override thủ công, truyền taxDeduction trong dto
+        const taxableIncome = this._calcTaxableIncome(totalGrossIncome, insuranceDeduction, familyDeduction);
+        const taxDeduction  = dto.taxDeduction !== undefined
+            ? parseFloat(dto.taxDeduction)                  // Override thủ công từ HR
+            : (taxableIncome > 0 ? this._calcPIT(taxableIncome) : 0); // Tính lại tự động
+
+        // ── Tổng khấu trừ (65.1) & NET (66) ──
+        const totalDeduction = this._calcTotalDeduction({
+            insuranceDeduction, insuranceAdjustment, employeeUnionFee,
+            partyFee, taxDeduction, taxAdjustment, otherDeduction,
+        });
+        const netSalary = this._calcNetSalary(totalGrossIncome, totalDeduction); // (66)
+
+        // ── Chi phí công ty (79.1) ──
+        const companyUnion       = parseFloat((insuranceBase * 0.02).toFixed(2));
+        const companyInsurance   = parseFloat((insuranceBase * (0.175 + 0.03 + 0.01)).toFixed(2));
+        const totalHrCost        = this._calcTotalHrCost(totalGrossIncome, companyUnion, companyInsurance);
+
+        const unionFeeValue = dto.unionFee !== undefined ? parseFloat(dto.unionFee) : companyUnion;
 
         return this.payrollDetailRepository.update(detailId, {
-            bonus, deduction, penalty,
-            standardDays, workingDays, officialDays, probationDays, businessTripDays, holidayDays, benefitLeaveDays,
+            bonus, otherDeduction, insuranceAdjustment, employeeUnionFee, partyFee, taxAdjustment,
+            adjustmentTaxable, adjustmentNonTaxable, otherNonTaxable,
+            standardDays, workingDays, officialDays, probationDays, businessTripDays, holidayDays,
+            benefitLeaveDays, annualLeaveDays: ts.annualLeaveDays,
             otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight, totalOtHours,
-            overtimePay: parseFloat(overtimePay.toFixed(2)),
+            overtimePay       : parseFloat(overtimePay.toFixed(2)),
             p1Amount: earnedP1, p21Amount: earnedP21, p22Amount: earnedP22, probationAmount: probationSalary,
             p1p2Percentage: p21Percent, p3Percentage: p22Percent,
-            performanceSalary: detail.performanceSalary,
+            kpiPercentage : p21Percent + p22Percent,
+            performanceSalary : detail.performanceSalary,
             socialInsurance, healthInsurance, unemploymentInsurance,
             socialInsurancePercentage, healthInsurancePercentage, unemploymentInsurancePercentage,
-            insuranceDeduction, netSalary,
-            unionFee: unionFeeValue, // KPCĐ lưu trực tiếp vào cột union_fee
+            insuranceDeduction, taxableIncomePaid: taxableIncome,
+            dependentCount, familyDeduction,
+            taxDeduction, totalGrossIncome, totalDeduction, netSalary,
+            unionFee: unionFeeValue,
+            totalHrCost,
             note: dto.note ?? detail.note,
         });
     }
@@ -1040,49 +1137,50 @@ export class PayrollService {
             empCell.alignment = { horizontal: 'center' };
 
             // Tính các khoản trừ chi tiết
-            const bhxhRate = parseFloat(detail.socialInsurancePercentage) || 8;
-            const bhytRate = parseFloat(detail.healthInsurancePercentage) || 1.5;
-            const bhtnRate = parseFloat(detail.unemploymentInsurancePercentage) || 1;
-            const bhxh = parseFloat(detail.socialInsurance || 0);
-            const bhyt = bhxh > 0 ? bhxh * bhytRate / bhxhRate : 0;
-            const bhtn = bhxh > 0 ? bhxh * bhtnRate / bhxhRate : 0;
-            const kpcd = parseFloat(detail.unionFee || 0);
-            const dangPhi = parseFloat(detail.partyFee || 0);
-            const truyThuBH = parseFloat(detail.insuranceAdjustment || 0);
-            const thueTNCN = parseFloat(detail.taxDeduction || 0);
-            const truyThuThue = parseFloat(detail.taxAdjustment || 0);
-            const khauTruKhac = parseFloat(detail.deduction || 0);
-            const phat = parseFloat(detail.penalty || 0);
-            const totalDeductions = bhxh + bhyt + bhtn + kpcd + dangPhi + truyThuBH + thueTNCN + truyThuThue + khauTruKhac + phat;
+            // (52) BH NLĐ = 10.5% — dùng giá trị đã lưu (insuranceDeduction = BHXH+BHYT+BHTN)
+            const bhNLD         = parseFloat(detail.insuranceDeduction || 0); // (52) 10.5%
+            const cdPhiNLD      = parseFloat(detail.employeeUnionFee   || 0); // (54) CĐ phí NLĐ
+            const dangPhi       = parseFloat(detail.partyFee            || 0); // (55)
+            const truyThuBH     = parseFloat(detail.insuranceAdjustment|| 0); // (53)
+            const thueTNCN      = parseFloat(detail.taxDeduction        || 0); // (63)
+            const truyThuThue   = parseFloat(detail.taxAdjustment       || 0); // (64)
+            const khauTruKhac   = parseFloat(detail.otherDeduction      || 0); // (65)
+            // (65.1) Tổng khấu trừ = (52)+(53)+(54)+(55)+(63)+(64)+(65)
+            const totalDeductions = bhNLD + truyThuBH + cdPhiNLD + dangPhi + thueTNCN + truyThuThue + khauTruKhac;
 
-            // Chi tiết lương
+            // Chi tiết lương — sử dụng totalGrossIncome đã lưu (51) thay vì tính ngược từ net+deductions
+            const grossIncome = parseFloat(detail.totalGrossIncome || 0)
+                || (
+                    parseFloat(detail.p1Amount      || 0) + parseFloat(detail.p21Amount    || 0) +
+                    parseFloat(detail.p22Amount     || 0) + parseFloat(detail.probationAmount|| 0) +
+                    parseFloat(detail.allowanceAmount|| 0) + parseFloat(detail.overtimePay || 0) +
+                    parseFloat(detail.bonus         || 0)
+                );
             const rows = [
                 ['THU NHẬP', '', ''],
-                ['Ngày công chuẩn', '', detail.standardDays || 0],
-                ['Ngày công thực tế', '', detail.workingDays || 0],
-                ['Lương P1 thực nhận', '', parseFloat(detail.p1Amount || 0)],
-                ['Lương P2.1 thực nhận', '', parseFloat(detail.p21Amount || 0)],
-                ['Lương P2.2 thực nhận', '', parseFloat(detail.p22Amount || 0)],
-                ['Lương thử việc', '', parseFloat(detail.probationAmount || 0)],
-                ['Phụ cấp', '', parseFloat(detail.allowanceAmount || 0)],
-                ['OT', '', parseFloat(detail.overtimePay || 0)],
-                ['Thưởng', '', parseFloat(detail.bonus || 0)],
-                ['TỔNG THU NHẬP', '', parseFloat(detail.netSalary || 0) + totalDeductions],
+                ['Ngày công chuẩn',     '', detail.standardDays  || 0],
+                ['Ngày công thực tế',   '', detail.workingDays   || 0],
+                ['Lương P1 thực nhận',  '', parseFloat(detail.p1Amount        || 0)],
+                ['Lương P2.1 thực nhận', '', parseFloat(detail.p21Amount       || 0)],
+                ['Lương P2.2 thực nhận', '', parseFloat(detail.p22Amount       || 0)],
+                ['Lương thử việc',       '', parseFloat(detail.probationAmount || 0)],
+                ['Phụ cấp',              '', parseFloat(detail.allowanceAmount || 0)],
+                ['OT',                   '', parseFloat(detail.overtimePay    || 0)],
+                ['Thưởng (P3)',          '', parseFloat(detail.bonus           || 0)],
+                // (51) dùng totalGrossIncome đã lưu, không tính ngược từ NET
+                ['TỔNG THU NHẬP (51)',    '', grossIncome],
                 ['', '', ''],
                 ['CÁC KHOẢN TRỪ', '', ''],
-                ['BHXH', `(${bhxhRate}%)`, -bhxh],
-                ['BHYT', `(${bhytRate}%)`, -bhyt],
-                ['BHTN', `(${bhtnRate}%)`, -bhtn],
-                ['KPCĐ', '', -kpcd],
-                ['Đảng phí', '', -dangPhi],
-                ['Truy thu BH', '', -truyThuBH],
-                ['Thuế TNCN', '', -thueTNCN],
-                ['Truy thu thuế', '', -truyThuThue],
-                ['Khấu trừ khác', '', -khauTruKhac],
-                ['Phạt', '', -phat],
-                ['TỔNG CÁC KHOẢN TRỪ', '', -totalDeductions],
+                ['BH NLĐ (52 = 10.5%)',   '', -bhNLD],
+                ['Truy thu BH (53)',      '', -truyThuBH],
+                ['CĐ phí NLĐ (54)',       '', -cdPhiNLD],
+                ['Đảng phí (55)',         '', -dangPhi],
+                ['Thuế TNCN (63)',        '', -thueTNCN],
+                ['Truy thu thuế (64)',    '', -truyThuThue],
+                ['Trừ khác (65)',         '', -khauTruKhac],
+                ['TỔNG KHẤU TRỪ (65.1)',  '', -totalDeductions],
                 ['', '', ''],
-                ['THỰC LĨNH (NET)', '', parseFloat(detail.netSalary || 0)],
+                ['THỰC LĨNH NET (66)',     '', parseFloat(detail.netSalary || 0)],
             ];
 
             rows.forEach((row, idx) => {
@@ -1136,17 +1234,185 @@ export class PayrollService {
         return payroll;
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // PURE CALCULATION HELPERS — Mỗi hàm tương ứng một chỉ tiêu tài liệu
+    // ═══════════════════════════════════════════════════════════════
+
     /**
-     * Tính thuế TNCN theo biểu thuế lũy tiến từng phần
+     * Tính mức lương đóng bảo hiểm (giới hạn trần theo quy định)
      *
-     * Bậc thuế:
-     * - Đến 5 triệu: 5%
-     * - Trên 5 đến 10 triệu: 10%
-     * - Trên 10 đến 18 triệu: 15%
-     * - Trên 18 đến 32 triệu: 20%
-     * - Trên 32 đến 52 triệu: 25%
-     * - Trên 52 đến 80 triệu: 30%
-     * - Trên 80 triệu: 35%
+     * Trần mức đóng = 20 × mức lương cơ sở (2.340.000 VND) = 46.800.000 VND
+     * (theo NĐ 24/2023/NĐ-CP về mức lương cơ sở)
+     *
+     * @param {number} baseSalary - Lương cơ bản đóng BHXH (chỉ tiêu 1.1)
+     * @returns {number} Mức lương đóng BH (đã giới hạn trần)
+     */
+    _calcInsuranceBase(baseSalary) {
+        const SALARY_BASE_CEILING = 20 * 2_340_000; // 46.800.000 VND
+        return Math.min(parseFloat(baseSalary || 0), SALARY_BASE_CEILING);
+    }
+
+    /**
+     * Tính BHXH + BHYT + BHTN phía người lao động đóng (chỉ tiêu 52)
+     *
+     * (52) = 10.5% × mức đóng BH
+     *   - BHXH:  8%   (Luật BHXH 2014)
+     *   - BHYT:  1.5% (Luật BHYT)
+     *   - BHTN:  1%   (Luật Việc làm)
+     *   Tổng NLĐ: 10.5%
+     *
+     * @param {number} insuranceBase - Mức lương đóng BH (đã giới hạn trần)
+     * @returns {{ total, social, health, unemployment }} Kết quả từng loại và tổng
+     */
+    _calcEmployeeInsurance(insuranceBase) {
+        const social       = parseFloat((insuranceBase * INSURANCE_RATES.SOCIAL       / 100).toFixed(2));
+        const health       = parseFloat((insuranceBase * INSURANCE_RATES.HEALTH       / 100).toFixed(2));
+        const unemployment = parseFloat((insuranceBase * INSURANCE_RATES.UNEMPLOYMENT / 100).toFixed(2));
+        return {
+            social,
+            health,
+            unemployment,
+            total: social + health + unemployment, // = 10.5% × insuranceBase
+        };
+    }
+
+    /**
+     * Tính giảm trừ gia cảnh (chỉ tiêu 12.2)
+     *
+     * (12.2) = số NPT × 4.400.000 + 11.000.000
+     *   - 11.000.000: giảm trừ bản thân (cố định)
+     *   - 4.400.000: giảm trừ mỗi người phụ thuộc đã đăng ký
+     * (theo Nghị quyết 954/2020/UBTVQH14)
+     *
+     * @param {number} dependentCount - Số người phụ thuộc đã đăng ký
+     * @returns {number} Tổng khoản giảm trừ gia cảnh
+     */
+    _calcFamilyDeduction(dependentCount = 0) {
+        const SELF_DEDUCTION      = 11_000_000; // Giảm trừ bản thân
+        const DEPENDENT_DEDUCTION =  4_400_000; // Giảm trừ mỗi NPT
+        return (Math.max(0, parseInt(dependentCount) || 0) * DEPENDENT_DEDUCTION) + SELF_DEDUCTION;
+    }
+
+    /**
+     * Tính tổng thu nhập gộp (chỉ tiêu 51)
+     *
+     * (51) = (36) + (36.1) + (43) + (45) + (46) + (47) + (50.1)
+     *   - (36)   = (31)+(32)+(33)+(34): Tổng lương chính
+     *   - (36.1): Thưởng phát sinh P3
+     *   - (43)  : Phụ cấp thực nhận (ăn trưa, xăng, ĐT...)
+     *   - (45)  : Tăng ca OT
+     *   - (46)  : Truy thu/lĩnh tính thuế
+     *   - (47)  : Truy thu/lĩnh không tính thuế
+     *   - (50.1): Thu nhập khác không tính thuế
+     *
+     * @param {Object} c - Các thành phần thu nhập
+     * @returns {number} Tổng thu nhập (51)
+     */
+    _calcTotalGrossIncome(c) {
+        const totalOfficialSalary =
+            (c.earnedP1        || 0) +  // (31) P1 thực nhận
+            (c.earnedP21       || 0) +  // (32) P2.1 thực nhận
+            (c.earnedP22       || 0) +  // (33) P2.2 thực nhận
+            (c.probationSalary || 0);   // (34) TV thực nhận
+        return parseFloat((
+            totalOfficialSalary       +  // (36)   Tổng lương chính
+            (c.bonus           || 0)  +  // (36.1) Thưởng P3
+            (c.allowanceAmount || 0)  +  // (43)   Phụ cấp
+            (c.overtimePay     || 0)  +  // (45)   OT
+            (c.adjustmentTaxable    || 0) + // (46) Truy thu tính thuế
+            (c.adjustmentNonTaxable || 0) + // (47) Truy thu không thuế
+            (c.otherNonTaxable      || 0)   // (50.1) Khác không thuế
+        ).toFixed(2));
+    }
+
+    /**
+     * Tính thu nhập tính thuế TNCN (chỉ tiêu 12.3)
+     *
+     * (12.3) = (51) - (52) - (12.2) + (46)
+     *   - (51)  : Tổng thu nhập
+     *   - (52)  : BH NLĐ đóng (10.5%)
+     *   - (12.2): Giảm trừ gia cảnh (bản thân + NPT)
+     *   - (46)  : Truy thu tính thuế (đã cộng vào gross nhưng cần điều chỉnh riêng)
+     * Kết quả không âm (nếu âm → 0)
+     *
+     * @param {number} totalGrossIncome   - (51)
+     * @param {number} insuranceDeduction - (52)
+     * @param {number} familyDeduction    - (12.2)
+     * @returns {number} Thu nhập tính thuế (12.3), không âm
+     */
+    _calcTaxableIncome(totalGrossIncome, insuranceDeduction, familyDeduction) {
+        return Math.max(0, totalGrossIncome - insuranceDeduction - familyDeduction);
+    }
+
+    /**
+     * Tính tổng các khoản khấu trừ (chỉ tiêu 65.1)
+     *
+     * (65.1) = (52) + (53) + (54) + (55) + (63) + (64) + (65)
+     *   - (52): BHXH+BHYT+BHTN NLĐ (10.5%)
+     *   - (53): Truy thu bảo hiểm
+     *   - (54): Công đoàn phí NLĐ (1% - nếu có)
+     *   - (55): Đảng phí
+     *   - (63): Thuế TNCN
+     *   - (64): Truy thu thuế TNCN
+     *   - (65): Trừ khác (phạt, khấu trừ...)
+     *
+     * @param {Object} c - Các khoản khấu trừ
+     * @returns {number} Tổng khấu trừ (65.1)
+     */
+    _calcTotalDeduction(c) {
+        return parseFloat((
+            (c.insuranceDeduction  || 0) +  // (52) BH NLĐ
+            (c.insuranceAdjustment || 0) +  // (53) Truy thu BH
+            (c.employeeUnionFee   || 0)  +  // (54) CĐ phí NLĐ
+            (c.partyFee           || 0)  +  // (55) Đảng phí
+            (c.taxDeduction       || 0)  +  // (63) Thuế TNCN
+            (c.taxAdjustment      || 0)  +  // (64) Truy thu thuế
+            (c.otherDeduction     || 0)     // (65) Trừ khác
+        ).toFixed(2));
+    }
+
+    /**
+     * Tính lương thực nhận NET (chỉ tiêu 66)
+     *
+     * (66) = (51) - (65.1)
+     *
+     * @param {number} totalGrossIncome - (51)
+     * @param {number} totalDeduction   - (65.1)
+     * @returns {number} Lương thực nhận
+     */
+    _calcNetSalary(totalGrossIncome, totalDeduction) {
+        return parseFloat((totalGrossIncome - totalDeduction).toFixed(2));
+    }
+
+    /**
+     * Tính tổng chi phí nhân sự phía doanh nghiệp (chỉ tiêu 79.1)
+     *
+     * (79.1) = (51) + (71) + (75)
+     *   - (51): Tổng thu nhập NLĐ
+     *   - (71): KPCĐ công ty (2% lương đóng BH)
+     *   - (75): BH phía công ty (BHXH 17.5% + BHYT 3% + BHTN 1% = 21.5%)
+     * Lưu ý: Dùng tổng thu nhập (51), KHÔNG dùng lương thực nhận (66)
+     *
+     * @param {number} totalGrossIncome  - (51)
+     * @param {number} companyUnionFee   - (71)
+     * @param {number} companyInsurance  - (75) BHXH+BHYT+BHTN công ty
+     * @returns {number} Tổng chi phí nhân sự (79.1)
+     */
+    _calcTotalHrCost(totalGrossIncome, companyUnionFee, companyInsurance) {
+        return parseFloat((totalGrossIncome + companyUnionFee + companyInsurance).toFixed(2));
+    }
+
+    /**
+     * Tính thuế TNCN theo biểu thuế lũy tiến từng phần (chỉ tiêu 63)
+     *
+     * Bậc thuế (Phụ lục I, TT 111/2013/TT-BTC):
+     * - Đến 5 triệu:          5%
+     * - Trên 5 → 10 triệu:  10%
+     * - Trên 10 → 18 triệu: 15%
+     * - Trên 18 → 32 triệu: 20%
+     * - Trên 32 → 52 triệu: 25%
+     * - Trên 52 → 80 triệu: 30%
+     * - Trên 80 triệu:       35%
      */
     _calcPIT(taxableIncome) {
         const brackets = [
@@ -1179,12 +1445,17 @@ export class PayrollService {
         const f = (n) => parseFloat(n || 0);
         const sentDate = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        // ── I. Định mức Hợp đồng & Công (1-5) ──
+        // ── I. Định mức Hợp đồng & Công (1-5) — Hiển thị định mức gốc, không phải lương thực nhận ──
+        // (1.1) Lương đóng BHXH — lấy từ baseSalary (nguồn: hợp đồng lao động)
         const lươngĐóngBHXH = f(detail.baseSalary);
-        const lươngVịTrí = f(detail.performanceSalary);
-        const thưởngHQCV = f(detail.p21Amount) || 0;
-        const khoánCV = f(detail.p22Amount) || 0;
-        const lươngThửViệc = f(detail.probationAmount);
+        // (11) Lương vị trí P1 — ưu tiên positionSalary nếu đã có, fallback = baseSalary
+        const lươngVịTrí = f(detail.positionSalary) || f(detail.baseSalary);
+        // (12) Thưởng HQCV P2.1 — ưu tiên performanceBonusSalary nếu đã có, fallback = p21Amount
+        const thưởngHQCV = f(detail.performanceBonusSalary) || f(detail.p21Amount) || 0;
+        // (13) Khoán CV P2.2 — ưu tiên taskContractSalary nếu đã có, fallback = p22Amount
+        const khoánCV = f(detail.taskContractSalary) || f(detail.p22Amount) || 0;
+        // (14) Lương TV — ưu tiên probationBaseSalary nếu đã có, fallback = probationAmount
+        const lươngThửViệc = f(detail.probationBaseSalary) || f(detail.probationAmount) || 0;
 
         // ── II. Dữ liệu công chốt (6-9) ──
         const côngChuẩn = f(detail.standardDays) || 26;
@@ -1214,28 +1485,34 @@ export class PayrollService {
         const tổngThuNhập = tổngLươngChính + thưởngP3 + phụCấp + tăngCaOT + truyThuTínhThuế + truyThuKoThuế + khácKoThuế;
 
         // ── VI. Khấu trừ & Thuế (23-32) ──
-        const insuranceBase = Math.min(lươngĐóngBHXH, 20 * 2340000);
-        const siRate = f(detail.socialInsurancePercentage) || 8;
-        const hiRate = f(detail.healthInsurancePercentage) || 1.5;
-        const uiRate = f(detail.unemploymentInsurancePercentage) || 1;
+        // (52) BHXH+BHYT+BHTN NLĐ = 10.5% × mức đóng BH
+        // Ưu tiên dùng giá trị đã lưu (insuranceDeduction = 10.5%), tính lại nếu chưa có
+        const insuranceBase = this._calcInsuranceBase(lươngĐóngBHXH);
+        const bhxhNLĐ = f(detail.insuranceDeduction) || parseFloat((insuranceBase * 0.105).toFixed(2)); // (52) = 10.5%
+        const partyFee = f(detail.partyFee) || 0;                    // (55) Đảng phí
+        const insuranceAdjustment = f(detail.insuranceAdjustment) || 0; // (53) Truy thu BH
+        const employeeUnionFee = f(detail.employeeUnionFee) || 0;    // (54) CĐ phí NLĐ
+        const taxAdjustment = f(detail.taxAdjustment) || 0;          // (64) Truy thu thuế
+        // (12.2) Giảm trừ gia cảnh = NPT × 4.4tr + 11tr
+        const giảmTrừGiaCảnh = f(detail.familyDeduction) || this._calcFamilyDeduction(f(detail.dependentCount));
+        // (12.3) Thu nhập tính thuế
+        const tnTínhThuế = f(detail.taxableIncomePaid) || Math.max(0, tổngThuNhập - bhxhNLĐ - giảmTrừGiaCảnh);
+        const thuếTNCN = f(detail.taxDeduction);                    // (63)
+        const khấuTrừKhác = f(detail.otherDeduction) || 0;        // (65) Trừ khác
+        // (65.1) Tổng khấu trừ = (52)+(53)+(54)+(55)+(63)+(64)+(65)
+        const tổngKhấuTrừ = bhxhNLĐ + insuranceAdjustment + employeeUnionFee + partyFee + thuếTNCN + taxAdjustment + khấuTrừKhác;
 
-        const bhxhNLĐ = f(detail.socialInsurance) || (insuranceBase * (siRate + hiRate + uiRate) / 100);
-        const partyFee = f(detail.partyFee) || 0;
-        const insuranceAdjustment = f(detail.insuranceAdjustment) || 0;
-        const taxAdjustment = f(detail.taxAdjustment) || 0;
-        const giảmTrừGiaCảnh = f(detail.taxableIncomePaid) || 11000000;
-        const tnTínhThuế = Math.max(0, tổngThuNhập - bhxhNLĐ - giảmTrừGiaCảnh);
-        const thuếTNCN = f(detail.taxDeduction);
-        const khấuTrừKhác = f(detail.penalty) + f(detail.deduction);
-        const tổngKhấuTrừ = bhxhNLĐ + insuranceAdjustment + partyFee + thuếTNCN + taxAdjustment + khấuTrừKhác;
+        // ── VII. Thực lĩnh (66) ──
+        // Ưu tiên dùng giá trị đã lưu (netSalary), tính ngược nếu chưa có
+        const thựcLĩnh = f(detail.netSalary) || (tổngThuNhập - tổngKhấuTrừ);
 
-        // ── VII. Thực lĩnh (33) ──
-        const thựcLĩnh = tổngThuNhập - tổngKhấuTrừ;
-
-        // ── VIII. Chi phí Doanh nghiệp (34-36) ──
-        const kpcđCty = f(detail.unionFee) || (insuranceBase * 0.02);
-        const bhxhCty = f(detail.companyInsurance) || (insuranceBase * 0.175);
-        const tổngChiPhíNS = thựcLĩnh + kpcđCty + bhxhCty;
+        // ── VIII. Chi phí Doanh nghiệp (79.1) ──
+        // (79.1) = (51) + (71) + (75) — dùng tổngThuNhập (51), KHÔNG dùng thựcLĩnh (66)
+        const kpcđCty = f(detail.unionFee) || parseFloat((insuranceBase * 0.02).toFixed(2));       // (71) KPCĐ công ty 2%
+        const bhxhCty = f(detail.companyInsurance)
+            || parseFloat((insuranceBase * (0.175 + 0.03 + 0.01)).toFixed(2));                       // (75) BH công ty 21.5%
+        const tổngChiPhíNS = f(detail.totalHrCost)
+            || this._calcTotalHrCost(tổngThuNhập, kpcđCty, bhxhCty);                              // (79.1)
 
         // Styles
         const sectionTitle = 'font-size:10px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;margin:0 0 8px;';
