@@ -75,22 +75,40 @@ function _resolveRequestCode(req, isWeekend) {
   const groupCode = req.requestGroup?.code;
   if (groupCode === RequestGroupCode.BUSINESS_TRIP) {
     const name = (req.requestType?.name || '').toLowerCase();
-    if (isWeekend || name.includes('ngày nghỉ') || name.includes('cuối tuần')) return 'CT-CN';
+    if (isWeekend || name.includes('ngày nghỉ') || name.includes('cuối tuần'))
+      return 'CT-CN';
     return 'CT';
   }
   if (groupCode === RequestGroupCode.LEAVE) {
     const name = (req.requestType?.name || '').toLowerCase();
     if (name.includes('phép năm') || name.includes('đơn nghỉ phép')) return 'P';
     if (name.includes('thai sản')) return 'M';
-    if (name.includes('không hưởng lương') || name.includes('không lương')) return 'R';
+    if (name.includes('không hưởng lương') || name.includes('không lương'))
+      return 'R';
     if (name.includes('con ốm')) return 'C';
-    if (name.includes('ốm đau') || name.includes('bản thân ốm') || name.includes('nghỉ ốm')) return 'S';
+    if (
+      name.includes('ốm đau') ||
+      name.includes('bản thân ốm') ||
+      name.includes('nghỉ ốm')
+    )
+      return 'S';
     if (name.includes('dưỡng sức')) return 'D';
     if (name.includes('tai nạn')) return 'A';
-    if (name.includes('việc riêng') || name.includes('hiếu') || name.includes('hỉ') || name.includes('cưới')) return 'V';
+    if (
+      name.includes('việc riêng') ||
+      name.includes('hiếu') ||
+      name.includes('hỉ') ||
+      name.includes('cưới')
+    )
+      return 'V';
     if (name.includes('bù lễ')) return 'BL';
     if (name.includes('bù')) return 'B';
-    if (name.includes('học') || name.includes('tham quan') || name.includes('nghỉ mát')) return 'H';
+    if (
+      name.includes('học') ||
+      name.includes('tham quan') ||
+      name.includes('nghỉ mát')
+    )
+      return 'H';
     if (name.includes('kỷ luật') || name.includes('chờ việc')) return 'NC';
     if (name.includes('lễ')) return 'L';
     return 'P'; // Mặc định
@@ -655,7 +673,7 @@ export class TimesheetsService {
         'time_sheets',
         'ts',
         'ts.employee_id = emp.id AND ts.month = :month AND ts.year = :year AND ts.deleted_at IS NULL',
-        { month, year }
+        { month, year },
       )
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
@@ -1189,7 +1207,12 @@ export class TimesheetsService {
     }
 
     // Call summarizeTimesheet which now handles all logic including OT
-    const updatedTimesheet = await this.summarizeTimesheet(timesheet.employeeId, timesheet.month, timesheet.year, userContext);
+    const updatedTimesheet = await this.summarizeTimesheet(
+      timesheet.employeeId,
+      timesheet.month,
+      timesheet.year,
+      userContext,
+    );
 
     if (this.actionLogsService) {
       await this.actionLogsService.log({
@@ -1745,6 +1768,7 @@ export class TimesheetsService {
       if (a.departmentIds && Array.isArray(a.departmentIds) && a.departmentIds.includes(employeeDeptId)) return true;
       return false;
     });
+    console.log(`shift assignment ${assignment.shift}`);
 
     // Filter to assignments that are effective during this month
     const effectiveAssignments = applicableAssignments.filter(a => {
@@ -1969,7 +1993,7 @@ export class TimesheetsService {
             typeof excuseRequest.requestContent === 'string'
               ? JSON.parse(excuseRequest.requestContent)
               : excuseRequest.requestContent;
-        } catch (e) { }
+        } catch (e) {}
 
         detail.excuseRequest = {
           id: excuseRequest.id,
@@ -2630,12 +2654,13 @@ export class TimesheetsService {
         });
 
         const correctionReq = dayRequests.find(
-          (r) => r.requestGroup?.code === RequestGroupCode.ATTENDANCE_CORRECTION
+          (r) =>
+            r.requestGroup?.code === RequestGroupCode.ATTENDANCE_CORRECTION,
         );
         const codeRequests = dayRequests.filter(
           (r) =>
             r.requestGroup?.code === RequestGroupCode.LEAVE ||
-            r.requestGroup?.code === RequestGroupCode.BUSINESS_TRIP
+            r.requestGroup?.code === RequestGroupCode.BUSINESS_TRIP,
         );
 
         if (correctionReq) {
@@ -2657,14 +2682,16 @@ export class TimesheetsService {
             for (let i = 0; i < 2; i++) {
               const isWorked =
                 codeRequests[i].isWorkedTime ||
-                codeRequests[i].requestGroup?.code === RequestGroupCode.BUSINESS_TRIP;
+                codeRequests[i].requestGroup?.code ===
+                  RequestGroupCode.BUSINESS_TRIP;
               if (isWorked) workValue += 0.5;
             }
           } else {
             const reqCode = mappedCodes[0];
             const isWorked =
               codeRequests[0].isWorkedTime ||
-              codeRequests[0].requestGroup?.code === RequestGroupCode.BUSINESS_TRIP;
+              codeRequests[0].requestGroup?.code ===
+                RequestGroupCode.BUSINESS_TRIP;
 
             // Trường hợp 0.5/[Mã] - nửa làm nửa nghỉ
             if (workValue > 0 && workValue < 1.0) {
@@ -2770,16 +2797,18 @@ export class TimesheetsService {
       });
     }
 
-
-
     // AFTER successful sync, trigger a summary update for all affected employees
     try {
-      console.log(`[SyncAttendance] Syncing summary for ${scopedEmployeeIds.length} employees...`);
+      console.log(
+        `[SyncAttendance] Syncing summary for ${scopedEmployeeIds.length} employees...`,
+      );
       for (const empId of scopedEmployeeIds) {
         await this.summarizeTimesheet(empId, month, year, userContext);
       }
     } catch (err) {
-      console.error(`[SyncAttendance] Failed to update summaries: ${err.message}`);
+      console.error(
+        `[SyncAttendance] Failed to update summaries: ${err.message}`,
+      );
     }
 
     return {
@@ -2803,7 +2832,7 @@ export class TimesheetsService {
         'time_sheets',
         'ts',
         'ts.employee_id = emp.id AND ts.month = :month AND ts.year = :year AND ts.deleted_at IS NULL',
-        { month, year }
+        { month, year },
       )
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
@@ -2869,7 +2898,9 @@ export class TimesheetsService {
 
     const standardDays = this._countWorkingDays(year, month, holidayDates);
 
-    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity,
+    );
     const records = await processedRepo
       .createQueryBuilder('par')
       .leftJoinAndSelect('par.request', 'req')
@@ -2938,7 +2969,7 @@ export class TimesheetsService {
         empOtDetails,
         activeRules,
         ruleDepts,
-        standardDays
+        standardDays,
       );
 
       return {
@@ -2949,9 +2980,13 @@ export class TimesheetsService {
         departmentName: emp.department?.departmentName || '',
         employmentStatus: emp.employmentStatus,
         standardDays,
-        baseSalary: salaries.find(s => Number(s.employeeId) === Number(emp.id))?.baseSalary || 0,
-        salaryType: salaries.find(s => Number(s.employeeId) === Number(emp.id))?.salaryType,
-        ...summary
+        baseSalary:
+          salaries.find((s) => Number(s.employeeId) === Number(emp.id))
+            ?.baseSalary || 0,
+        salaryType: salaries.find(
+          (s) => Number(s.employeeId) === Number(emp.id),
+        )?.salaryType,
+        ...summary,
       };
     });
 
@@ -3130,9 +3165,16 @@ export class TimesheetsService {
 
     // Synchronize to the main timesheets summary table
     try {
-      await this.summarizeTimesheet(record.employeeId, record.attendanceDate.getMonth() + 1, record.attendanceDate.getFullYear(), userContext);
+      await this.summarizeTimesheet(
+        record.employeeId,
+        record.attendanceDate.getMonth() + 1,
+        record.attendanceDate.getFullYear(),
+        userContext,
+      );
     } catch (err) {
-      console.error(`Failed to summarize timesheet after record update: ${err.message}`);
+      console.error(
+        `Failed to summarize timesheet after record update: ${err.message}`,
+      );
     }
 
     if (this.actionLogsService) {
@@ -3156,10 +3198,19 @@ export class TimesheetsService {
    */
   async summarizeTimesheet(employeeId, month, year, userContext) {
     const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
-    let timesheet = await this.timesheetsRepository.findByEmployeeAndPeriod(employeeId, month, year);
+    let timesheet = await this.timesheetsRepository.findByEmployeeAndPeriod(
+      employeeId,
+      month,
+      year,
+    );
     if (!timesheet) {
       // Create if not exists (though typically created by generate)
-      timesheet = timesheetRepo.create({ employeeId, month, year, isLocked: false });
+      timesheet = timesheetRepo.create({
+        employeeId,
+        month,
+        year,
+        isLocked: false,
+      });
     }
     if (timesheet.isLocked) return timesheet;
 
@@ -3176,41 +3227,82 @@ export class TimesheetsService {
     const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
     const holidays = await holidayRepo.find({
       where: [
-        { startDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
-        { endDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
-        { startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]), endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]), isDeleted: false },
+        {
+          startDate: Between(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0],
+          ),
+          isDeleted: false,
+        },
+        {
+          endDate: Between(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0],
+          ),
+          isDeleted: false,
+        },
+        {
+          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
+          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          isDeleted: false,
+        },
       ],
     });
     const holidayDates = new Set();
-    holidays.forEach(h => {
+    holidays.forEach((h) => {
       let cur = new Date(h.startDate);
       let stop = new Date(h.endDate || h.startDate);
-      while (cur <= stop) { holidayDates.add(cur.toISOString().split('T')[0]); cur.setDate(cur.getDate() + 1); }
+      while (cur <= stop) {
+        holidayDates.add(cur.toISOString().split('T')[0]);
+        cur.setDate(cur.getDate() + 1);
+      }
     });
     const standardDays = this._countWorkingDays(year, month, holidayDates);
 
     // 2. Get Processed Records
-    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
-    const records = await processedRepo.createQueryBuilder('par')
-      .leftJoinAndSelect('par.request', 'req').leftJoinAndSelect('req.requestGroup', 'rg')
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity,
+    );
+    const records = await processedRepo
+      .createQueryBuilder('par')
+      .leftJoinAndSelect('par.request', 'req')
+      .leftJoinAndSelect('req.requestGroup', 'rg')
       .leftJoinAndSelect('par.workingShift', 'ws')
-      .where('MONTH(par.attendanceDate) = :m AND YEAR(par.attendanceDate) = :y', { m: month, y: year })
-      .andWhere('par.employeeId = :employeeId', { employeeId }).getMany();
+      .where(
+        'MONTH(par.attendanceDate) = :m AND YEAR(par.attendanceDate) = :y',
+        { m: month, y: year },
+      )
+      .andWhere('par.employeeId = :employeeId', { employeeId })
+      .getMany();
 
     // 3. Get OT Details
-    const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
-    const otDetails = await otDetailRepo.createQueryBuilder('otd')
-      .leftJoinAndSelect('otd.request', 'req').leftJoinAndSelect('req.requestGroup', 'rg')
-      .leftJoinAndSelect('otd.overtimeRule', 'rule').leftJoinAndSelect('rule.overtimeType', 'type')
-      .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', { m: month, y: year })
+    const otDetailRepo = AppDataSource.getRepository(
+      OvertimeRequestDetailEntity,
+    );
+    const otDetails = await otDetailRepo
+      .createQueryBuilder('otd')
+      .leftJoinAndSelect('otd.request', 'req')
+      .leftJoinAndSelect('req.requestGroup', 'rg')
+      .leftJoinAndSelect('otd.overtimeRule', 'rule')
+      .leftJoinAndSelect('rule.overtimeType', 'type')
+      .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', {
+        m: month,
+        y: year,
+      })
       .andWhere('req.status = :s', { s: 'APPROVED' })
       .andWhere('rg.code = :groupCode', { groupCode: 'OVERTIME' })
-      .andWhere('req.employeeId = :employeeId', { employeeId }).getMany();
+      .andWhere('req.employeeId = :employeeId', { employeeId })
+      .getMany();
 
     // Rules for OT resolution
     const ruleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
-    const activeRules = await ruleRepo.find({ where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false }, relations: ['overtimeType'] });
-    const ruleDeptRepo = AppDataSource.getRepository(OvertimeRuleDepartmentEntity);
+    const activeRules = await ruleRepo.find({
+      where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false },
+      relations: ['overtimeType'],
+    });
+    const ruleDeptRepo = AppDataSource.getRepository(
+      OvertimeRuleDepartmentEntity,
+    );
     const ruleDepts = await ruleDeptRepo.find({ where: { isDeleted: false } });
 
     // 4. Aggregate
@@ -3220,14 +3312,17 @@ export class TimesheetsService {
       otDetails,
       activeRules,
       ruleDepts,
-      standardDays
+      standardDays,
     );
 
     // 5. Update TimeSheetEntity
     Object.assign(timesheet, {
       standardDays,
       totalWorkingDays: summary.totalMonthlyDays,
-      totalWorkingHours: records.reduce((sum, r) => sum + (Number(r.workValue) * 8), 0), // Base hours approximation
+      totalWorkingHours: records.reduce(
+        (sum, r) => sum + Number(r.workValue) * 8,
+        0,
+      ), // Base hours approximation
       overtimeHours: summary.totalOtHours,
       officialDays: summary.officialDays,
       probationDays: summary.probationDays,
@@ -3255,7 +3350,14 @@ export class TimesheetsService {
   /**
    * Shared helper for aggregating attendance data for a single employee.
    */
-  _aggregateEmployeeAttendanceSummary(emp, empRecords, empOtDetails, activeRules, ruleDepts, standardDays) {
+  _aggregateEmployeeAttendanceSummary(
+    emp,
+    empRecords,
+    empOtDetails,
+    activeRules,
+    ruleDepts,
+    standardDays,
+  ) {
     let officialDays = 0;
     let probationDays = 0;
     let businessTripDays = 0;
@@ -3275,14 +3377,18 @@ export class TimesheetsService {
       const reqCode = request?.requestGroup?.code;
 
       const ws = r.workingShift;
-      const isNightShift = ws && (
-        (ws.startTime >= '22:00:00' || ws.startTime < '06:00:00') ||
-        (ws.shiftName && (ws.shiftName.includes('Đêm') || ws.shiftName.toLowerCase().includes('night')))
-      );
+      const isNightShift =
+        ws &&
+        (ws.startTime >= '22:00:00' ||
+          ws.startTime < '06:00:00' ||
+          (ws.shiftName &&
+            (ws.shiftName.includes('Đêm') ||
+              ws.shiftName.toLowerCase().includes('night'))));
 
       if (isNightShift && val > 0) {
         if (emp.employmentStatus === 'ACTIVE') nightShiftOfficialDays += val;
-        else if (emp.employmentStatus === 'PROBATION') nightShiftProbationDays += val;
+        else if (emp.employmentStatus === 'PROBATION')
+          nightShiftProbationDays += val;
       }
 
       let isWorkingDay = false;
@@ -3362,7 +3468,12 @@ export class TimesheetsService {
       }
     });
 
-    let otWeekday = 0, otWeekdayNight = 0, otWeekend = 0, otWeekendNight = 0, otHoliday = 0, otHolidayNight = 0;
+    let otWeekday = 0,
+      otWeekdayNight = 0,
+      otWeekend = 0,
+      otWeekendNight = 0,
+      otHoliday = 0,
+      otHolidayNight = 0;
     empOtDetails.forEach((ot) => {
       const hours = Number(ot.totalHours) || 0;
       let typeCode = 'WEEKDAY';
@@ -3371,23 +3482,36 @@ export class TimesheetsService {
         const typeId = ot.overtimeTypeId || ot.request?.overtimeTypeId;
         if (typeId) {
           const workDate = new Date(ot.workDate);
-          effectiveRule = activeRules.find(r => {
+          effectiveRule = activeRules.find((r) => {
             if (r.overtimeTypeId !== typeId) return false;
             const from = r.effectiveFrom ? new Date(r.effectiveFrom) : null;
             const to = r.effectiveTo ? new Date(r.effectiveTo) : null;
             if (from && workDate < from) return false;
             if (to && workDate > to) return false;
-            const depts = ruleDepts.filter(rd => rd.overtimeRuleId === r.id).map(rd => rd.departmentId);
-            if (depts.length > 0 && !depts.includes(emp.departmentId)) return false;
+            const depts = ruleDepts
+              .filter((rd) => rd.overtimeRuleId === r.id)
+              .map((rd) => rd.departmentId);
+            if (depts.length > 0 && !depts.includes(emp.departmentId))
+              return false;
             return true;
           });
         }
       }
-      if (effectiveRule) typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
-      const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
-      if (typeCode === 'WEEKDAY') { if (isNight) otWeekdayNight += hours; else otWeekday += hours; }
-      else if (typeCode === 'WEEKEND') { if (isNight) otWeekendNight += hours; else otWeekend += hours; }
-      else if (typeCode === 'HOLIDAY') { if (isNight) otHolidayNight += hours; else otHoliday += hours; }
+      if (effectiveRule)
+        typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
+      const isNight =
+        ot.startTime &&
+        (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
+      if (typeCode === 'WEEKDAY') {
+        if (isNight) otWeekdayNight += hours;
+        else otWeekday += hours;
+      } else if (typeCode === 'WEEKEND') {
+        if (isNight) otWeekendNight += hours;
+        else otWeekend += hours;
+      } else if (typeCode === 'HOLIDAY') {
+        if (isNight) otHolidayNight += hours;
+        else otHoliday += hours;
+      }
     });
 
     const totalOtHours = otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight;

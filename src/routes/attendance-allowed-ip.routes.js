@@ -1,8 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { AttendanceAllowedIpController } from '../controllers/attendance-allowed-ip.controller.js';
-import { CreateAttendanceAllowedIpDto } from '../models/dto/attendance-allowed-ip/create-attendance-allowed-ip.dto.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = express.Router();
@@ -20,7 +18,6 @@ router.post(
   '/',
   authMiddleware,
   permissionsMiddleware('ATTENDANCE_SECURITY_CONFIG_UPDATE'),
-  validationMiddleware(CreateAttendanceAllowedIpDto),
   (req, res, next) => controller.create(req, res, next),
 );
 router.delete(

@@ -1,8 +1,12 @@
-import * as jwt from 'jsonwebtoken';
 import { AuthService } from '../services/auth.service.js';
 import { ResponseUtil } from '../common/utils/response.util.js';
 import { AppMessages } from '../common/constants/index.js';
 import ms from 'ms';
+import { plainToInstance } from 'class-transformer';
+import { LoginDto } from '../models/dto/auth/login.dto.js';
+import { ResetPasswordOtpDto } from '../models/dto/auth/reset-password-otp.dto.js';
+import { UpdateProfileDto } from '../models/dto/auth/update-profile.dto.js';
+import { ChangePasswordDto } from '../models/dto/auth/change-password.dto.js';
 
 export class AuthController {
   constructor() {
@@ -11,23 +15,16 @@ export class AuthController {
 
   login = async (req, res, next) => {
     try {
-      const { email, password } = req.body;
-
-      const user = await this.authService.validateUser(email, password);
-
-      if (!user) {
-        const error = new Error('Invalid credentials');
-        error.statusCode = 401;
-        throw error;
-      }
-
-      const { refreshToken, ...resultToken } =
-        await this.authService.login(user);
+      const loginDto = plainToInstance(LoginDto, req.body);
+      const { refreshToken, ...resultToken } = await this.authService.login(
+        loginDto.email,
+        loginDto.password,
+      );
       res.cookie('refreshToken', refreshToken, {
-        httpOnly: true, // JS frontend không đọc được
+        httpOnly: true,
         secure: false,
-        sameSite: 'lax', // cross-site
-        maxAge: ms(process.env.JWT_REFRESH_EXPIRES_IN), // 7 ngày
+        sameSite: 'lax',
+        maxAge: ms(process.env.JWT_REFRESH_EXPIRES_IN),
       });
 
       ResponseUtil.sendResponse(
@@ -64,7 +61,7 @@ export class AuthController {
   logout = async (req, res, next) => {
     try {
       const userId = req.user.id;
-      const result = await this.authService.logout(userId);
+      await this.authService.logout(userId);
       res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: false,
@@ -72,7 +69,7 @@ export class AuthController {
         path: '/',
       });
 
-      ResponseUtil.sendResponse(res, AppMessages.Success.Auth.LOGOUT, result);
+      ResponseUtil.sendResponse(res, AppMessages.Success.Auth.LOGOUT, {});
     } catch (error) {
       next(error);
     }
@@ -81,7 +78,11 @@ export class AuthController {
   changePassword = async (req, res, next) => {
     try {
       const userId = req.user.id;
-      const result = await this.authService.changePassword(userId, req.body);
+      const changePasswordDto = plainToInstance(ChangePasswordDto, req.body);
+      const result = await this.authService.changePassword(
+        userId,
+        changePasswordDto,
+      );
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.Auth.PASSWORD_CHANGED,
@@ -109,8 +110,7 @@ export class AuthController {
   editProfile = async (req, res, next) => {
     try {
       const userId = req.user.id;
-      // Build update DTO from body and include uploaded avatar if present
-      const updateDto = { ...req.body };
+      const updateDto = plainToInstance(UpdateProfileDto, req.body);
       if (req.file) {
         updateDto.avatar = req.file.path.replace(/\\/g, '/');
       }
@@ -124,7 +124,7 @@ export class AuthController {
   forgotPassword = async (req, res, next) => {
     try {
       const { email } = req.body;
-      
+
       const result = await this.authService.forgotPassword(email);
 
       return ResponseUtil.sendResponse(
@@ -139,7 +139,10 @@ export class AuthController {
 
   resetPasswordWithOtp = async (req, res, next) => {
     try {
-      const { otpRequestId, otp, newPassword } = req.body;
+      const { otpRequestId, otp, newPassword } = plainToInstance(
+        ResetPasswordOtpDto,
+        req.body,
+      );
 
       const result = await this.authService.resetPasswordWithOtp(
         otpRequestId,

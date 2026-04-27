@@ -8,7 +8,6 @@ import {
   BadRequestException,
 } from '../common/exceptions/index.js';
 import { computeSimilarity } from '../common/utils/vector.utils.js';
-const REGISTER_SIMILARITY_THRESHOLD = 0.5;
 
 export class FaceDataService {
   constructor() {
@@ -26,18 +25,24 @@ export class FaceDataService {
     if (!employee) {
       throw new NotFoundException('Không tìm thấy nhân viên');
     }
+    const faceDataExist =
+      await this.faceDataRepository.findByEmployeeIdWithEmpInfo(employee.id);
+    if (faceDataExist) {
+      throw new BadRequestException('Nhân viên đã đăng ký khuôn mặt');
+    }
+
     if (!files || files.length === 0) {
-      throw new BadRequestException('Images required');
+      throw new BadRequestException('Vui lòng cung cấp ít nhất một ảnh để đăng ký khuôn mặt.');
     }
 
     // 1. Lấy config từ DB
     const config = await this.faceRecognitionConfigRepository.findOneConfig();
     if (!config) {
-      throw new Error('Face recognition config chưa được khởi tạo.');
+      throw new Error('Cấu hình nhận diện khuôn mặt chưa được thiết lập. Vui lòng liên hệ quản trị viên.');
     }
 
     const spoofThreshold = Number(config.spoofThreshold);
-    const recognitionThreshold = Number(REGISTER_SIMILARITY_THRESHOLD);
+    const recognitionThreshold = Number(config.recognitionThreshold);
     const similarityMetric = config.similarityMetric || 'cosine';
     const maxFacesAllowed = Number(config.maxFacesAllowed);
     const faceDetectionMinSize = Number(config.faceDetectionMinSize);
@@ -51,22 +56,20 @@ export class FaceDataService {
 
     // 3. Liveness check — so avg_liveness_score với spoofThreshold
     if (aiResult.avg_liveness_score < spoofThreshold) {
-      throw new BadRequestException(
-        `Liveness thấp (${aiResult.avg_liveness_score}), ngưỡng yêu cầu: ${spoofThreshold}.`,
-      );
+      throw new BadRequestException('Ảnh chụp không đủ độ chân thực (nghi ngờ ảnh giả mạo). Vui lòng chụp ảnh người thật, rõ nét và trực diện hơn.');
     }
 
     // 4. Validate từng frame: face count + face size
     for (const frame of aiResult.frames) {
       if (frame.face_count === 0) {
         throw new BadRequestException(
-          `Frame ${frame.frame_index + 1}: không phát hiện khuôn mặt.`,
+          `Ảnh thứ ${frame.frame_index + 1} không chứa khuôn mặt nào. Vui lòng chụp lại.`,
         );
       }
 
       if (frame.face_count > maxFacesAllowed) {
         throw new BadRequestException(
-          `Frame ${frame.frame_index + 1}: phát hiện ${frame.face_count} khuôn mặt, chỉ cho phép tối đa ${maxFacesAllowed}.`,
+          `Ảnh thứ ${frame.frame_index + 1} chứa nhiều khuôn mặt. Vui lòng đảm bảo chỉ có duy nhất khuôn mặt của bạn trong khung hình.`,
         );
       }
 
@@ -74,7 +77,7 @@ export class FaceDataService {
         const minDim = Math.min(face.width, face.height);
         if (minDim < faceDetectionMinSize) {
           throw new BadRequestException(
-            `Frame ${frame.frame_index + 1}: khuôn mặt quá nhỏ (${minDim}px), yêu cầu tối thiểu ${faceDetectionMinSize}px.`,
+            `Khuôn mặt trong ảnh thứ ${frame.frame_index + 1} quá nhỏ hoặc ở quá xa. Vui lòng đưa khuôn mặt lại gần camera hơn.`,
           );
         }
       }
@@ -89,7 +92,7 @@ export class FaceDataService {
       const sim = computeSimilarity(base, embeddings[i], similarityMetric);
       if (sim < recognitionThreshold) {
         throw new BadRequestException(
-          `Frame ${i + 1} khác người với frame 1 (similarity=${sim.toFixed(4)}, ngưỡng=${recognitionThreshold}, metric=${similarityMetric}).`,
+          `Khuôn mặt trong ảnh thứ ${i + 1} không khớp với ảnh đầu tiên. Vui lòng đảm bảo tất cả các ảnh đều là của cùng một người.`,
         );
       }
     }

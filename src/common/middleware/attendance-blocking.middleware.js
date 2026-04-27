@@ -30,7 +30,7 @@ export class AttendanceBlockingMiddleware {
    */
   async handle(error, employeeId) {
     const ctx = getRequestContext();
-    const originalAction = ctx.customAction; // { method, path, customAction }
+    const originalAction = ctx?.customAction; // { method, path, customAction }
 
     // Exception cần mang theo .code (xem phần 3)
     const errorType = CODE_TO_ERROR_TYPE[error.errorCode];
@@ -40,14 +40,29 @@ export class AttendanceBlockingMiddleware {
       await this.blockingConfigRepo.findActiveByErrorType(errorType);
     if (!config) return;
 
-    setRequestContextValue('customAction', null);
+    let isApplySecurity = false;
 
-    await this._incrementAndMaybeBlock(
-      employeeId,
-      errorType,
-      config,
-      originalAction,
-    );
+    if (config.applyTo === 'ALL') {
+      isApplySecurity = true;
+    }
+
+    if (config.applyTo === 'EMPLOYEE') {
+      const attendanceLevel = config.targetIds;
+      if (attendanceLevel.includes(employeeId)) {
+        isApplySecurity = true;
+      }
+    }
+
+    if (isApplySecurity) {
+      setRequestContextValue('customAction', null);
+
+      await this._incrementAndMaybeBlock(
+        employeeId,
+        errorType,
+        config,
+        originalAction,
+      );
+    }
   }
 
   async _incrementAndMaybeBlock(employeeId, errorType, config, originalAction) {

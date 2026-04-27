@@ -78,7 +78,7 @@ export class UsersRepository {
 
   async findById(id) {
     return this.userRepository.findOne({
-      where: { id },
+      where: { id, isDeleted: false },
       relations: [
         'userRoles',
         'userRoles.role',
@@ -97,6 +97,7 @@ export class UsersRepository {
       .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
       .leftJoinAndSelect('rolePermissions.permission', 'permission')
       .where('user.id = :id', { id })
+      .andWhere('user.isDeleted = :isDeleted', { isDeleted: false })
       .getOne();
   }
 
@@ -124,6 +125,7 @@ export class UsersRepository {
       .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
       .leftJoinAndSelect('rolePermissions.permission', 'permission')
       .where('user.email = :email', { email: email.toLowerCase() })
+      .andWhere('user.isDeleted = :isDeleted', { isDeleted: false })
       .getOne();
   }
 
@@ -199,7 +201,7 @@ export class UsersRepository {
       .innerJoin('user.userRoles', 'userRoles')
       .innerJoin('userRoles.role', 'role')
       .where('user.status = :status', { status: 'ACTIVE' })
-      .andWhere('role.name = :roleName', { roleName: 'ADMIN' })
+      .andWhere('role.roleName = :roleName', { roleName: 'ADMIN' })
       .distinct(true)
       .getCount();
   }
