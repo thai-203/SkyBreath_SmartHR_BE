@@ -47,12 +47,6 @@ export class UpdateUserDto {
   username;
 
   @IsOptional()
-  @IsString()
-  @MinLength(6)
-  @MaxLength(50)
-  password;
-
-  @IsOptional()
   @IsArray()
   @IsInt({ each: true })
   @Type(() => Number) // QUAN TRỌNG

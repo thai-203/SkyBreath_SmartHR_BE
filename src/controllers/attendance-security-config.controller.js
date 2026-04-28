@@ -1,6 +1,8 @@
 import { AttendanceSecurityConfigService } from '../services/attendance-security-config.service.js';
 import { AppMessages } from '../common/constants/index.js';
 import { ResponseUtil } from '../common/utils/response.util.js';
+import { plainToInstance } from 'class-transformer';
+import { UpdateAttendanceSecurityConfigDto } from '../models/dto/attendance-security-config/update-attendance-security-config.dto.js';
 
 export class AttendanceSecurityConfigController {
   constructor() {
@@ -10,7 +12,11 @@ export class AttendanceSecurityConfigController {
   getConfig = async (req, res, next) => {
     try {
       const config = await this.service.getConfig();
-      ResponseUtil.sendResponse(res, AppMessages.Success.AttendanceSecurityConfig.RETRIEVED, config);
+      ResponseUtil.sendResponse(
+        res,
+        AppMessages.Success.AttendanceSecurityConfig.RETRIEVED,
+        config,
+      );
     } catch (error) {
       next(error);
     }
@@ -18,8 +24,16 @@ export class AttendanceSecurityConfigController {
 
   updateConfig = async (req, res, next) => {
     try {
-      const updated = await this.service.updateConfig(req.body);
-      ResponseUtil.sendResponse(res, AppMessages.Success.AttendanceSecurityConfig.UPDATED, updated);
+      const updateDto = plainToInstance(
+        UpdateAttendanceSecurityConfigDto,
+        req.body,
+      );
+      const updated = await this.service.updateConfig(updateDto);
+      ResponseUtil.sendResponse(
+        res,
+        AppMessages.Success.AttendanceSecurityConfig.UPDATED,
+        updated,
+      );
     } catch (error) {
       next(error);
     }
@@ -28,7 +42,11 @@ export class AttendanceSecurityConfigController {
   resetToDefaults = async (req, res, next) => {
     try {
       const result = await this.service.resetToDefaults();
-      ResponseUtil.sendResponse(res, AppMessages.Success.AttendanceSecurityConfig.RESET, result);
+      ResponseUtil.sendResponse(
+        res,
+        AppMessages.Success.AttendanceSecurityConfig.RESET,
+        result,
+      );
     } catch (error) {
       next(error);
     }

@@ -16,6 +16,5 @@ import { IsEmail } from 'class-validator';
  *           example: admin@example.com
  */
 export class ForgotPasswordDto {
-  @IsEmail()
   email;
 }

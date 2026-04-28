@@ -9,6 +9,6 @@ export class HttpException extends Error {
         }
         this.statusCode = statusCode;
         this.errors = errors;
-        Object.setPrototypeOf(this, HttpException.prototype);
+        Object.setPrototypeOf(this, new.target.prototype);
     }
 }

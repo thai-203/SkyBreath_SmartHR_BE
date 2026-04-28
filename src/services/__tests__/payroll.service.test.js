@@ -513,25 +513,34 @@ describe('PayrollService', () => {
         });
     });
 
-    describe('_calcEarnedAllowances - Calculate Earned Allowances', () => {
-        it('UTCID35: Should calculate allowances based on day factor', () => {
+    describe('_calcTotalAllowances - Calculate Total Allowances (Fixed)', () => {
+        it('UTCID35: Should return total of all allowances without working days factor', () => {
             const salary = {
                 lunchAllowance: 1_000_000,
                 fuelAllowance: 500_000,
                 phoneAllowance: 200_000,
                 otherAllowance: 300_000,
             };
-            // Total: 2,000,000
-            const ts = { standardDays: 26 };
-            // 13/26 = 0.5 day factor
-            const result = service._calcEarnedAllowances(salary, ts, 26, 13);
-            expect(result).toBe(1_000_000);
+            // Total: 2,000,000 (cố định, không phụ thuộc công)
+            const result = service._calcTotalAllowances(salary);
+            expect(result).toBe(2_000_000);
         });
 
-        it('UTCID36: Should return 0 for 0 standard days', () => {
-            const salary = { lunchAllowance: 1_000_000 };
-            const result = service._calcEarnedAllowances(salary, { standardDays: 0 }, 0, 0);
+        it('UTCID36: Should return 0 when no allowances defined', () => {
+            const salary = {};
+            const result = service._calcTotalAllowances(salary);
             expect(result).toBe(0);
+        });
+
+        it('UTCID37: Should handle null/undefined values', () => {
+            const salary = {
+                lunchAllowance: null,
+                fuelAllowance: undefined,
+                phoneAllowance: 200_000,
+                otherAllowance: 0,
+            };
+            const result = service._calcTotalAllowances(salary);
+            expect(result).toBe(200_000);
         });
     });
 

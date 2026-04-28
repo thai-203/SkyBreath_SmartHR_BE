@@ -1,8 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { FaceRecognitionConfigController } from '../controllers/face-recognition-config.controller.js';
-import { UpdateFaceRecognitionConfigDto } from '../models/dto/face-recognition-config/update-face-recognition-config.dto.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = express.Router();
@@ -21,7 +19,6 @@ router.put(
   '/',
   authMiddleware,
   permissionsMiddleware('ATTENDANCE_FACE_RECOGNITION_CONFIG_UPDATE'),
-  validationMiddleware(UpdateFaceRecognitionConfigDto),
   controller.updateConfig,
 );
 router.post(

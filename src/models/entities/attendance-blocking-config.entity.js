@@ -17,5 +17,15 @@ export class AttendanceBlockingConfigEntity extends BaseEntity {
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive;
-  
+
+  @Column({
+    name: 'apply_to',
+    type: 'enum',
+    enum: ['ALL', 'EMPLOYEE'],
+    default: 'ALL',
+  })
+  applyTo;
+
+  @Column({ name: 'target_ids', type: 'simple-array', nullable: true, default: null })
+  targetIds;
 }

@@ -54,4 +54,12 @@ router.delete(
   attendanceBlockingConfigController.deleteRule,
 );
 
+// 6. Lấy lịch sử log điểm danh (check_in, check_out, join)
+router.get(
+  '/logs',
+  authMiddleware,
+  permissionsMiddleware('ATTENDANCE_BLOCKING_CONFIG_READ'),
+  attendanceBlockingConfigController.getAttendanceLogs,
+);
+
 export const attendanceBlockingConfigRoutes = router;

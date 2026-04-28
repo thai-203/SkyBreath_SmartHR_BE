@@ -1,12 +1,20 @@
+import 'reflect-metadata';
 import { AuthService } from '../auth.service.js';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from '../../common/exceptions/index.js';
 import {
   comparePassword,
   compareRefreshToken,
   hashResetPasswordToken,
+  hashPassword,
 } from '../../common/utils/index.js';
 import { setRequestContextValue } from '../../common/context/request-context.js';
 import * as jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
+import { v4 } from 'uuid';
 
 jest.mock('../../common/utils/index.js', () => ({
   comparePassword: jest.fn(),
@@ -27,239 +35,8 @@ jest.mock('uuid', () => ({
   v4: jest.fn(),
 }));
 
-jest.mock('../../config/env.config.js', () => ({
-  config: {
-    frontEndUrl: 'https://frontend.example.com',
-  },
-}));
-
-describe('AuthService', () => {
-  let service;
-  let usersService;
-  let mailService;
-
-  const expectRejectWithStatus = async (promise, statusCode) => {
-    try {
-      await promise;
-      throw new Error('Expected promise to reject');
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect(err.statusCode).toBe(statusCode);
-    }
-  };
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    process.env.JWT_SECRET = 'access-secret';
-    process.env.JWT_REFRESH_SECRET = 'refresh-secret';
-    process.env.JWT_EXPIRES_IN = '15m';
-    process.env.JWT_REFRESH_EXPIRES_IN = '7d';
-
-    usersService = {
-      findByEmailWithPassword: jest.fn(),
-      findById: jest.fn(),
-      findByIdWithPassword: jest.fn(),
-      findByEmail: jest.fn(),
-      findByOtpRequestId: jest.fn(),
-      updateRefreshToken: jest.fn(),
-      updateLastLogin: jest.fn(),
-      update: jest.fn(),
-    };
-
-    mailService = {
-      sendResetPasswordEmail: jest.fn(),
-      AdminResetPasswordEmail: jest.fn(),
-    };
-
-    service = new AuthService(usersService, {}, mailService);
-  });
-
-  it('returns null when validating a missing user', async () => {
-    usersService.findByEmailWithPassword.mockResolvedValue(null);
-
-    await expect(
-      service.validateUser('test@example.com', 'secret'),
-    ).resolves.toBeNull();
-    expect(comparePassword).not.toHaveBeenCalled();
-  });
-
-  it('returns null when password is invalid', async () => {
-    usersService.findByEmailWithPassword.mockResolvedValue({
-      id: 1,
-      password: 'hash',
-      status: 'ACTIVE',
-      isDeleted: false,
-    });
-    comparePassword.mockResolvedValue(false);
-
-    await expect(
-      service.validateUser('test@example.com', 'wrong'),
-    ).resolves.toBeNull();
-  });
-
-  it('throws UnauthorizedException when validating inactive user', async () => {
-    usersService.findByEmailWithPassword.mockResolvedValue({
-      id: 1,
-      password: 'hash',
-      status: 'INACTIVE',
-      isDeleted: false,
-    });
-    comparePassword.mockResolvedValue(true);
-
-    await expectRejectWithStatus(
-      service.validateUser('test@example.com', 'secret'),
-      401,
-    );
-  });
-
-  it('logs in user and persists refresh token', async () => {
-    jwt.sign
-      .mockReturnValueOnce('access-token')
-      .mockReturnValueOnce('refresh-token');
-
-    const result = await service.login({
-      id: 7,
-      email: 'user@example.com',
-      username: 'demo',
-      userRoles: [
-        {
-          role: {
-            roleName: 'ADMIN',
-            rolePermissions: [
-              { permission: { permissionCode: 'USER_READ' } },
-              { permission: { permissionCode: 'USER_READ' } },
-              { permission: { permissionCode: 'USER_WRITE' } },
-            ],
-          },
-        },
-      ],
-    });
-
-    expect(setRequestContextValue).toHaveBeenCalledWith('userId', 7);
-    expect(usersService.updateRefreshToken).toHaveBeenCalledWith(
-      7,
-      'refresh-token',
-    );
-    expect(usersService.updateLastLogin).toHaveBeenCalledWith(7);
-    expect(result).toEqual({
-      user: {
-        id: 7,
-        email: 'user@example.com',
-        username: 'demo',
-        roles: ['ADMIN'],
-        permissions: ['USER_READ', 'USER_WRITE'],
-      },
-      accessToken: 'access-token',
-      refreshToken: 'refresh-token',
-    });
-  });
-
-  it('throws UnauthorizedException when refresh token does not match', async () => {
-    usersService.findById.mockResolvedValue({
-      id: 9,
-      refreshToken: 'stored-token',
-      status: 'ACTIVE',
-      isDeleted: false,
-    });
-    compareRefreshToken.mockReturnValue(false);
-
-    await expectRejectWithStatus(service.refreshTokens(9, 'token'), 401);
-  });
-
-  it('creates forgot password request for active user', async () => {
-    const nowSpy = jest
-      .spyOn(Date, 'now')
-      .mockReturnValue(new Date('2026-04-21T00:00:00Z').getTime());
-    jest.spyOn(Math, 'random').mockReturnValue(0.123456);
-    uuidv4.mockReturnValue('uuid-123');
-    hashResetPasswordToken.mockReturnValue('hashed-otp');
-
-    usersService.findByEmail.mockResolvedValue({
-      id: 15,
-      email: 'employee@example.com',
-      username: 'employee',
-      status: 'ACTIVE',
-      isDeleted: false,
-    });
-
-    const result = await service.forgotPassword('employee@example.com');
-
-    expect(usersService.update).toHaveBeenCalledWith(15, {
-      otp: 'hashed-otp',
-      otpExpiresAt: new Date('2026-04-21T00:05:00.000Z'),
-      otpRequestId: 'uuid-123',
-    });
-    expect(mailService.sendResetPasswordEmail).toHaveBeenCalledWith(
-      'employee@example.com',
-      'employee',
-      'https://frontend.example.com/forgot-password?requestId=uuid-123&otp=123456',
-    );
-    expect(result).toEqual({
-      message: 'OTP đã được gửi đến email của bạn',
-      otpRequestId: 'uuid-123',
-    });
-
-    nowSpy.mockRestore();
-  });
-
-  it('resets password with valid OTP', async () => {
-    hashResetPasswordToken.mockReturnValue('hashed-otp');
-    comparePassword.mockResolvedValue(false);
-    usersService.findByOtpRequestId.mockResolvedValue({
-      id: 21,
-      email: 'employee@example.com',
-      status: 'ACTIVE',
-      isDeleted: false,
-      otp: 'hashed-otp',
-      otpExpiresAt: new Date('2026-04-22T00:00:00Z'),
-    });
-    usersService.findByIdWithPassword.mockResolvedValue({
-      id: 21,
-      password: 'old-password-hash',
-    });
-
-    const result = await service.resetPasswordWithOtp(
-      'request-1',
-      '123456',
-      'NewPassword123!',
-    );
-
-    expect(usersService.update).toHaveBeenCalledWith(21, {
-      password: 'NewPassword123!',
-      otp: null,
-      otpExpiresAt: null,
-      otpRequestId: null,
-      mustChangePassword: false,
-    });
-    expect(result).toEqual({ message: 'Mật khẩu đã được đặt lại thành công' });
-  });
-});
-import 'reflect-metadata';
-import * as jwt from 'jsonwebtoken';
-import { AuthService } from '../auth.service.js';
-import { UsersService } from '../users.service.js';
-import { RedisService } from '../redis.service.js';
-import { MailService } from '../mail.service.js';
-import { AppDataSource } from '../../database/data-source.js';
-import {
-  comparePassword,
-  compareRefreshToken,
-  hashPassword,
-  hashResetPasswordToken,
-} from '../../common/utils/index.js';
-import { setRequestContextValue } from '../../common/context/request-context.js';
-import { v4 as uuidv4 } from 'uuid';
-
-jest.mock('../users.service.js', () => ({
-  UsersService: jest.fn(),
-}));
-
-jest.mock('../redis.service.js', () => ({
-  RedisService: jest.fn(),
-}));
-
-jest.mock('../mail.service.js', () => ({
-  MailService: jest.fn(),
+jest.mock('crypto', () => ({
+  randomInt: jest.fn(),
 }));
 
 jest.mock('../../database/data-source.js', () => ({
@@ -268,216 +45,601 @@ jest.mock('../../database/data-source.js', () => ({
   },
 }));
 
-jest.mock('../../common/utils/index.js', () => ({
-  comparePassword: jest.fn(),
-  compareRefreshToken: jest.fn(),
-  hashPassword: jest.fn(),
-  hashResetPasswordToken: jest.fn(),
+jest.mock('../../repositories/action-logs.repository.js', () => ({
+  ActionLogsRepository: jest.fn(),
 }));
 
-jest.mock('../../common/context/request-context.js', () => ({
-  setRequestContextValue: jest.fn(),
+jest.mock('../../repositories/employees.repository.js', () => ({
+  EmployeesRepository: jest.fn(),
 }));
 
-jest.mock('uuid', () => ({
-  v4: jest.fn(),
+jest.mock('../mail.service.js', () => ({
+  MailService: jest.fn(),
 }));
 
-jest.mock('jsonwebtoken', () => ({
-  sign: jest.fn(),
+jest.mock('../../config/env.config.js', () => ({
+  config: {
+    frontEndUrl: 'http://localhost:3000',
+    mail: {
+      host: 'localhost',
+      port: 587,
+      secure: false,
+      user: 'test',
+      pass: 'test',
+      from: 'test@example.com',
+    },
+  },
 }));
 
 describe('AuthService', () => {
-  let service;
-  let usersService;
-  let cacheService;
-  let mailService;
-  let employeeRepo;
+  let authService;
+  let mockUsersRepository;
+  let mockMailService;
 
   beforeEach(() => {
     jest.clearAllMocks();
 
-    process.env.JWT_SECRET = 'access-secret';
-    process.env.JWT_REFRESH_SECRET = 'refresh-secret';
-    process.env.JWT_EXPIRES_IN = '15m';
-    process.env.JWT_REFRESH_EXPIRES_IN = '7d';
-
-    usersService = {
-      findByEmailWithPassword: jest.fn(),
-      findByEmail: jest.fn(),
+    mockUsersRepository = {
+      findByEmailWithPasswordBuilder: jest.fn(),
       findById: jest.fn(),
-      findByIdWithPassword: jest.fn(),
-      findByOtpRequestId: jest.fn(),
       updateRefreshToken: jest.fn(),
       updateLastLogin: jest.fn(),
+      findByEmail: jest.fn(),
       update: jest.fn(),
-    };
-
-    cacheService = {};
-    mailService = {
-      sendResetPasswordEmail: jest.fn(),
-    };
-    employeeRepo = {
       findOne: jest.fn(),
     };
 
-    UsersService.mockImplementation(() => usersService);
-    RedisService.mockImplementation(() => cacheService);
-    MailService.mockImplementation(() => mailService);
-    AppDataSource.getRepository.mockReturnValue(employeeRepo);
+    mockMailService = {
+      sendResetPasswordEmail: jest.fn(),
+    };
 
-    jwt.sign.mockImplementation(
-      (payload, secret) => `${secret}:${payload.sub}`,
-    );
-    comparePassword.mockResolvedValue(true);
-    compareRefreshToken.mockReturnValue(true);
-    hashPassword.mockResolvedValue('hashed-password');
-    hashResetPasswordToken.mockReturnValue('hashed-otp');
-    uuidv4.mockReturnValue('request-id-123');
+    authService = new AuthService(mockMailService, mockUsersRepository);
 
-    service = new AuthService();
+    // Default JWT sign behavior
+    jwt.sign.mockReturnValue('mock-token');
+
+    // Set up default env vars for generateTokens
+    process.env.JWT_SECRET = 'secret';
+    process.env.JWT_REFRESH_SECRET = 'refresh-secret';
   });
 
-  it('returns null when validating a missing user', async () => {
-    usersService.findByEmailWithPassword.mockResolvedValue(null);
-
-    const result = await service.validateUser('missing@example.com', 'pass');
-
-    expect(result).toBeNull();
-  });
-
-  it('returns tokens and updates user state on login', async () => {
-    const generateTokensSpy = jest
-      .spyOn(service, 'generateTokens')
-      .mockResolvedValue({
-        accessToken: 'access-token',
-        refreshToken: 'refresh-token',
+  describe('login', () => {
+    describe('_validateUser (via login)', () => {
+      it('should throw BadRequestException if email is missing', async () => {
+        await expect(authService.login(null, 'password')).rejects.toThrow(
+          BadRequestException,
+        );
       });
 
-    const result = await service.login({
-      id: 7,
-      email: 'user@example.com',
-      username: 'user',
-      userRoles: [
-        {
-          role: {
-            roleName: 'ADMIN',
-            rolePermissions: [
-              { permission: { permissionCode: 'EMPLOYEE_READ' } },
-              { permission: { permissionCode: 'EMPLOYEE_READ' } },
-            ],
+      it('should throw BadRequestException if password is missing', async () => {
+        await expect(
+          authService.login('test@example.com', null),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw BadRequestException if email is invalid', async () => {
+        await expect(
+          authService.login('invalid-email', 'Password123!'),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw BadRequestException if password format is invalid', async () => {
+        await expect(
+          authService.login('test@example.com', 'weak'),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw UnauthorizedException if user is not found', async () => {
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue(
+          null,
+        );
+
+        await expect(
+          authService.login('test@example.com', 'Password123!'),
+        ).rejects.toThrow(UnauthorizedException);
+      });
+
+      it('should throw UnauthorizedException if password does not match', async () => {
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
+          password: 'hashed-password',
+        });
+        comparePassword.mockResolvedValue(false);
+
+        await expect(
+          authService.login('test@example.com', 'Password123!'),
+        ).rejects.toThrow(UnauthorizedException);
+      });
+
+      it('should throw UnauthorizedException if account is LOCKED', async () => {
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
+          password: 'hashed-password',
+          status: 'LOCKED',
+        });
+        comparePassword.mockResolvedValue(true);
+
+        await expect(
+          authService.login('test@example.com', 'Password123!'),
+        ).rejects.toThrow(UnauthorizedException);
+      });
+
+      it('should throw UnauthorizedException if account is INACTIVE', async () => {
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
+          password: 'hashed-password',
+          status: 'INACTIVE',
+        });
+        comparePassword.mockResolvedValue(true);
+
+        await expect(
+          authService.login('test@example.com', 'Password123!'),
+        ).rejects.toThrow(UnauthorizedException);
+      });
+
+      it('should throw UnauthorizedException if password change is required', async () => {
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
+          password: 'hashed-password',
+          status: 'ACTIVE',
+          mustChangePassword: true,
+        });
+        comparePassword.mockResolvedValue(true);
+
+        await expect(
+          authService.login('test@example.com', 'Password123!'),
+        ).rejects.toThrow(UnauthorizedException);
+      });
+    });
+
+    describe('login Success', () => {
+      it('should return user info and tokens on successful login', async () => {
+        const mockUser = {
+          id: 1,
+          email: 'test@example.com',
+          username: 'testuser',
+          status: 'ACTIVE',
+          mustChangePassword: false,
+          password: 'hashed-password',
+          userRoles: [
+            {
+              role: {
+                roleName: 'ADMIN',
+                rolePermissions: [
+                  { permission: { permissionCode: 'READ_USER' } },
+                  { permission: { permissionCode: 'WRITE_USER' } },
+                ],
+              },
+            },
+          ],
+        };
+
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue(
+          mockUser,
+        );
+        comparePassword.mockResolvedValue(true);
+        jwt.sign
+          .mockReturnValueOnce('access-token')
+          .mockReturnValueOnce('refresh-token');
+
+        const result = await authService.login(
+          'test@example.com',
+          'Password123!',
+        );
+
+        expect(setRequestContextValue).toHaveBeenCalledWith(
+          'userId',
+          mockUser.id,
+        );
+        expect(mockUsersRepository.updateRefreshToken).toHaveBeenCalledWith(
+          mockUser.id,
+          'refresh-token',
+        );
+        expect(mockUsersRepository.updateLastLogin).toHaveBeenCalledWith(
+          mockUser.id,
+        );
+
+        expect(result).toEqual({
+          user: {
+            id: mockUser.id,
+            email: mockUser.email,
+            username: mockUser.username,
+            roles: ['ADMIN'],
+            permissions: ['READ_USER', 'WRITE_USER'],
           },
-        },
-      ],
-    });
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+        });
+      });
 
-    expect(setRequestContextValue).toHaveBeenCalledWith('userId', 7);
-    expect(usersService.updateRefreshToken).toHaveBeenCalledWith(
-      7,
-      'refresh-token',
-    );
-    expect(usersService.updateLastLogin).toHaveBeenCalledWith(7);
-    expect(result.user.roles).toEqual(['ADMIN']);
-    expect(result.user.permissions).toEqual(['EMPLOYEE_READ']);
-    expect(result.accessToken).toBe('access-token');
-    expect(generateTokensSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 7 }),
-    );
+      it('should handle user with no roles correctly', async () => {
+        const mockUser = {
+          id: 1,
+          email: 'test@example.com',
+          username: 'testuser',
+          status: 'ACTIVE',
+          mustChangePassword: false,
+          password: 'hashed-password',
+          userRoles: null,
+        };
+
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue(
+          mockUser,
+        );
+        comparePassword.mockResolvedValue(true);
+
+        const result = await authService.login(
+          'test@example.com',
+          'Password123!',
+        );
+
+        expect(result.user.roles).toEqual([]);
+        expect(result.user.permissions).toEqual([]);
+      });
+
+      it('should throw error if JWT secrets are missing', async () => {
+        const mockUser = {
+          id: 1,
+          email: 'test@example.com',
+          status: 'ACTIVE',
+          password: 'hashed-password',
+        };
+
+        mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue(
+          mockUser,
+        );
+        comparePassword.mockResolvedValue(true);
+
+        const originalSecret = process.env.JWT_SECRET;
+        const originalRefreshSecret = process.env.JWT_REFRESH_SECRET;
+        delete process.env.JWT_SECRET;
+        delete process.env.JWT_REFRESH_SECRET;
+
+        try {
+          await expect(
+            authService.login('test@example.com', 'Password123!'),
+          ).rejects.toThrow('Lỗi hệ thống, vui lòng thử lại sau');
+        } finally {
+          process.env.JWT_SECRET = originalSecret;
+          process.env.JWT_REFRESH_SECRET = originalRefreshSecret;
+        }
+      });
+    });
   });
 
-  it('rejects refresh token requests with a mismatched token', async () => {
-    usersService.findById.mockResolvedValue({
-      id: 8,
-      refreshToken: 'stored-hash',
+  describe('refreshTokens', () => {
+    const mockUser = {
+      id: 1,
+      email: 'test@example.com',
       status: 'ACTIVE',
-      isDeleted: false,
-    });
-    compareRefreshToken.mockReturnValue(false);
-
-    await expect(
-      service.refreshTokens(8, 'incoming-token'),
-    ).rejects.toMatchObject({
-      statusCode: 401,
-    });
-  });
-
-  it('changes password after validating the current password', async () => {
-    usersService.findByIdWithPassword.mockResolvedValue({
-      id: 9,
-      password: 'old-hash',
-    });
-    comparePassword.mockResolvedValueOnce(true);
-
-    const result = await service.changePassword(9, {
-      currentPassword: 'old-pass',
-      newPassword: 'new-pass',
-    });
-
-    expect(hashPassword).toHaveBeenCalledWith('new-pass');
-    expect(usersService.update).toHaveBeenCalledWith(9, {
-      password: 'new-pass',
-    });
-    expect(result).toEqual({ message: 'Đổi mật khẩu thành công' });
-  });
-
-  it('creates a new OTP reset request and sends email', async () => {
-    usersService.findByEmail.mockResolvedValue({
-      id: 11,
-      email: 'alice@example.com',
-      username: 'alice',
-      status: 'ACTIVE',
-      isDeleted: false,
-    });
-    usersService.update.mockResolvedValue({ id: 11 });
-
-    const cryptoModule = await import('crypto');
-    jest.spyOn(cryptoModule.default, 'randomInt').mockReturnValue(123456);
-
-    const result = await service.forgotPassword('alice@example.com');
-
-    expect(usersService.update).toHaveBeenCalledWith(11, {
-      otp: 'hashed-otp',
-      otpExpiresAt: expect.any(Date),
-      otpRequestId: 'request-id-123',
-    });
-    expect(mailService.sendResetPasswordEmail).toHaveBeenCalledWith(
-      'alice@example.com',
-      'alice',
-      expect.stringContaining('requestId=request-id-123'),
-    );
-    expect(result).toEqual({
-      message: 'OTP đã được gửi đến email của bạn',
-      otpRequestId: 'request-id-123',
-    });
-  });
-
-  it('resets password with otp when the token is valid', async () => {
-    usersService.findByOtpRequestId.mockResolvedValue({
-      id: 12,
-      status: 'ACTIVE',
-      isDeleted: false,
-      otp: 'hashed-otp',
-      otpExpiresAt: new Date(Date.now() + 60_000),
-    });
-    usersService.findByIdWithPassword.mockResolvedValue({
-      id: 12,
-      password: 'current-hash',
-    });
-    comparePassword.mockResolvedValue(false);
-
-    const result = await service.resetPasswordWithOtp(
-      'request-id-123',
-      '123456',
-      'brand-new-pass',
-    );
-
-    expect(usersService.update).toHaveBeenCalledWith(12, {
-      password: 'brand-new-pass',
-      otp: null,
-      otpExpiresAt: null,
-      otpRequestId: null,
+      refreshToken: 'valid-refresh-token',
       mustChangePassword: false,
+    };
+
+    it('should throw NotFoundException if user is not found', async () => {
+      mockUsersRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        authService.refreshTokens(1, 'some-token'),
+      ).rejects.toThrow(NotFoundException);
     });
-    expect(result).toEqual({ message: 'Mật khẩu đã được đặt lại thành công' });
+
+    it('should throw UnauthorizedException if refresh token is missing in DB', async () => {
+      mockUsersRepository.findById.mockResolvedValue({
+        ...mockUser,
+        refreshToken: null,
+      });
+
+      await expect(
+        authService.refreshTokens(1, 'some-token'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if refresh token mismatch', async () => {
+      mockUsersRepository.findById.mockResolvedValue(mockUser);
+      compareRefreshToken.mockReturnValue(false);
+
+      await expect(
+        authService.refreshTokens(1, 'invalid-token'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if account is LOCKED', async () => {
+      mockUsersRepository.findById.mockResolvedValue({
+        ...mockUser,
+        status: 'LOCKED',
+      });
+      compareRefreshToken.mockReturnValue(true);
+
+      await expect(
+        authService.refreshTokens(1, 'valid-refresh-token'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if account is INACTIVE', async () => {
+      mockUsersRepository.findById.mockResolvedValue({
+        ...mockUser,
+        status: 'INACTIVE',
+      });
+      compareRefreshToken.mockReturnValue(true);
+
+      await expect(
+        authService.refreshTokens(1, 'valid-refresh-token'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if password change is required', async () => {
+      mockUsersRepository.findById.mockResolvedValue({
+        ...mockUser,
+        mustChangePassword: true,
+      });
+      compareRefreshToken.mockReturnValue(true);
+
+      await expect(
+        authService.refreshTokens(1, 'valid-refresh-token'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should return new tokens on successful refresh', async () => {
+      mockUsersRepository.findById.mockResolvedValue(mockUser);
+      compareRefreshToken.mockReturnValue(true);
+      jwt.sign
+        .mockReturnValueOnce('new-access-token')
+        .mockReturnValueOnce('new-refresh-token');
+
+      const result = await authService.refreshTokens(
+        1,
+        'valid-refresh-token',
+      );
+
+      expect(mockUsersRepository.updateRefreshToken).toHaveBeenCalledWith(
+        mockUser.id,
+        'new-refresh-token',
+      );
+      expect(result).toEqual({
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+      });
+    });
+  });
+
+  describe('logout', () => {
+    it('should call updateRefreshToken with null on logout', async () => {
+      const userId = 1;
+      await authService.logout(userId);
+
+      expect(mockUsersRepository.updateRefreshToken).toHaveBeenCalledWith(
+        userId,
+        null,
+      );
+    });
+  });
+
+  describe('forgotPassword', () => {
+    const email = 'test@example.com';
+    const mockUser = {
+      id: 1,
+      email: email,
+      username: 'testuser',
+      status: 'ACTIVE',
+      mustChangePassword: false,
+    };
+
+    it('should throw BadRequestException if email is missing', async () => {
+      await expect(authService.forgotPassword(null)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw BadRequestException if email is invalid', async () => {
+      await expect(
+        authService.forgotPassword('invalid-email'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should return security message if user is not found', async () => {
+      mockUsersRepository.findByEmail.mockResolvedValue(null);
+
+      const result = await authService.forgotPassword(email);
+
+      expect(result).toEqual({
+        message: 'Nếu email tồn tại, OTP sẽ được gửi',
+      });
+    });
+
+    it('should throw UnauthorizedException if account is LOCKED', async () => {
+      mockUsersRepository.findByEmail.mockResolvedValue({
+        ...mockUser,
+        status: 'LOCKED',
+      });
+      await expect(authService.forgotPassword(email)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw UnauthorizedException if account is INACTIVE', async () => {
+      mockUsersRepository.findByEmail.mockResolvedValue({
+        ...mockUser,
+        status: 'INACTIVE',
+      });
+      await expect(authService.forgotPassword(email)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw UnauthorizedException if password change is required', async () => {
+      mockUsersRepository.findByEmail.mockResolvedValue({
+        ...mockUser,
+        mustChangePassword: true,
+      });
+      await expect(authService.forgotPassword(email)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should send reset email on success', async () => {
+      mockUsersRepository.findByEmail.mockResolvedValue(mockUser);
+      const mockOtp = 123456;
+      const mockRequestId = 'mock-uuid';
+      const mockHashedOtp = 'hashed-otp';
+
+      crypto.randomInt.mockReturnValue(mockOtp);
+      v4.mockReturnValue(mockRequestId);
+      hashResetPasswordToken.mockReturnValue(mockHashedOtp);
+
+      const result = await authService.forgotPassword(email);
+
+      expect(mockUsersRepository.update).toHaveBeenCalledWith(mockUser.id, {
+        otp: mockHashedOtp,
+        otpExpiresAt: expect.any(Date),
+        otpRequestId: mockRequestId,
+      });
+
+      expect(mockMailService.sendResetPasswordEmail).toHaveBeenCalledWith(
+        mockUser.email,
+        mockUser.username,
+        expect.stringContaining(mockRequestId),
+      );
+
+      expect(result).toEqual({
+        message: 'OTP đã được gửi đến email của bạn',
+        otpRequestId: mockRequestId,
+      });
+    });
+  });
+
+  describe('resetPasswordWithOtp', () => {
+    const otpRequestId = 'mock-uuid';
+    const otp = '123456';
+    const newPassword = 'NewPassword123!';
+    const mockUser = {
+      id: 1,
+      status: 'ACTIVE',
+      mustChangePassword: false,
+      otp: 'hashed-otp',
+      otpExpiresAt: new Date(Date.now() + 10000),
+    };
+
+    it('should throw BadRequestException if otpRequestId is missing', async () => {
+      await expect(
+        authService.resetPasswordWithOtp(null, otp, newPassword),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if otp is missing', async () => {
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, null, newPassword),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if otp is not 6 digits', async () => {
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, '123', newPassword),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if newPassword is missing', async () => {
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, null),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if newPassword format is invalid', async () => {
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, 'weak'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if user is not found', async () => {
+      mockUsersRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw UnauthorizedException if account is LOCKED', async () => {
+      mockUsersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        status: 'LOCKED',
+      });
+
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if account is INACTIVE', async () => {
+      mockUsersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        status: 'INACTIVE',
+      });
+
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if password change is required', async () => {
+      mockUsersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        mustChangePassword: true,
+      });
+
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw BadRequestException if OTP is missing in DB', async () => {
+      mockUsersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        otp: null,
+      });
+
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if OTP is expired', async () => {
+      mockUsersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        otpExpiresAt: new Date(Date.now() - 10000),
+      });
+
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if OTP is incorrect', async () => {
+      mockUsersRepository.findOne.mockResolvedValue(mockUser);
+      hashResetPasswordToken.mockReturnValue('different-hash');
+
+      await expect(
+        authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reset password on success', async () => {
+      mockUsersRepository.findOne.mockResolvedValue(mockUser);
+      hashResetPasswordToken.mockReturnValue('hashed-otp');
+      hashPassword.mockResolvedValue('new-hashed-password');
+
+      const result = await authService.resetPasswordWithOtp(
+        otpRequestId,
+        otp,
+        newPassword,
+      );
+
+      expect(mockUsersRepository.update).toHaveBeenCalledWith(mockUser.id, {
+        password: 'new-hashed-password',
+        otp: null,
+        otpExpiresAt: null,
+        otpRequestId: null,
+        mustChangePassword: false,
+      });
+
+      expect(result).toEqual({
+        message: 'Mật khẩu đã được đặt lại thành công',
+      });
+    });
   });
 });
