@@ -135,6 +135,36 @@ export class PayrollDetailEntity extends BaseEntity {
     @Column({ name: 'p1p2_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
     p1p2Percentage;
 
+    @Column({ name: 'dependent_count', type: 'int', default: 0 })
+    dependentCount;
+
+    @Column({ name: 'family_deduction', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    familyDeduction;
+
+    @Column({ name: 'insurance_adjustment', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    insuranceAdjustment;
+
+    @Column({ name: 'employee_union_fee', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    employeeUnionFee;
+
+    @Column({ name: 'tax_adjustment', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    taxAdjustment;
+
+    @Column({ name: 'adjustment_taxable', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    adjustmentTaxable;
+
+    @Column({ name: 'adjustment_non_taxable', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    adjustmentNonTaxable;
+
+    @Column({ name: 'other_deduction', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    otherDeduction;
+
+    @Column({ name: 'total_gross_income', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    totalGrossIncome;
+
+    @Column({ name: 'total_deduction', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    totalDeduction;
+
     @Column({ name: 'p3_percentage', type: 'decimal', precision: 5, scale: 2, default: 0 })
     p3Percentage;
 
@@ -167,6 +197,9 @@ export class PayrollDetailEntity extends BaseEntity {
 
     @Column({ name: 'other_non_taxable_income', type: 'decimal', precision: 15, scale: 2, default: 0 })
     otherNonTaxableIncome;
+
+    @Column({ name: 'other_non_taxable', type: 'decimal', precision: 15, scale: 2, default: 0 })
+    otherNonTaxable;
 
     @Column({ name: 'company_union_fee', type: 'decimal', precision: 15, scale: 2, default: 0 })
     companyUnionFee;
