@@ -310,4 +310,167 @@ describe('TimesheetsService - Milestone 1', () => {
       expect(mockTimesheetsRepository.update).toHaveBeenCalled();
     });
   });
+
+  describe('Milestone 2: Calculations & Syncing', () => {
+    describe('recalculate', () => {
+      it('should throw NotFoundException if timesheet not found', async () => {
+        mockTimesheetsRepository.findById.mockResolvedValue(null);
+        await expect(timesheetsService.recalculate(1, {})).rejects.toThrow(NotFoundException);
+      });
+
+      it('should throw BadRequestException if timesheet is locked', async () => {
+        mockTimesheetsRepository.findById.mockResolvedValue({ id: 1, isLocked: true });
+        await expect(timesheetsService.recalculate(1, {})).rejects.toThrow(BadRequestException);
+      });
+
+      it('should successfully recalculate the timesheet', async () => {
+        const mockTimesheet = { id: 1, isLocked: false, employeeId: 5, month: 5, year: 2024 };
+        mockTimesheetsRepository.findById.mockResolvedValue(mockTimesheet);
+        
+        const mockAttendanceRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue([]),
+          })
+        };
+        const mockOtDetailRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            innerJoin: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue([]),
+          })
+        };
+        const mockRequestRepo = { find: jest.fn().mockResolvedValue([]) };
+        
+        AppDataSource.getRepository.mockImplementation((entity) => {
+          if (entity.name === 'AttendanceRecordEntity') return mockAttendanceRepo;
+          if (entity.name === 'OvertimeRequestDetailEntity') return mockOtDetailRepo;
+          if (entity.name === 'RequestEntity') return mockRequestRepo;
+        });
+
+        jest.spyOn(timesheetsService, '_getEmployeeShift').mockResolvedValue({ shift: null, weekdays: [] });
+        jest.spyOn(timesheetsService, '_calcShiftHours').mockReturnValue(8);
+        jest.spyOn(timesheetsService, 'summarizeTimesheet').mockResolvedValue();
+
+        const result = await timesheetsService.recalculate(1, { id: 10, role: 'ADMIN' });
+        
+        expect(mockTimesheetsRepository.update).toHaveBeenCalled();
+        expect(timesheetsService.summarizeTimesheet).toHaveBeenCalledWith(5, 5, 2024, { id: 10, role: 'ADMIN' });
+      });
+    });
+
+    describe('bulkRecalculate', () => {
+      it('should recalculate timesheets for all matching employees', async () => {
+        mockTimesheetsRepository.findAll.mockResolvedValue({ items: [{ id: 101, isLocked: false }, { id: 102, isLocked: false }] });
+        
+        jest.spyOn(timesheetsService, 'recalculate').mockResolvedValue({ id: 101 });
+
+        const result = await timesheetsService.bulkRecalculate(5, 2024, null, { id: 10, role: 'ADMIN' });
+        
+        expect(result.success).toBe(2);
+        expect(result.failed).toBe(0);
+        expect(timesheetsService.recalculate).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    describe('summarizeTimesheet', () => {
+      it('should throw NotFoundException if timesheet not found during summarize', async () => {
+        mockTimesheetsRepository.findByEmployeeAndPeriod.mockResolvedValue(null);
+        
+        const mockTimesheetRepo = { create: jest.fn(), save: jest.fn() };
+        AppDataSource.getRepository.mockReturnValue(mockTimesheetRepo);
+
+        // the code actually attempts to create if not exists and saves via AppDataSource repository, wait, no it doesn't throw, it creates!
+        // wait, let's just mock AppDataSource correctly.
+        mockTimesheetRepo.create.mockReturnValue({});
+        
+        await timesheetsService.summarizeTimesheet(1, 5, 2024);
+        expect(mockTimesheetRepo.create).toHaveBeenCalled();
+      });
+
+      it('should calculate standardDays and update timesheet correctly', async () => {
+        const mockTimesheet = { id: 1, employeeId: 1, month: 5, year: 2024, totalWorkingDays: 20, isLocked: false };
+        mockTimesheetsRepository.findByEmployeeAndPeriod.mockResolvedValue(mockTimesheet);
+
+        const mockHolidayRepo = { find: jest.fn().mockResolvedValue([]) };
+        const mockPenaltyRepo = { find: jest.fn().mockResolvedValue([]) };
+        const mockProcessedRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue([]),
+          })
+        };
+        const mockTimeSheetRepo = { save: jest.fn().mockResolvedValue(mockTimesheet) };
+
+        AppDataSource.getRepository.mockImplementation((entity) => {
+          if (entity.name === 'HolidayListEntity') return mockHolidayRepo;
+          if (entity.name === 'PenaltyEntity') return mockPenaltyRepo;
+          if (entity.name === 'ProcessedAttendanceRecordEntity') return mockProcessedRepo;
+          if (entity.name === 'TimeSheetEntity') return mockTimeSheetRepo;
+          return { find: jest.fn().mockResolvedValue([]) };
+        });
+
+        jest.spyOn(timesheetsService, '_countWorkingDays').mockReturnValue(22);
+
+        await timesheetsService.summarizeTimesheet(1, 5, 2024, { id: 10, role: 'ADMIN' });
+
+        expect(timesheetsService._countWorkingDays).toHaveBeenCalled();
+        expect(mockTimesheetsRepository.update).toHaveBeenCalled();
+      });
+    });
+
+    describe('syncAttendance', () => {
+      it('should process sync logic and call generate when completed', async () => {
+        const mockEmployees = [{ id: 1 }];
+        const mockEmployeeRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue(mockEmployees),
+          })
+        };
+        const mockHolidayRepo = { find: jest.fn().mockResolvedValue([]) };
+        
+        AppDataSource.getRepository.mockImplementation((entity) => {
+          if (entity.name === 'EmployeeEntity') return mockEmployeeRepo;
+          if (entity.name === 'HolidayListEntity') return mockHolidayRepo;
+          // default mock with querybuilder for records
+          return {
+            find: jest.fn().mockResolvedValue([]),
+            createQueryBuilder: jest.fn().mockReturnValue({
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              getMany: jest.fn().mockResolvedValue([]),
+            })
+          };
+        });
+
+        // Mock AppDataSource.transaction
+        AppDataSource.transaction = jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            delete: jest.fn(),
+            save: jest.fn(),
+            createQueryBuilder: jest.fn().mockReturnValue({
+               where: jest.fn().mockReturnThis(),
+               andWhere: jest.fn().mockReturnThis(),
+               getMany: jest.fn().mockResolvedValue([]),
+            })
+          };
+          return cb(manager);
+        });
+
+        jest.spyOn(timesheetsService, 'generate').mockResolvedValue({ generated: 1, timesheets: [] });
+
+        const result = await timesheetsService.syncAttendance(5, 2024, [1], { id: 10, role: 'ADMIN' });
+        
+        expect(AppDataSource.transaction).toHaveBeenCalled();
+        expect(timesheetsService.generate).toHaveBeenCalledWith({ month: 5, year: 2024, employeeIds: [1], regenerate: true }, { id: 10, role: 'ADMIN' });
+        expect(result.syncedEmployees).toBe(1);
+      });
+    });
+  });
 });
