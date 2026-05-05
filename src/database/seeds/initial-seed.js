@@ -672,6 +672,47 @@ const seed = async () => {
         description: 'View notification history',
         module: 'Notification',
       },
+      // AI
+      {
+        permissionCode: 'AI_CONFIGURATION_READ',
+        description: 'View AI configurations',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_CONFIGURATION_CREATE',
+        description: 'Create AI configuration',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_CONFIGURATION_UPDATE',
+        description: 'Update AI configuration',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_CONFIGURATION_DELETE',
+        description: 'Delete AI configuration',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_READ',
+        description: 'View AI prompts',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_CREATE',
+        description: 'Create AI prompt',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_UPDATE',
+        description: 'Update AI prompt',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_DELETE',
+        description: 'Delete AI prompt',
+        module: 'AI',
+      },
     ];
 
     const permissionRepo = dataSource.getRepository(PermissionEntity);
@@ -1167,9 +1208,25 @@ const seed = async () => {
       }
     }
 
-    // ──────────────────────────────────────
-    // 6. Seed Shift Groups + Working Shifts
-    // ──────────────────────────────────────
+    // Load job grades before creating additional employees
+    const jobGrades = await jobGradeRepo.find({ where: { isDeleted: false } });
+
+    // Initialize all required repositories before creating additional employees
+    const contractRepo = dataSource.getRepository(ContractEntity);
+    const employeeSalaryRepo = dataSource.getRepository(EmployeeSalaryEntity);
+    const bankRepo = dataSource.getRepository(EmployeeBankAccountEntity);
+    const dependentRepo = dataSource.getRepository(EmployeeDependentEntity);
+    const educationRepo = dataSource.getRepository(EmployeeEducationEntity);
+    const emergencyRepo = dataSource.getRepository(
+      EmployeeEmergencyContactEntity,
+    );
+    const workHistoryRepo = dataSource.getRepository(EmployeeWorkHistoryEntity);
+    const timeSheetRepo = dataSource.getRepository(TimeSheetEntity);
+    const payrollRepo = dataSource.getRepository(PayrollEntity);
+    const payrollDetailRepo = dataSource.getRepository(PayrollDetailEntity);
+    const shiftAssignmentRepo = dataSource.getRepository(ShiftAssignmentEntity);
+
+    // Seed Shift Groups + Working Shifts (MOVED UP)
     const groupRepo = dataSource.getRepository(ShiftGroupEntity);
     const groupData = [
       { groupName: 'Nhóm ca chính', status: 'active' },
@@ -1185,7 +1242,6 @@ const seed = async () => {
         await groupRepo.save(group);
         console.log(`Created shift group: ${g.groupName}`);
       } else if (g.status && group.status !== g.status) {
-        // ensure existing rows have status field populated
         group.status = g.status;
         await groupRepo.save(group);
       }
@@ -1228,9 +1284,284 @@ const seed = async () => {
     }
 
     // ──────────────────────────────────────
+    // 7B. Seed 20 Additional Employees with Full Details
+    // ──────────────────────────────────────
+    console.log('Creating 20 additional employees with full details...');
+    const vietnameseNames = [
+      'Nguyễn Văn A',
+      'Trần Thị B',
+      'Phạm Văn C',
+      'Hoàng Thị D',
+      'Đỗ Văn E',
+      'Vũ Thị F',
+      'Bùi Văn G',
+      'Đặng Thị H',
+      'Ngo Văn I',
+      'Lê Thị J',
+      'Trương Văn K',
+      'Phan Thị L',
+      'Dương Văn M',
+      'Ngô Thị N',
+      'Cao Văn O',
+      'Lâm Thị P',
+      'Tô Văn Q',
+      'Võ Thị R',
+      'Hà Văn S',
+      'Tạ Thị T',
+    ];
+
+    const additionalDepts = [
+      departments['Software Development'],
+      departments['Human Resources'],
+      departments['Finance'],
+      departments['Marketing'],
+    ];
+
+    const positionsList = [
+      'Frontend Developer',
+      'Backend Developer',
+      'Mobile Developer',
+      'HR Specialist',
+      'Accountant',
+      'Finance Manager',
+      'Marketing Specialist',
+    ];
+
+    for (let i = 5; i <= 24; i++) {
+      const empNum = i.toString().padStart(3, '0');
+      const empCode = `EMP${empNum}`;
+      const fullName = vietnameseNames[i - 5];
+      const username = `emp${empNum}`;
+      const email = `emp${empNum}@company.com`;
+
+      // Create user
+      let user = await userRepo.findOne({ where: { username } });
+      if (!user) {
+        user = userRepo.create({
+          username,
+          email,
+          password,
+          status: 'ACTIVE',
+        });
+        await userRepo.save(user);
+
+        const userRole = userRoleRepo.create({
+          userId: user.id,
+          roleId: roles['EMPLOYEE'].id,
+        });
+        await userRoleRepo.save(userRole);
+        console.log(`✓ Created user: ${username}`);
+      }
+
+      // Create employee
+      let employee = await employeeRepo.findOne({ where: { userId: user.id } });
+      if (!employee) {
+        const dept = additionalDepts[i % additionalDepts.length];
+        const position = positionsList[i % positionsList.length];
+        const posRecord = await positionRepo.findOne({
+          where: { positionName: position },
+        });
+        const grade = jobGrades[(i - 5) % jobGrades.length];
+
+        employee = employeeRepo.create({
+          userId: user.id,
+          fullName,
+          employeeCode: empCode,
+          companyEmail: email,
+          departmentId: dept.id,
+          positionId: posRecord?.id,
+          jobGradeId: grade?.id,
+          employmentStatus: 'ACTIVE',
+          joinDate: '2025-06-01',
+          officialStartDate: '2025-06-01',
+        });
+        await employeeRepo.save(employee);
+        console.log(`✓ Created employee: ${fullName} (${empCode})`);
+      } else {
+        employee.fullName = fullName;
+        employee.employeeCode = empCode;
+        employee.companyEmail = email;
+        await employeeRepo.save(employee);
+      }
+
+      // Create contract
+      const contractNumber = `CTR-${empCode}-2026`;
+      const contractExists = await contractRepo.findOne({
+        where: { employeeId: employee.id, contractNumber },
+      });
+      if (!contractExists) {
+        await contractRepo.save(
+          contractRepo.create({
+            employeeId: employee.id,
+            contractNumber,
+            contractType: 'permanent',
+            startDate: '2025-06-01',
+            workingHours: 8,
+            contractStatus: 'ACTIVE',
+            signedDate: '2025-05-20',
+            note: 'Seeded employee contract',
+          }),
+        );
+      }
+
+      // Create salary
+      const salaryExists = await employeeSalaryRepo.findOne({
+        where: {
+          employeeId: employee.id,
+          salaryType: 1,
+          effectiveFrom: '2026-01-01',
+        },
+      });
+      if (!salaryExists && employee.jobGradeId) {
+        const grade = jobGrades.find((g) => g.id === employee.jobGradeId);
+        const baseSalary = grade
+          ? Number(grade.minSalary) + Math.random() * 2000000
+          : 8000000;
+        await employeeSalaryRepo.save(
+          employeeSalaryRepo.create({
+            employeeId: employee.id,
+            jobGradeId: employee.jobGradeId,
+            baseSalary: Math.round(baseSalary),
+            performanceSalary: Math.round(baseSalary * 0.2),
+            lunchAllowance: 50,
+            fuelAllowance: 30,
+            phoneAllowance: 20,
+            otherAllowance: 10,
+            salaryType: 1,
+            effectiveFrom: '2026-01-01',
+            salaryStatus: 'ACTIVE',
+          }),
+        );
+      }
+
+      // Assign shift
+      const shiftAssignExists = await shiftAssignmentRepo.findOne({
+        where: { employeeId: employee.id, isDeleted: false },
+      });
+      if (!shiftAssignExists) {
+        const assignedShift = shifts[i % 2 === 0 ? 'Ca hành chính' : 'Ca sáng'];
+        await shiftAssignmentRepo.save(
+          shiftAssignmentRepo.create({
+            employeeId: employee.id,
+            departmentId: null,
+            shiftId: assignedShift.id,
+            effectiveFrom: '2026-01-01',
+          }),
+        );
+      }
+
+      // Create timesheet
+      const timesheetExists = await timeSheetRepo.findOne({
+        where: { employeeId: employee.id, month: 2, year: 2026 },
+      });
+      if (!timesheetExists) {
+        await timeSheetRepo.save(
+          timeSheetRepo.create({
+            employeeId: employee.id,
+            month: 2,
+            year: 2026,
+            totalWorkingDays: 19 + Math.floor(Math.random() * 2),
+            totalWorkingHours: 152 + Math.floor(Math.random() * 16),
+            overtimeHours: Math.floor(Math.random() * 6),
+            isLocked: false,
+          }),
+        );
+      }
+
+      // Create bank account (for some employees)
+      if (i % 3 === 0) {
+        const bankExists = await bankRepo.findOne({
+          where: { employeeId: employee.id },
+        });
+        if (!bankExists) {
+          const accountNum = `0012345${empNum}`;
+          await bankRepo.save(
+            bankRepo.create({
+              employeeId: employee.id,
+              accountNumber: accountNum,
+              accountHolderName: fullName,
+              bankName: i % 2 === 0 ? 'Vietcombank' : 'VietinBank',
+              bankBranch: 'Ha Noi',
+              status: 'ACTIVE',
+            }),
+          );
+        }
+      }
+
+      // Create dependent (for some employees)
+      if (i % 4 === 0) {
+        const depExists = await dependentRepo.findOne({
+          where: { employeeId: employee.id },
+        });
+        if (!depExists) {
+          await dependentRepo.save(
+            dependentRepo.create({
+              employeeId: employee.id,
+              relationship: i % 2 === 0 ? 'SPOUSE' : 'CHILD',
+              fullName: fullName + ' Jr',
+              dateOfBirth: `199${i % 10}-${(i % 12) + 1}-${(i % 28) + 1}`,
+              gender: i % 2 === 0 ? 'FEMALE' : 'MALE',
+              phoneNumber: `090000${empNum}`,
+              isDependent: true,
+              dependentFrom: '2025-06-01',
+            }),
+          );
+        }
+      }
+
+      // Create education (for some employees)
+      if (i % 5 === 0) {
+        const eduExists = await educationRepo.findOne({
+          where: { employeeId: employee.id },
+        });
+        if (!eduExists) {
+          const instNames = [
+            'University of Engineering and Technology',
+            'Hanoi University of Science and Technology',
+            'National Economics University',
+            'Foreign Trade University',
+          ];
+          await educationRepo.save(
+            educationRepo.create({
+              employeeId: employee.id,
+              startDate: `201${i % 4}-09-01`,
+              endDate: `202${i % 3}-06-30`,
+              educationType: 'UNIVERSITY',
+              major: positionsList[i % positionsList.length],
+              degree: 'Bachelor',
+              institutionName: instNames[i % instNames.length],
+            }),
+          );
+        }
+      }
+
+      // Create emergency contact (for some employees)
+      if (i % 6 === 0) {
+        const emergencyExists = await emergencyRepo.findOne({
+          where: { employeeId: employee.id },
+        });
+        if (!emergencyExists) {
+          await emergencyRepo.save(
+            emergencyRepo.create({
+              employeeId: employee.id,
+              contactName: fullName.split(' ')[1] + ' Sr',
+              relationship: 'PARENT',
+              phoneNumber: `098765${empNum}`,
+              email: `parent${empNum}@email.com`,
+              address: 'Ha Noi',
+            }),
+          );
+        }
+      }
+    }
+
+    console.log('✓ Completed seeding 20 additional employees');
+    // ...existing code...
+
+    // ──────────────────────────────────────
     // 7. Assign Shifts to Employees
     // ──────────────────────────────────────
-    const shiftAssignmentRepo = dataSource.getRepository(ShiftAssignmentEntity);
+    // ...existing code...
     const allEmployees = await employeeRepo.find({
       where: { isDeleted: false },
     });
@@ -1416,7 +1747,6 @@ const seed = async () => {
     const positionByName = Object.fromEntries(
       positions.map((p) => [p.positionName, p]),
     );
-    const jobGrades = await jobGradeRepo.find({ where: { isDeleted: false } });
     const canonicalJobGradeByName = new Map();
     const canonicalJobGradeById = new Map();
     for (const grade of jobGrades) {
@@ -1502,7 +1832,6 @@ const seed = async () => {
     }
 
     // Contracts
-    const contractRepo = dataSource.getRepository(ContractEntity);
     for (const emp of activeEmployees) {
       const contractNumber = `CTR-${emp.employeeCode || emp.id}-2026`;
       const existing = await contractRepo.findOne({
@@ -1525,7 +1854,6 @@ const seed = async () => {
     }
 
     // Employee salaries
-    const employeeSalaryRepo = dataSource.getRepository(EmployeeSalaryEntity);
     const refreshedEmployees = await employeeRepo.find({
       where: { isDeleted: false },
     });
@@ -1559,14 +1887,6 @@ const seed = async () => {
     }
 
     // Employee profile sub tables
-    const bankRepo = dataSource.getRepository(EmployeeBankAccountEntity);
-    const dependentRepo = dataSource.getRepository(EmployeeDependentEntity);
-    const educationRepo = dataSource.getRepository(EmployeeEducationEntity);
-    const emergencyRepo = dataSource.getRepository(
-      EmployeeEmergencyContactEntity,
-    );
-    const workHistoryRepo = dataSource.getRepository(EmployeeWorkHistoryEntity);
-
     if (staffEmployee) {
       const bankExists = await bankRepo.findOne({
         where: { employeeId: staffEmployee.id, accountNumber: '001234567890' },
@@ -1985,7 +2305,6 @@ const seed = async () => {
     // * Test thông qua giao diện Web theo thiết kế mới.
 
     // Timesheets
-    const timeSheetRepo = dataSource.getRepository(TimeSheetEntity);
     for (const emp of refreshedEmployees) {
       const exists = await timeSheetRepo.findOne({
         where: { employeeId: emp.id, month: 2, year: 2026 },
@@ -2006,9 +2325,6 @@ const seed = async () => {
     }
 
     // Payroll and payroll details
-    const payrollRepo = dataSource.getRepository(PayrollEntity);
-    const payrollDetailRepo = dataSource.getRepository(PayrollDetailEntity);
-
     let febPayroll = await payrollRepo.findOne({
       where: { payrollMonth: 2, payrollYear: 2026 },
     });
@@ -2242,16 +2558,24 @@ const seed = async () => {
     // 10. Seed Attendance Records (Feb 2026)
     // ──────────────────────────────────────
     const attendanceRepo = dataSource.getRepository(AttendanceRecordEntity);
+
+    // Refresh employee list to include newly created employees
+    const refreshedAllEmployees = await employeeRepo.find({
+      where: { isDeleted: false },
+    });
+
     const existingAttCount = await attendanceRepo.count();
     if (existingAttCount === 0) {
-      console.log('Seeding high-quality attendance records for Feb 2026...');
+      console.log(
+        `Seeding attendance records for ${refreshedAllEmployees.length} employees (Feb 2026)...`,
+      );
 
       // Clear existing records for Feb 2026 to avoid duplicates
       await attendanceRepo.delete({
         checkInTime: Between('2026-02-01 00:00:00', '2026-02-28 23:59:59'),
       });
 
-      for (const emp of allEmployees) {
+      for (const emp of refreshedAllEmployees) {
         const records = [];
         // February 2026: 28 days. Weekdays are 2-6, 9-13, 16-20, 23-27
         const weekdays = [
@@ -2312,6 +2636,82 @@ const seed = async () => {
     } else {
       console.log(
         `Attendance records already exist (${existingAttCount}), skipping.`,
+      );
+    }
+
+    // ──────────────────────────────────────
+    // 10.1 Seed Attendance Records (April 2026)
+    // ──────────────────────────────────────
+    const existingAprilAttCount = await attendanceRepo.count({
+      where: {
+        checkInTime: Between('2026-04-01 00:00:00', '2026-04-30 23:59:59'),
+      },
+    });
+
+    if (existingAprilAttCount === 0) {
+      console.log(
+        `Seeding attendance records for ${refreshedAllEmployees.length} employees (April 2026)...`,
+      );
+
+      // April 2026: 30 days. Weekdays are 1, 2, 3, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 20, 21, 22, 23, 24, 27, 28, 29, 30
+      const aprilWeekdays = [
+        1, 2, 3, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 20, 21, 22, 23, 24, 27, 28,
+        29, 30,
+      ];
+
+      for (const emp of refreshedAllEmployees) {
+        const records = [];
+
+        for (const day of aprilWeekdays) {
+          // Default: 08:00 - 17:00
+          let cinH = 7,
+            cinM = 50 + Math.floor(Math.random() * 15); // 07:50 - 08:05
+          let coutH = 17,
+            coutM = Math.floor(Math.random() * 15); // 17:00 - 17:15
+          let status = 'present';
+          let type = 'face';
+          let overtimeMins = 0;
+
+          // Randomize some behavior
+          const rand = Math.random();
+          if (rand < 0.08) {
+            // 8% late
+            cinM = 10 + Math.floor(Math.random() * 20); // 08:10 - 08:30
+            status = 'late';
+          } else if (rand < 0.15) {
+            // 7% early leave
+            coutH = 16;
+            coutM = 30 + Math.floor(Math.random() * 20); // 16:30 - 16:50
+            status = 'early_leave';
+          } else if (rand < 0.25) {
+            // 10% OT
+            coutH = 18 + Math.floor(Math.random() * 2); // 18:00 - 20:00
+            coutM = Math.floor(Math.random() * 60);
+            overtimeMins = (coutH - 17) * 60 + coutM;
+          }
+
+          const checkIn = new Date(2026, 3, day, cinH, cinM, 0); // month 3 = April
+          const checkOut = new Date(2026, 3, day, coutH, coutM, 0);
+
+          records.push(
+            attendanceRepo.create({
+              employeeId: emp.id,
+              checkInTime: checkIn,
+              checkOutTime: checkOut,
+              attendanceStatus: status,
+              attendanceType: type,
+              overtimeMinutes: overtimeMins > 0 ? overtimeMins : null,
+            }),
+          );
+        }
+        await attendanceRepo.save(records);
+        console.log(
+          `✓ Created ${records.length} attendance records for ${emp.fullName} (April 2026)`,
+        );
+      }
+    } else {
+      console.log(
+        `April 2026 attendance records already exist (${existingAprilAttCount}), skipping.`,
       );
     }
 

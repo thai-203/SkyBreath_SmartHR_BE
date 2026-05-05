@@ -601,8 +601,38 @@ const seed = async () => {
         module: 'AI',
       },
       {
+        permissionCode: 'AI_CONFIGURATION_CREATE',
+        description: 'Tạo cấu hình AI',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_CONFIGURATION_UPDATE',
+        description: 'Cập nhật cấu hình AI',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_CONFIGURATION_DELETE',
+        description: 'Xóa cấu hình AI',
+        module: 'AI',
+      },
+      {
         permissionCode: 'AI_PROMPT_READ',
         description: 'Xem prompt AI',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_CREATE',
+        description: 'Tạo prompt AI',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_UPDATE',
+        description: 'Cập nhật prompt AI',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_DELETE',
+        description: 'Xóa prompt AI',
         module: 'AI',
       },
 
