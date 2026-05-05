@@ -415,7 +415,7 @@ export class PayrollService {
     }
 
     /**
-     * Tính tổng ngày công (chính thức + thử việc + công tác + lễ + chế độ)
+     * Tính tổng ngày công (chính thức + thử việc + công tác + lễ + chế độ + phép năm)
      */
     _calcWorkingDays(ts) {
         return (
@@ -423,7 +423,8 @@ export class PayrollService {
             parseFloat(ts?.probationDays || 0) +
             parseFloat(ts?.businessTripDays || 0) +
             parseFloat(ts?.holidayDays || 0) +
-            parseFloat(ts?.benefitLeaveDays || 0)
+            parseFloat(ts?.benefitLeaveDays || 0) +
+            parseFloat(ts?.annualLeaveDays || 0)
         );
     }
 
