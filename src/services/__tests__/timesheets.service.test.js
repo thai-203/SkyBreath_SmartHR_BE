@@ -379,12 +379,26 @@ describe('TimesheetsService - Milestone 1', () => {
       it('should throw NotFoundException if timesheet not found during summarize', async () => {
         mockTimesheetsRepository.findByEmployeeAndPeriod.mockResolvedValue(null);
         
-        const mockTimesheetRepo = { create: jest.fn(), save: jest.fn() };
-        AppDataSource.getRepository.mockReturnValue(mockTimesheetRepo);
-
-        // the code actually attempts to create if not exists and saves via AppDataSource repository, wait, no it doesn't throw, it creates!
-        // wait, let's just mock AppDataSource correctly.
-        mockTimesheetRepo.create.mockReturnValue({});
+        const mockEmployeeRepo = { findOne: jest.fn().mockResolvedValue({ id: 1 }) };
+        const mockProcessedRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            innerJoinAndSelect: jest.fn().mockReturnThis(),
+            delete: jest.fn().mockReturnThis(),
+            execute: jest.fn().mockResolvedValue(),
+            getCount: jest.fn().mockResolvedValue(0),
+            getMany: jest.fn().mockResolvedValue([]),
+          })
+        };
+        AppDataSource.getRepository.mockImplementation((entity) => {
+          if (entity.name === 'EmployeeEntity') return mockEmployeeRepo;
+          if (entity.name === 'TimeSheetEntity') return mockTimesheetRepo;
+          if (entity.name === 'ProcessedAttendanceRecordEntity') return mockProcessedRepo;
+          return { find: jest.fn().mockResolvedValue([]) };
+        });
         
         await timesheetsService.summarizeTimesheet(1, 5, 2024);
         expect(mockTimesheetRepo.create).toHaveBeenCalled();
@@ -410,7 +424,21 @@ describe('TimesheetsService - Milestone 1', () => {
           if (entity.name === 'PenaltyEntity') return mockPenaltyRepo;
           if (entity.name === 'ProcessedAttendanceRecordEntity') return mockProcessedRepo;
           if (entity.name === 'TimeSheetEntity') return mockTimeSheetRepo;
-          return { find: jest.fn().mockResolvedValue([]) };
+          if (entity.name === 'EmployeeEntity') return { findOne: jest.fn().mockResolvedValue({ id: 1 }) };
+          return {
+            find: jest.fn().mockResolvedValue([]),
+            createQueryBuilder: jest.fn().mockReturnValue({
+              select: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              leftJoinAndSelect: jest.fn().mockReturnThis(),
+              innerJoinAndSelect: jest.fn().mockReturnThis(),
+              delete: jest.fn().mockReturnThis(),
+              execute: jest.fn().mockResolvedValue(),
+              getCount: jest.fn().mockResolvedValue(0),
+              getMany: jest.fn().mockResolvedValue([]),
+            })
+          };
         });
 
         jest.spyOn(timesheetsService, '_countWorkingDays').mockReturnValue(22);
@@ -442,8 +470,14 @@ describe('TimesheetsService - Milestone 1', () => {
           return {
             find: jest.fn().mockResolvedValue([]),
             createQueryBuilder: jest.fn().mockReturnValue({
+              select: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               andWhere: jest.fn().mockReturnThis(),
+              leftJoinAndSelect: jest.fn().mockReturnThis(),
+              innerJoinAndSelect: jest.fn().mockReturnThis(),
+              delete: jest.fn().mockReturnThis(),
+              execute: jest.fn().mockResolvedValue(),
+              getCount: jest.fn().mockResolvedValue(0),
               getMany: jest.fn().mockResolvedValue([]),
             })
           };
@@ -454,6 +488,7 @@ describe('TimesheetsService - Milestone 1', () => {
           const manager = {
             delete: jest.fn(),
             save: jest.fn(),
+            insert: jest.fn(),
             createQueryBuilder: jest.fn().mockReturnValue({
                where: jest.fn().mockReturnThis(),
                andWhere: jest.fn().mockReturnThis(),
