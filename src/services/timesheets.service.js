@@ -2528,6 +2528,12 @@ export class TimesheetsService {
       )
       .getMany();
 
+    // Build lookup map: assignmentId -> assignment entity (for per-record weekday validation)
+    const assignmentById = new Map();
+    for (const a of allAssignments) {
+      assignmentById.set(a.id, a);
+    }
+
     // Build map: employeeId -> weekdays array
     const employeeWeekdaysMap = new Map();
     for (const empId of scopedEmployeeIds) {
@@ -2611,9 +2617,6 @@ export class TimesheetsService {
 
         const dateObj = new Date(year, month - 1, day);
         const dayOfWeek = dateObj.getDay(); // 0=CN, 1=T2, ..., 6=T7
-        // T2-T6 luôn là ngày làm việc, bất kể weekdays config shift assignment
-        const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
-        const isWorkingDay = !isWeekendDay;
 
         const raw = empRawMap.get(dateStr);
         const shiftStartStr = raw?.shiftStartTime || '08:00:00';
@@ -2621,9 +2624,28 @@ export class TimesheetsService {
         const breakStartStr = raw?.breakStartTime || null;
         const breakEndStr = raw?.breakEndTime || null;
         const workingShiftId = raw?.workingShiftId ?? null;
+        // assignmentId trong processed record dùng cho audit — vẫn giữ fallback cho ngày WEEKEND/HOLIDAY/ABSENT
         const assignmentId = raw?.assignmentId ?? plannedAssignmentId;
         const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
         const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
+
+        // Xác định ngày làm việc dựa trên weekdays của ca trong record chấm công.
+        // Ưu tiên: weekdays từ att.assignmentId → planned assignment của NV → default T2-T6.
+        // Quan trọng: chấm công vào ngày không nằm trong weekdays của ca → không tính công (WEEKEND).
+        const attAssignmentId = raw?.assignmentId ?? null;
+        let effectiveWeekdays;
+        if (attAssignmentId && assignmentById.has(attAssignmentId)) {
+          effectiveWeekdays = this._parseWeekdays(
+            assignmentById.get(attAssignmentId).weekdays,
+          );
+        } else {
+          // Không có ca trong record → dùng ca kế hoạch của NV hoặc default T2-T6
+          effectiveWeekdays = (
+            employeeWeekdaysMap.get(empId) || { weekdays: [1, 2, 3, 4, 5] }
+          ).weekdays;
+        }
+        const isWorkingDay = effectiveWeekdays.includes(dayOfWeek);
+        const isWeekendDay = !isWorkingDay;
 
         const shiftStart = new Date(`${dateStr}T${shiftStartStr}`);
         const shiftEnd = new Date(`${dateStr}T${shiftEndStr}`);
@@ -2670,11 +2692,9 @@ export class TimesheetsService {
         const hasOnlyPartial = (checkIn || checkOut) && !hasBothCheckInOut;
 
         if (hasBothCheckInOut) {
-          // Có cả check-in lẫn check-out → tính công theo số giờ thực làm / giờ ca
-          // (tránh trường hợp chấm 2 phút nhưng vẫn ra 1 công).
+          // Có cả check-in lẫn check-out → tính công chính xác theo ca.
           attendanceStatus = 'X';
 
-          // Build shift object với break time để tính đúng giờ làm thực tế
           const shiftForCalc = {
             startTime: shiftStartStr,
             endTime: shiftEndStr,
@@ -2682,33 +2702,36 @@ export class TimesheetsService {
             breakEndTime: breakEndStr,
           };
           const shiftHours = this._calcShiftHours(shiftForCalc);
-          const actualHours = this._calcActualHours(
-            checkIn,
-            checkOut,
-            shiftForCalc,
-          );
-          workValue = this._calcWorkingDay(actualHours, shiftHours);
 
-          // Apply penalty conversion rules (late/early) on top of hour-based value.
-          // This only reduces value further when policy requires.
-          if (workValue > 0) {
-            const lookup = penaltyLookupByDay[day];
-            const lateHours = penaltyHours(lookup.late, lateMins);
-            const earlyHours = penaltyHours(lookup.early, earlyMins);
-            const totalPenaltyHours = lateHours + earlyHours;
+          // ── Giờ làm thực tế ──────────────────────────────────────────────
+          // effectiveStart = max(checkIn, shiftStart):
+          //   - Đến đúng/trước giờ → tính từ đầu ca (không cộng giờ đến sớm)
+          //   - Đến muộn          → tính từ lúc vào
+          const effectiveStart = checkIn > shiftStart ? checkIn : shiftStart;
+          let workedMins = Math.max(0, (checkOut - effectiveStart) / 60000);
 
-            if (totalPenaltyHours > 0) {
-              workValue -= totalPenaltyHours / (shiftHours || 8);
-              if (workValue <= 0) {
-                workValue = 0;
-                attendanceStatus = 'ABSENT';
-              } else if (workValue < 1.0) {
-                attendanceStatus = 'KL';
-              }
-            }
+          // Trừ giờ nghỉ giữa ca nằm trong khoảng [effectiveStart, checkOut]
+          if (breakStartStr && breakEndStr) {
+            const breakS = new Date(`${dateStr}T${breakStartStr}`);
+            const breakE = new Date(`${dateStr}T${breakEndStr}`);
+            const oStart = Math.max(effectiveStart.getTime(), breakS.getTime());
+            const oEnd = Math.min(checkOut.getTime(), breakE.getTime());
+            workedMins -= Math.max(0, (oEnd - oStart) / 60000);
           }
+          const workedHours = Math.max(0, workedMins / 60);
 
-          if (workValue === 0) {
+          // ── Áp penalty: trừ trực tiếp khỏi giờ làm, không trừ vào workValue ──
+          const lookup = penaltyLookupByDay[day];
+          const lateH = penaltyHours(lookup.late, lateMins);
+          const earlyH = penaltyHours(lookup.early, earlyMins);
+          const netHours = Math.max(0, workedHours - lateH - earlyH);
+
+          // workValue = netHours / shiftHours, tối đa 1.0
+          workValue =
+            shiftHours > 0 ? Math.min(1.0, netHours / shiftHours) : 0;
+
+          if (workValue <= 0) {
+            workValue = 0;
             attendanceStatus = 'ABSENT';
           } else if (workValue < 1.0) {
             attendanceStatus = 'KL';
