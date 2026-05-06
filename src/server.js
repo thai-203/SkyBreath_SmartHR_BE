@@ -140,7 +140,10 @@ app.use(
 );
 app.use(`/${API_PREFIX}/${API_VERSION}/notifications`, notificationsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll-config`, payrollConfigRoutes);
-app.use(`/${API_PREFIX}/${API_VERSION}/performance-reviews`, performanceReviewsRoutes);
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/performance-reviews`,
+  performanceReviewsRoutes,
+);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');

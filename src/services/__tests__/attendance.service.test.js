@@ -82,7 +82,7 @@ describe('AttendanceService - checkIn / checkOut', () => {
     it('6. Quăng lỗi nếu nhân viên đã check-in rồi', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue(null);
-      service.shiftRepo.findTodayShiftByEmpId.mockResolvedValue([{ shiftId: 1, shift: { id: 1 } }]);
+      service.shiftRepo.findTodayShiftByEmpId.mockResolvedValue([{ shiftId: 1, assignmentId: 10, shift: { id: 1 } }]);
       service.requestRepo.getTodayOvertime.mockResolvedValue(null);
       service.securityRepo.findOneConfig.mockResolvedValue({ applyTo: 'NONE' });
       service.faceConfigRepo.findOneConfig.mockResolvedValue({});
@@ -97,7 +97,7 @@ describe('AttendanceService - checkIn / checkOut', () => {
     it('7. Check-in thành công và trả về dữ liệu đúng', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue(null); // Không bị block
-      service.shiftRepo.findTodayShiftByEmpId.mockResolvedValue([{ shiftId: 1, shift: { id: 1 } }]); // Có ca
+      service.shiftRepo.findTodayShiftByEmpId.mockResolvedValue([{ shiftId: 1, assignmentId: 10, shift: { id: 1 } }]); // Có ca
       service.requestRepo.getTodayOvertime.mockResolvedValue(null);
       service.securityRepo.findOneConfig.mockResolvedValue({ applyTo: 'NONE' });
       service.faceConfigRepo.findOneConfig.mockResolvedValue({});
@@ -171,8 +171,8 @@ describe('AttendanceService - checkIn / checkOut', () => {
       const checkInRecord = { 
         id: 100, 
         checkInTime: new Date(Date.now() - 8 * 60 * 60 * 1000), // 8 tiếng trước
-        shiftScheduleId: 1,
-        shiftSchedule: { shift: { id: 1, startTime: '08:00', endTime: '17:00' } }
+        workingShiftId: 1,
+        workingShift: { id: 1, startTime: '08:00', endTime: '17:00' }
       };
       
       service.attendanceRepo.findOne.mockResolvedValue(checkInRecord);

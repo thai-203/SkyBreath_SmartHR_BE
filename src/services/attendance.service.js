@@ -399,13 +399,21 @@ export class AttendanceService {
     const faceConfig = await this.faceConfigRepo.findOneConfig();
     await this._validateFace(employeeId, files, faceConfig);
 
-    let shiftSchedule = null;
+    let workingShiftId = null;
+    let assignmentId = null;
     let lateMinutes = 0;
     const now = new Date();
 
     if (shifts && shifts.length > 0) {
       const shift = this._getCurrentShift(shifts);
-      shiftSchedule = shiftSchedules.find((ss) => ss.shiftId === shift.id);
+      workingShiftId = shift?.id ?? null;
+
+      // Tìm assignmentId tương ứng với ca làm việc
+      const matchedSchedule = shiftSchedules.find(
+        (s) => s.shiftId === workingShiftId,
+      );
+      assignmentId = matchedSchedule?.assignmentId ?? null;
+
       lateMinutes = this._calcLateMinutes(now, shift.startTime);
     } else if (overtime) {
       lateMinutes = this._calcLateMinutes(now, overtime.startTime);
@@ -416,7 +424,8 @@ export class AttendanceService {
       record = await this.attendanceRepo.create({
         employeeId,
         workDate: today,
-        shiftScheduleId: shifts.length > 0 ? shiftSchedule.id : null,
+        workingShiftId: workingShiftId,
+        assignmentId: assignmentId,
         attendanceType: 'FACE',
         checkInTime: now,
         lateMinutes,
