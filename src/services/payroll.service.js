@@ -215,13 +215,6 @@ export class PayrollService {
                 salary, ts, tsStdDays, workingDays, p21Percent, p22Percent, employee.employmentStatus
             );
 
-            // ── Tính bảo hiểm (52) ──
-            // Mức đóng BH giới hạn trần 46.8 triệu (20 × mức lương cơ sở)
-            const insuranceBase = this._calcInsuranceBase(salary.baseSalary);
-            const insurance = this._calcEmployeeInsurance(insuranceBase);
-            const { social: socialInsurance, health: healthInsurance, unemployment: unemploymentInsurance } = insurance;
-            const insuranceDeduction = insurance.total; // (52) = 10.5%
-
             // ── Phụ cấp thực nhận (43) ──
             const earnedAllowances = this._calcTotalAllowances(salary);
 
@@ -246,6 +239,13 @@ export class PayrollService {
                 adjustmentNonTaxable,
                 otherNonTaxable,
             });
+
+            // ── Tính bảo hiểm (52) ──
+            // Mức đóng BH giới hạn trần 46.8 triệu (20 × mức lương cơ sở), tính theo tổng thu nhập
+            const insuranceBase = this._calcInsuranceBase(totalGrossIncome);
+            const insurance = this._calcEmployeeInsurance(insuranceBase);
+            const { social: socialInsurance, health: healthInsurance, unemployment: unemploymentInsurance } = insurance;
+            const insuranceDeduction = insurance.total; // (52) = 10.5%
 
             // ── Giảm trừ gia cảnh (12.2) ──
             // Số NPT lấy từ dữ liệu đã nhập trước (mặc định 0 nếu chưa có)
@@ -601,18 +601,6 @@ export class PayrollService {
         const p21Percent = parseFloat(dto.p1p2Percentage ?? detail.p1p2Percentage ?? 0);
         const p22Percent = parseFloat(dto.p3Percentage ?? detail.p3Percentage ?? 0);
 
-        // ── Bảo hiểm (52) ──
-        // Dùng helper để nhất quán với autoCalculate; tỷ lệ có thể override từ dto
-        const socialInsurancePercentage      = dto.socialInsurancePercentage      ?? INSURANCE_RATES.SOCIAL;
-        const healthInsurancePercentage      = dto.healthInsurancePercentage      ?? INSURANCE_RATES.HEALTH;
-        const unemploymentInsurancePercentage= dto.unemploymentInsurancePercentage ?? INSURANCE_RATES.UNEMPLOYMENT;
-
-        const insuranceBase     = this._calcInsuranceBase(detail.baseSalary);
-        const socialInsurance   = parseFloat((insuranceBase * socialInsurancePercentage      / 100).toFixed(2));
-        const healthInsurance   = parseFloat((insuranceBase * healthInsurancePercentage      / 100).toFixed(2));
-        const unemploymentInsurance = parseFloat((insuranceBase * unemploymentInsurancePercentage / 100).toFixed(2));
-        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance; // (52)
-
         // ── OT ──
         const { activeRules, ruleDepts } = await this._getOTRules();
         const ts = {
@@ -658,6 +646,18 @@ export class PayrollService {
             bonus, allowanceAmount: earnedAllowances, overtimePay,
             adjustmentTaxable, adjustmentNonTaxable, otherNonTaxable,
         });
+
+        // ── Bảo hiểm (52) ──
+        // Dùng helper để nhất quán với autoCalculate; tỷ lệ có thể override từ dto
+        const socialInsurancePercentage      = dto.socialInsurancePercentage      ?? INSURANCE_RATES.SOCIAL;
+        const healthInsurancePercentage      = dto.healthInsurancePercentage      ?? INSURANCE_RATES.HEALTH;
+        const unemploymentInsurancePercentage= dto.unemploymentInsurancePercentage ?? INSURANCE_RATES.UNEMPLOYMENT;
+
+        const insuranceBase     = this._calcInsuranceBase(totalGrossIncome);
+        const socialInsurance   = parseFloat((insuranceBase * socialInsurancePercentage      / 100).toFixed(2));
+        const healthInsurance   = parseFloat((insuranceBase * healthInsurancePercentage      / 100).toFixed(2));
+        const unemploymentInsurance = parseFloat((insuranceBase * unemploymentInsurancePercentage / 100).toFixed(2));
+        const insuranceDeduction = socialInsurance + healthInsurance + unemploymentInsurance; // (52)
 
         // ── Giảm trừ gia cảnh (12.2) ──
         const dependentCount  = parseInt(dto.dependentCount ?? detail.dependentCount ?? 0);
