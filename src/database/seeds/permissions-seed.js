@@ -12,7 +12,7 @@ const seed = async () => {
     console.log('Seeding permissions and role-permission mappings...');
 
     // 1. Khởi tạo danh sách quyền mới dựa trên danh sách bạn cung cấp
-        const permissionsData = [
+    const permissionsData = [
       // ================= AI =================
       {
         permissionCode: 'AI_CONFIGURATION_READ',
