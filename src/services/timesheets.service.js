@@ -1441,7 +1441,7 @@ export class TimesheetsService {
     search,
     userContext,
   ) {
-    // Export "giống như Ma trận dữ liệu chấm công" (processed_attendance_records),
+    // Export "giống như dữ liệu chấm công" (processed_attendance_records),
     // not raw attendance_records.
     const daysInMonth = new Date(year, month, 0).getDate();
     const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -1660,9 +1660,7 @@ export class TimesheetsService {
           horizontal: colNumber <= 2 ? 'left' : 'center',
           wrapText: true,
         };
-        if (isNumeric) {
-          cell.numFmt = '0.##';
-        }
+
         // weekend background for day columns
         const isDayCol =
           colNumber > baseColumns.length &&
@@ -1925,21 +1923,7 @@ export class TimesheetsService {
     return (rawMinutes - breakOverlap) / 60;
   }
 
-  /**
-   * Calculate working day value based on actual hours vs shift hours.
-   * - Full day  : actualHours >= 75% of shiftHours  (e.g. ≥6h for 8h shift → 1 day)
-   * - Half day  : actualHours >= 40% of shiftHours  (e.g. ≥3.2h for 8h shift → 0.5 day)
-   * - No day    : actualHours < 40% of shiftHours
-   * This avoids penalising small lateness (e.g. 18 min late out of 8h) with a 0.5-day deduction.
-   * @param {number} actualHours - hours worked (after break deduction)
-   * @param {number} shiftHours  - standard shift hours for 1 full day
-   * @returns {number} 1 | 0.5 | 0
-   */
-  _calcWorkingDay(actualHours, shiftHours) {
-    if (actualHours >= shiftHours * 0.75) return 1;
-    if (actualHours >= shiftHours * 0.4) return 0.5;
-    return 0;
-  }
+
 
   _buildDailyDetails(
     records,
@@ -2030,7 +2014,7 @@ export class TimesheetsService {
             typeof excuseRequest.requestContent === 'string'
               ? JSON.parse(excuseRequest.requestContent)
               : excuseRequest.requestContent;
-        } catch (e) {}
+        } catch (e) { }
 
         detail.excuseRequest = {
           id: excuseRequest.id,
@@ -2785,7 +2769,7 @@ export class TimesheetsService {
               const isWorked =
                 codeRequests[i].isWorkedTime ||
                 codeRequests[i].requestGroup?.code ===
-                  RequestGroupCode.BUSINESS_TRIP;
+                RequestGroupCode.BUSINESS_TRIP;
               if (isWorked) workValue += 0.5;
             }
           } else {
@@ -2793,7 +2777,7 @@ export class TimesheetsService {
             const isWorked =
               codeRequests[0].isWorkedTime ||
               codeRequests[0].requestGroup?.code ===
-                RequestGroupCode.BUSINESS_TRIP;
+              RequestGroupCode.BUSINESS_TRIP;
 
             // Trường hợp 0.5/[Mã] - nửa làm nửa nghỉ
             if (workValue > 0 && workValue < 1.0) {
@@ -3166,7 +3150,7 @@ export class TimesheetsService {
         userId: userContext?.id,
         actionType: 'FINALIZE',
         targetTable: 'processed_attendance_records',
-        description: `Chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+        description: `Chốt công tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
       });
     }
 
@@ -3232,7 +3216,7 @@ export class TimesheetsService {
         userId: userContext?.id,
         actionType: 'UNFINALIZE',
         targetTable: 'processed_attendance_records',
-        description: `Bỏ chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+        description: `Bỏ chốt công tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
       });
     }
 
