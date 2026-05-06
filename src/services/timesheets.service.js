@@ -241,7 +241,11 @@ export class TimesheetsService {
         const records = attendanceMap.get(employee.id) || [];
 
         // Get this employee's shift (or default)
-        const { shift, weekdays } = await this._getEmployeeShift(employee.id, month, year);
+        const { shift, weekdays } = await this._getEmployeeShift(
+          employee.id,
+          month,
+          year,
+        );
         const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
         console.log(
           `shiftHoursPerDay for employee ${employee.id}:`,
@@ -496,7 +500,11 @@ export class TimesheetsService {
       .getMany();
 
     // Calc totals with per-employee shift, break deduction & half-day
-    const { shift, weekdays } = await this._getEmployeeShift(employeeId, month, year);
+    const { shift, weekdays } = await this._getEmployeeShift(
+      employeeId,
+      month,
+      year,
+    );
     const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
 
     // Group records by date
@@ -1027,7 +1035,11 @@ export class TimesheetsService {
       if (records.length === 0 && !isHR) continue;
 
       // Get shift
-      const { shift, weekdays } = await this._getEmployeeShift(employee.id, month, year);
+      const { shift, weekdays } = await this._getEmployeeShift(
+        employee.id,
+        month,
+        year,
+      );
 
       // Get excuse requests
       const excuseRequests = await requestRepo.find({
@@ -1733,12 +1745,12 @@ export class TimesheetsService {
 
   async _getEmployeeShift(employeeId, month, year) {
     const assignmentRepo = AppDataSource.getRepository(ShiftAssignmentEntity);
-    
+
     // Get employee info for department lookup
     const empRepo = AppDataSource.getRepository(EmployeeEntity);
     const employee = await empRepo.findOne({
       where: { id: employeeId, isDeleted: false },
-      select: ['id', 'departmentId']
+      select: ['id', 'departmentId'],
     });
     const employeeDeptId = employee?.departmentId;
 
@@ -1757,21 +1769,30 @@ export class TimesheetsService {
       .getMany();
 
     // Filter in memory for employee/department match
-    const applicableAssignments = allAssignments.filter(a => {
+    const applicableAssignments = allAssignments.filter((a) => {
       // Employee direct match
       if (a.employeeId === employeeId) return true;
       // Employee IDs array match
-      if (a.employeeIds && Array.isArray(a.employeeIds) && a.employeeIds.includes(employeeId)) return true;
+      if (
+        a.employeeIds &&
+        Array.isArray(a.employeeIds) &&
+        a.employeeIds.includes(employeeId)
+      )
+        return true;
       // Department direct match
       if (a.departmentId === employeeDeptId) return true;
       // Department IDs array match
-      if (a.departmentIds && Array.isArray(a.departmentIds) && a.departmentIds.includes(employeeDeptId)) return true;
+      if (
+        a.departmentIds &&
+        Array.isArray(a.departmentIds) &&
+        a.departmentIds.includes(employeeDeptId)
+      )
+        return true;
       return false;
     });
-    console.log(`shift assignment ${assignment.shift}`);
 
     // Filter to assignments that are effective during this month
-    const effectiveAssignments = applicableAssignments.filter(a => {
+    const effectiveAssignments = applicableAssignments.filter((a) => {
       if (!a.effectiveFrom) return true; // No start date = always effective
       const effFrom = new Date(a.effectiveFrom);
       const effTo = a.effectiveTo ? new Date(a.effectiveTo) : null;
@@ -1784,17 +1805,33 @@ export class TimesheetsService {
       // Direct employeeId match gets highest priority
       if (a.employeeId === employeeId && b.employeeId !== employeeId) return -1;
       if (b.employeeId === employeeId && a.employeeId !== employeeId) return 1;
-      
+
       // EmployeeIds array match
-      if (a.employeeIds && a.employeeIds.includes(employeeId) && 
-          (!b.employeeIds || !b.employeeIds.includes(employeeId))) return -1;
-      if (b.employeeIds && b.employeeIds.includes(employeeId) && 
-          (!a.employeeIds || !a.employeeIds.includes(employeeId))) return 1;
-      
+      if (
+        a.employeeIds &&
+        a.employeeIds.includes(employeeId) &&
+        (!b.employeeIds || !b.employeeIds.includes(employeeId))
+      )
+        return -1;
+      if (
+        b.employeeIds &&
+        b.employeeIds.includes(employeeId) &&
+        (!a.employeeIds || !a.employeeIds.includes(employeeId))
+      )
+        return 1;
+
       // Department match
-      if (a.departmentId === employeeDeptId && b.departmentId !== employeeDeptId) return -1;
-      if (b.departmentId === employeeDeptId && a.departmentId !== employeeDeptId) return 1;
-      
+      if (
+        a.departmentId === employeeDeptId &&
+        b.departmentId !== employeeDeptId
+      )
+        return -1;
+      if (
+        b.departmentId === employeeDeptId &&
+        a.departmentId !== employeeDeptId
+      )
+        return 1;
+
       // Most recent effectiveFrom wins
       const dateA = a.effectiveFrom ? new Date(a.effectiveFrom) : new Date(0);
       const dateB = b.effectiveFrom ? new Date(b.effectiveFrom) : new Date(0);
@@ -1811,7 +1848,7 @@ export class TimesheetsService {
         weekdays,
       };
     }
-    
+
     // Default: no shift assignment, treat MON-FRI as working days, SAT-SUN as weekend
     return {
       shift: await this._getDefaultShift(),
@@ -2197,8 +2234,8 @@ export class TimesheetsService {
     if (scopedEmployeeIds.length === 0) return { synced: 0 };
 
     // 2) Fetch raw attendance records (ONLY for employees in scope)
-    //    IMPORTANT: lấy ca làm theo từng ngày từ attendance_records.shift_schedule_id
-    //    (join shift_schedules -> working_shifts) để tính late/early đúng và lưu shift_start_time/end_time.
+    //    IMPORTANT: lấy ca làm theo từng ngày từ attendance_records.working_shift_id
+    //    (join working_shifts) để tính late/early đúng và lưu shift_start_time/end_time.
     const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
     const rawRecords = await attendanceRepo
       .createQueryBuilder('att')
@@ -2206,7 +2243,8 @@ export class TimesheetsService {
         'att.id',
         'att.employeeId',
         'att.workDate',
-        'att.shiftScheduleId',
+        'att.workingShiftId',
+        'att.assignmentId',
         'att.checkInTime',
         'att.checkOutTime',
       ])
@@ -2216,8 +2254,7 @@ export class TimesheetsService {
       })
       .andWhere('att.workDate >= :start', { start: monthStartStr })
       .andWhere('att.workDate <= :end', { end: monthEndStr })
-      .leftJoinAndSelect('att.shiftSchedule', 'shiftSchedule')
-      .leftJoinAndSelect('shiftSchedule.shift', 'workingShift')
+      .leftJoinAndSelect('att.workingShift', 'workingShift')
       .getMany();
 
     // Build minimal map: employeeId -> dateKey -> { id, checkInTime, checkOutTime, shiftStartTime, shiftEndTime, workingShiftId }
@@ -2232,12 +2269,13 @@ export class TimesheetsService {
         currentMonthData.set(record.employeeId, empMap);
       }
       const existing = empMap.get(dateKey);
-      const shift = record.shiftSchedule?.shift ?? null;
+      const shift = record.workingShift ?? null;
       const shiftStartTime = shift?.startTime || '08:00:00';
       const shiftEndTime = shift?.endTime || '17:00:00';
       const breakStartTime = shift?.breakStartTime || null;
       const breakEndTime = shift?.breakEndTime || null;
       const workingShiftId = shift?.id ?? null;
+      const assignmentId = record.assignmentId ?? null;
       if (!existing) {
         empMap.set(dateKey, {
           id: record.id,
@@ -2248,6 +2286,7 @@ export class TimesheetsService {
           breakStartTime,
           breakEndTime,
           workingShiftId,
+          assignmentId,
         });
       } else {
         if (
@@ -2265,9 +2304,10 @@ export class TimesheetsService {
           existing.checkOutTime = record.checkOutTime;
         }
 
-        // Nếu có ca theo schedule thì giữ lại để tính đúng (ưu tiên record có schedule)
+        // Ưu tiên record có shift/assignment
         if (workingShiftId && !existing.workingShiftId) {
           existing.workingShiftId = workingShiftId;
+          existing.assignmentId = assignmentId;
           existing.shiftStartTime = shiftStartTime;
           existing.shiftEndTime = shiftEndTime;
           existing.breakStartTime = breakStartTime;
@@ -2448,8 +2488,10 @@ export class TimesheetsService {
 
     // 7) Fetch shift assignments with weekdays for all employees (for proper holiday logic)
     // Now supporting multiple assignment types: employeeId, employeeIds[], departmentId, departmentIds[]
-    const shiftAssignmentRepo = AppDataSource.getRepository(ShiftAssignmentEntity);
-    
+    const shiftAssignmentRepo = AppDataSource.getRepository(
+      ShiftAssignmentEntity,
+    );
+
     // First, get employee department info
     const empRepoForSync = AppDataSource.getRepository(EmployeeEntity);
     const employeesInfo = await empRepoForSync
@@ -2457,7 +2499,7 @@ export class TimesheetsService {
       .select(['emp.id', 'emp.departmentId'])
       .where('emp.id IN (:...empIds)', { empIds: scopedEmployeeIds })
       .getMany();
-    
+
     const employeeDeptMap = new Map();
     for (const emp of employeesInfo) {
       employeeDeptMap.set(emp.id, emp.departmentId);
@@ -2468,24 +2510,31 @@ export class TimesheetsService {
       .createQueryBuilder('sa')
       .leftJoinAndSelect('sa.shift', 'shift')
       .where('sa.isDeleted = :isDel', { isDel: false })
-      .andWhere(`(
+      .andWhere(
+        `(
         (sa.employeeId IN (:...empIds)) OR
         (sa.departmentId IN (:...deptIds)) OR
         (sa.employeeIds IS NOT NULL AND sa.employeeIds != '') OR
         (sa.departmentIds IS NOT NULL AND sa.departmentIds != '')
-      )`, { 
-        empIds: scopedEmployeeIds,
-        deptIds: [...new Set(employeesInfo.map(e => e.departmentId).filter(Boolean))]
-      })
+      )`,
+        {
+          empIds: scopedEmployeeIds,
+          deptIds: [
+            ...new Set(
+              employeesInfo.map((e) => e.departmentId).filter(Boolean),
+            ),
+          ],
+        },
+      )
       .getMany();
 
     // Build map: employeeId -> weekdays array
     const employeeWeekdaysMap = new Map();
     for (const empId of scopedEmployeeIds) {
       const empDeptId = employeeDeptMap.get(empId);
-      
+
       // Filter to applicable assignments for this employee
-      const applicableAssignments = allAssignments.filter(a => {
+      const applicableAssignments = allAssignments.filter((a) => {
         // Check if overlaps with month
         if (a.effectiveFrom) {
           const effFrom = new Date(a.effectiveFrom);
@@ -2495,13 +2544,13 @@ export class TimesheetsService {
           if (effFrom > monthEnd) return false;
           if (effTo && effTo < monthStart) return false;
         }
-        
+
         // Check if assignment applies to this employee
         if (a.employeeId === empId) return true;
         if (a.employeeIds && a.employeeIds.includes(empId)) return true;
         if (a.departmentId === empDeptId) return true;
         if (a.departmentIds && a.departmentIds.includes(empDeptId)) return true;
-        
+
         return false;
       });
 
@@ -2510,17 +2559,27 @@ export class TimesheetsService {
         // Direct employeeId match gets highest priority
         if (a.employeeId === empId && b.employeeId !== empId) return -1;
         if (b.employeeId === empId && a.employeeId !== empId) return 1;
-        
+
         // EmployeeIds array match
-        if (a.employeeIds && a.employeeIds.includes(empId) && 
-            (!b.employeeIds || !b.employeeIds.includes(empId))) return -1;
-        if (b.employeeIds && b.employeeIds.includes(empId) && 
-            (!a.employeeIds || !a.employeeIds.includes(empId))) return 1;
-        
+        if (
+          a.employeeIds &&
+          a.employeeIds.includes(empId) &&
+          (!b.employeeIds || !b.employeeIds.includes(empId))
+        )
+          return -1;
+        if (
+          b.employeeIds &&
+          b.employeeIds.includes(empId) &&
+          (!a.employeeIds || !a.employeeIds.includes(empId))
+        )
+          return 1;
+
         // Department match
-        if (a.departmentId === empDeptId && b.departmentId !== empDeptId) return -1;
-        if (b.departmentId === empDeptId && a.departmentId !== empDeptId) return 1;
-        
+        if (a.departmentId === empDeptId && b.departmentId !== empDeptId)
+          return -1;
+        if (b.departmentId === empDeptId && a.departmentId !== empDeptId)
+          return 1;
+
         // Most recent effectiveFrom wins
         const dateA = a.effectiveFrom ? new Date(a.effectiveFrom) : new Date(0);
         const dateB = b.effectiveFrom ? new Date(b.effectiveFrom) : new Date(0);
@@ -2530,10 +2589,10 @@ export class TimesheetsService {
       const assignment = sortedAssignments[0];
       if (assignment?.weekdays) {
         const weekdays = this._parseWeekdays(assignment.weekdays);
-        employeeWeekdaysMap.set(empId, weekdays);
+        employeeWeekdaysMap.set(empId, { weekdays, assignmentId: assignment.id });
       } else {
         // Default: Mon-Fri working days
-        employeeWeekdaysMap.set(empId, [1, 2, 3, 4, 5]);
+        employeeWeekdaysMap.set(empId, { weekdays: [1, 2, 3, 4, 5], assignmentId: assignment?.id || null });
       }
     }
 
@@ -2542,7 +2601,9 @@ export class TimesheetsService {
     for (const empId of scopedEmployeeIds) {
       const empRawMap = currentMonthData.get(empId) || new Map();
       const empRequests = requestsByEmployeeId.get(empId) || [];
-      const weekdays = employeeWeekdaysMap.get(empId) || [1, 2, 3, 4, 5]; // Default: Mon-Fri
+      const config = employeeWeekdaysMap.get(empId) || { weekdays: [1, 2, 3, 4, 5], assignmentId: null };
+      const weekdays = config.weekdays;
+      const plannedAssignmentId = config.assignmentId;
 
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -2560,6 +2621,7 @@ export class TimesheetsService {
         const breakStartStr = raw?.breakStartTime || null;
         const breakEndStr = raw?.breakEndTime || null;
         const workingShiftId = raw?.workingShiftId ?? null;
+        const assignmentId = raw?.assignmentId ?? plannedAssignmentId;
         const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
         const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
 
@@ -2572,6 +2634,7 @@ export class TimesheetsService {
             employeeId: empId,
             attendanceDate: dateStr,
             workingShiftId,
+            assignmentId,
             checkInTime: checkIn,
             checkOutTime: checkOut,
             shiftStartTime: shiftStartStr,
@@ -2619,7 +2682,11 @@ export class TimesheetsService {
             breakEndTime: breakEndStr,
           };
           const shiftHours = this._calcShiftHours(shiftForCalc);
-          const actualHours = this._calcActualHours(checkIn, checkOut, shiftForCalc);
+          const actualHours = this._calcActualHours(
+            checkIn,
+            checkOut,
+            shiftForCalc,
+          );
           workValue = this._calcWorkingDay(actualHours, shiftHours);
 
           // Apply penalty conversion rules (late/early) on top of hour-based value.
@@ -2683,7 +2750,9 @@ export class TimesheetsService {
           reqId = codeRequests[0].id;
           // For request display, use isWorkingDay instead of weekend
           const isInSchedule = isWorkingDay;
-          const mappedCodes = codeRequests.map((r) => _resolveRequestCode(r, !isInSchedule));
+          const mappedCodes = codeRequests.map((r) =>
+            _resolveRequestCode(r, !isInSchedule),
+          );
 
           if (codeRequests.length >= 2) {
             // [Mã 1]/[Mã 2] - Sáng làm mã 1, chiều mã 2
@@ -2743,6 +2812,7 @@ export class TimesheetsService {
           employeeId: empId,
           attendanceDate: dateStr,
           workingShiftId,
+          assignmentId,
           checkInTime: checkIn,
           checkOutTime: checkOut,
           shiftStartTime: shiftStartStr,
@@ -3379,7 +3449,7 @@ export class TimesheetsService {
     let waitingDays = 0;
     let annualLeaveDays = 0; // P = Nghỉ phép năm
     let benefitLeaveDaysCount = 0; // H, V, C, S, D, A, M, BL, B = Nghỉ chế độ
-    
+
     empRecords.forEach((r) => {
       const val = Number(r.workValue) || 0;
       const status = r.attendanceStatus;
@@ -3436,7 +3506,13 @@ export class TimesheetsService {
         // V = Nghỉ việc riêng có hưởng lương (hiếu, hỉ...)
         benefitLeaveDaysCount += val;
         isWorkingDay = true;
-      } else if (status === 'C' || status === 'S' || status === 'D' || status === 'A' || status === 'M') {
+      } else if (
+        status === 'C' ||
+        status === 'S' ||
+        status === 'D' ||
+        status === 'A' ||
+        status === 'M'
+      ) {
         // C, S, D, A, M = Nghỉ chế độ hưởng nguyên lương
         benefitLeaveDaysCount += val;
         isWorkingDay = true;
@@ -3524,9 +3600,21 @@ export class TimesheetsService {
       }
     });
 
-    const totalOtHours = otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight;
+    const totalOtHours =
+      otWeekday +
+      otWeekdayNight +
+      otWeekend +
+      otWeekendNight +
+      otHoliday +
+      otHolidayNight;
     // Tổng công = công chính thức + thử việc + công tác + lễ + phép + chế độ
-    const totalMonthlyDays = officialDays + probationDays + businessTripDays + holidayDays + annualLeaveDays + benefitLeaveDaysCount;
+    const totalMonthlyDays =
+      officialDays +
+      probationDays +
+      businessTripDays +
+      holidayDays +
+      annualLeaveDays +
+      benefitLeaveDaysCount;
 
     return {
       officialDays: Number(officialDays.toFixed(2)),

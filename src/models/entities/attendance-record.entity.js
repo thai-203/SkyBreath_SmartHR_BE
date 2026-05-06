@@ -1,7 +1,8 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity.js';
 import { EmployeeEntity } from './employee.entity.js';
-import { ShiftScheduleEntity } from './shift-schedule.entity.js';
+import { WorkingShiftEntity } from './working-shift.entity.js';
+import { ShiftAssignmentEntity } from './shift-assignment.entity.js';
 
 export const AttendanceStatus = {
   PRESENT: 'present',
@@ -27,8 +28,11 @@ export class AttendanceRecordEntity extends BaseEntity {
   @Column({ name: 'work_date', type: 'date', nullable: true })
   workDate;
 
-  @Column({ name: 'shift_schedule_id', type: 'int', nullable: true })
-  shiftScheduleId;
+  @Column({ name: 'working_shift_id', type: 'int', nullable: true })
+  workingShiftId;
+
+  @Column({ name: 'assignment_id', type: 'int', nullable: true })
+  assignmentId;
 
   @Column({ name: 'check_in_time', type: 'datetime', nullable: true })
   checkInTime;
@@ -68,7 +72,11 @@ export class AttendanceRecordEntity extends BaseEntity {
   @JoinColumn({ name: 'employee_id' })
   employee;
 
-  @ManyToOne(() => ShiftScheduleEntity)
-  @JoinColumn({ name: 'shift_schedule_id', nullable: true })
-  shiftSchedule;
+  @ManyToOne(() => WorkingShiftEntity)
+  @JoinColumn({ name: 'working_shift_id' })
+  workingShift;
+
+  @ManyToOne(() => ShiftAssignmentEntity)
+  @JoinColumn({ name: 'assignment_id' })
+  assignment;
 }
