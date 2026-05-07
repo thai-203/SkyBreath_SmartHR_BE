@@ -50,25 +50,7 @@ function _dateKeyFromRequestField(value) {
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function _pickSyncRequestForDay(empRequests, calendarDateKey) {
-  const candidates = empRequests.filter((r) => {
-    const code = r.requestGroup?.code;
-    if (!code || !TIMESHEET_SYNC_GROUP_PRIORITY[code]) return false;
-    const start = _dateKeyFromRequestField(r.startDate);
-    if (!start) return false;
-    const end = _dateKeyFromRequestField(r.endDate) || start;
-    return calendarDateKey >= start && calendarDateKey <= end;
-  });
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-  candidates.sort((a, b) => {
-    const pa = TIMESHEET_SYNC_GROUP_PRIORITY[a.requestGroup?.code] || 0;
-    const pb = TIMESHEET_SYNC_GROUP_PRIORITY[b.requestGroup?.code] || 0;
-    if (pb !== pa) return pb - pa;
-    return (a.id || 0) - (b.id || 0);
-  });
-  return candidates[0];
-}
+
 
 /** Phân tích mã ngắn chấm công (P, L, CT...) từ Request */
 function _resolveRequestCode(req, isWeekend) {

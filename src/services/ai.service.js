@@ -272,7 +272,7 @@ Sau khi nhận kết quả SQL, trình bày ngắn gọn, dễ hiểu bằng ti�
     if (activePrompts && activePrompts.length > 0) {
       additionalRules = '\n\n--- CÁC QUY TẮC / MẪU BỔ SUNG TỪ ADMIN ---\n';
       activePrompts.forEach(p => {
-         additionalRules += `\n[${p.promptKey}]:\n${p.promptContent}\n`;
+        additionalRules += `\n[${p.promptKey}]:\n${p.promptContent}\n`;
       });
     }
 
@@ -285,7 +285,7 @@ Sau khi nhận kết quả SQL, trình bày ngắn gọn, dễ hiểu bằng ti�
 
     const genAI = new GoogleGenerativeAI(activeConfig.configValue);
     const modelToUse = activeConfig.aiModel || 'gemini-2.5-flash';
-    
+
     const model = genAI.getGenerativeModel({
       model: modelToUse,
       systemInstruction: finalSystemInstruction,
