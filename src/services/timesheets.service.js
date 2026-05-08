@@ -292,7 +292,7 @@ export class TimesheetsService {
         // Calculate totals with break deduction & half-day support
         let totalWorkingDays = 0;
         let totalWorkingHours = 0;
-        let overtimeHours = 0;
+        let overtimeHours = otDetails.reduce((sum, item) => sum + parseFloat(item.totalHours || 0), 0);
 
         for (const [dateKey, { checkIn, checkOut }] of dailyMap) {
           let actualHours = this._calcActualHours(checkIn, checkOut, shift);
@@ -310,28 +310,14 @@ export class TimesheetsService {
             actualHours = shiftHoursPerDay;
           }
 
+          // Cap actual hours at shift hours for regular working hours/days
+          actualHours = Math.min(actualHours, shiftHoursPerDay);
+
           totalWorkingHours += actualHours;
           totalWorkingDays += this._calcWorkingDay(
             actualHours,
             shiftHoursPerDay,
           );
-
-          if (actualHours > shiftHoursPerDay) {
-            const actualOtHours = actualHours - shiftHoursPerDay;
-            console.log(`actualOtHours for ${dateKey}:`, actualOtHours);
-
-            const otDetail = otDetails.find((r) => {
-              const d = new Date(r.workDate);
-              const detailDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-              return detailDate === dateKey;
-            });
-            console.log(`otDetail for ${dateKey}:`, otDetail);
-
-            const otHoursAllowed = otDetail
-              ? parseFloat(otDetail.totalHours || 0)
-              : 0;
-            overtimeHours += Math.min(actualOtHours, otHoursAllowed);
-          }
         }
 
         // Upsert: check for existing timesheet
@@ -507,18 +493,36 @@ export class TimesheetsService {
       }
     });
 
+    // Fetch OT Requests for this employee
+    const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
+    const otDetails = await otDetailRepo
+      .createQueryBuilder('detail')
+      .innerJoin('detail.request', 'request')
+      .innerJoin('request.requestGroup', 'requestGroup')
+      .where('request.employeeId = :employeeId', { employeeId })
+      .andWhere('request.status = :status', { status: 'APPROVED' })
+      .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
+      .andWhere('detail.workDate >= :startDate', {
+        startDate: startDate.toISOString().split('T')[0],
+      })
+      .andWhere('detail.workDate <= :endDate', {
+        endDate: endDate.toISOString().split('T')[0],
+      })
+      .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
+      .getMany();
+
     let totalWorkingDays = 0;
     let totalWorkingHours = 0;
-    let overtimeHours = 0;
+    let overtimeHours = otDetails.reduce((sum, item) => sum + parseFloat(item.totalHours || 0), 0);
 
     for (const [, { checkIn, checkOut }] of dailyMap) {
-      const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+      let actualHours = this._calcActualHours(checkIn, checkOut, shift);
+      
+      // Cap actual hours at shift hours for regular working hours/days
+      actualHours = Math.min(actualHours, shiftHoursPerDay);
+
       totalWorkingHours += actualHours;
       totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
-
-      if (actualHours > shiftHoursPerDay) {
-        overtimeHours += actualHours - shiftHoursPerDay;
-      }
     }
 
     const timesheet = await this.timesheetsRepository.create({
