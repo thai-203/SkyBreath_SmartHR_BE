@@ -6,7 +6,7 @@ import { PaginatedResponseDto } from '../common/dto/pagination.dto.js';
 
 /**
  * Trim + collapse multiple spaces into one
- * "  Anh    nt  " → "Anh nt"
+ * 
  */
 const normalizeText = (str) => (str ? str.trim().replace(/\s+/g, ' ') : str);
 
@@ -112,7 +112,7 @@ export class RequestTypesService {
             // Check duplicate name nếu thay đổi tên hoặc di chuyển sang group khác
             const nameToCheck = typeData.name || typeItem.name;
             const groupToCheck = typeData.requestGroupId || typeItem.requestGroupId;
-            
+
             const existingType = await this.repository.findByNameAndGroupWithDeleted(nameToCheck, groupToCheck);
             if (existingType && existingType.id !== id) {
                 throw new ConflictException('Tên loại đơn từ này đã tồn tại trong nhóm nguồn/đích, kể cả trong thùng rác.');
@@ -167,10 +167,10 @@ export class RequestTypesService {
 
         // Xóa policy đi kèm
         await this.policyRepo.deleteByTypeId(id);
-        
+
         // Soft delete type
         await this.repository.delete(id);
-        
+
         return { message: 'Xoá loại đơn thành công' };
     }
 
