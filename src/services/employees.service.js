@@ -2,6 +2,7 @@ import { AppMessages } from '../common/constants/index.js';
 import {
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '../common/exceptions/index.js';
 import { AppDataSource } from '../database/data-source.js';
 import { PositionEntity } from '../models/entities/position.entity.js';
@@ -232,8 +233,45 @@ export class EmployeesService {
 
   async delete(id) {
     const employee = await this.findById(id);
+
+    // Chặn xóa nếu nhân viên đang là quản lý trực tiếp hoặc HR mentor của ai
+    const { EmployeeEntity } = await import('../models/entities/employee.entity.js');
+    const empRepo = AppDataSource.getRepository(EmployeeEntity);
+
+    const dependents = await empRepo
+      .createQueryBuilder('e')
+      .select(['e.id', 'e.fullName'])
+      .where('e.isDeleted = :d', { d: false })
+      .andWhere('e.id != :id', { id })
+      .andWhere('(e.directManagerId = :id OR e.hrMentorId = :id)', { id })
+      .getMany();
+
+    if (dependents.length > 0) {
+      const names = dependents.map((e) => e.fullName).join(', ');
+      const roles = [];
+
+      // Xác định vai trò cụ thể để thông báo rõ ràng
+      const isManager = await empRepo.findOne({
+        select: ['id'],
+        where: { directManagerId: id, isDeleted: false },
+      });
+      const isMentor = await empRepo.findOne({
+        select: ['id'],
+        where: { hrMentorId: id, isDeleted: false },
+      });
+
+      if (isManager) roles.push('quản lý trực tiếp');
+      if (isMentor) roles.push('HR mentor');
+
+      throw new BadRequestException(
+        `Không thể xóa nhân viên "${employee.fullName}" vì họ đang là ${roles.join(' và ')} của: ${names}. Vui lòng cập nhật thông tin những nhân viên này trước.`,
+      );
+    }
+
     return this.employeesRepository.softDelete(employee.id);
   }
+
+
 
   async findValidationData() {
     return this.employeesRepository.findValidationData();

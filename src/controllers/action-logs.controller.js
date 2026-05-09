@@ -30,17 +30,16 @@ export class ActionLogsController {
       const result = await this.actionLogsService.findById(
         parseInt(req.params.id),
       );
-      const data = plainToInstance(ActionLogResponseDto, result);
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.ActionLog.RETRIEVED,
-        data,
+        result,
       );
     } catch (error) {
       next(error);
     }
   };
-   export = async (req, res, next) => {
+  export = async (req, res, next) => {
     try {
       const buffer = await this.actionLogsService.exportExcel();
       res.setHeader(
@@ -56,5 +55,5 @@ export class ActionLogsController {
     } catch (error) {
       next(error);
     }
-  }; 
+  };
 }

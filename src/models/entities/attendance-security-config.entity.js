@@ -35,8 +35,19 @@ export class AttendanceSecurityConfigEntity extends BaseEntity {
   @Column({ name: 'location_radius_meters', type: 'int', nullable: true })
   locationRadiusMeters;
 
-  // ===== DEVICE SECURITY (mở rộng thêm) =====
-
   @Column({ name: 'block_vpn', type: 'boolean', default: false })
   blockVpn;
+
+  // ===== APPLICATION SCOPE =====
+
+  @Column({
+    name: 'apply_to',
+    type: 'enum',
+    enum: ['ALL', 'EMPLOYEE'],
+    default: 'ALL',
+  })
+  applyTo;
+
+  @Column({ name: 'target_ids', type: 'simple-array', nullable: true })
+  targetIds; // Array of numbers
 }

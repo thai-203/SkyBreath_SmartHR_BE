@@ -115,7 +115,10 @@ app.use(`/${API_PREFIX}/${API_VERSION}/upload`, uploadRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-groups`, requestGroupsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/request-types`, requestTypesRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai`, aiRoutes);
-app.use(`/${API_PREFIX}/${API_VERSION}/ai-configurations`, aiConfigurationsRoutes);
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/ai-configurations`,
+  aiConfigurationsRoutes,
+);
 app.use(`/${API_PREFIX}/${API_VERSION}/ai-prompts`, aiPromptsRoutes);
 app.use(
   `/${API_PREFIX}/${API_VERSION}/face-recognition-config`,
@@ -131,10 +134,16 @@ app.use(
   attendanceAllowedIpRoutes,
 );
 app.use(`/${API_PREFIX}/${API_VERSION}/attendance`, attendanceRoutes);
-app.use(`/${API_PREFIX}/${API_VERSION}/attendance-blocking-configs`, attendanceBlockingConfigRoutes);
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/attendance-blocking-configs`,
+  attendanceBlockingConfigRoutes,
+);
 app.use(`/${API_PREFIX}/${API_VERSION}/notifications`, notificationsRoutes);
 app.use(`/${API_PREFIX}/${API_VERSION}/payroll-config`, payrollConfigRoutes);
-app.use(`/${API_PREFIX}/${API_VERSION}/performance-reviews`, performanceReviewsRoutes);
+app.use(
+  `/${API_PREFIX}/${API_VERSION}/performance-reviews`,
+  performanceReviewsRoutes,
+);
 
 app.get('/', (req, res) => {
   res.send('SkyBreath SmartHR API is running');
@@ -163,12 +172,25 @@ const startServer = async () => {
 
     // Seed overtime_types nếu chưa có
     try {
-      const { OvertimeTypeEntity } = await import('./models/entities/overtime-type.entity.js');
+      const { OvertimeTypeEntity } =
+        await import('./models/entities/overtime-type.entity.js');
       const typeRepo = AppDataSource.getRepository(OvertimeTypeEntity);
       const overtimeTypes = [
-        { code: 'WEEKDAY', name: 'OT ngày thường', description: 'Làm thêm giờ vào ngày làm việc bình thường' },
-        { code: 'WEEKEND', name: 'OT cuối tuần', description: 'Làm thêm giờ vào thứ 7 hoặc chủ nhật' },
-        { code: 'HOLIDAY', name: 'OT ngày lễ', description: 'Làm thêm giờ vào ngày lễ, tết' },
+        {
+          code: 'WEEKDAY',
+          name: 'OT ngày thường',
+          description: 'Làm thêm giờ vào ngày làm việc bình thường',
+        },
+        {
+          code: 'WEEKEND',
+          name: 'OT cuối tuần',
+          description: 'Làm thêm giờ vào thứ 7 hoặc chủ nhật',
+        },
+        {
+          code: 'HOLIDAY',
+          name: 'OT ngày lễ',
+          description: 'Làm thêm giờ vào ngày lễ, tết',
+        },
       ];
       for (const ot of overtimeTypes) {
         const exists = await typeRepo.findOne({ where: { code: ot.code } });
@@ -242,3 +264,4 @@ const startServer = async () => {
 };
 
 startServer();
+

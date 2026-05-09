@@ -19,22 +19,38 @@ import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { ActionLogsRepository } from '../repositories/action-logs.repository.js';
 import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { MailService } from './mail.service.js';
-import { RedisService } from './redis.service.js';
-import { UsersService } from './users.service.js';
 import { setRequestContextValue } from '../common/context/request-context.js';
+import { isEmail, matches } from 'class-validator';
+import { UsersRepository } from '../repositories/users.repository.js';
 export class AuthService {
   constructor(
-    usersService = new UsersService(),
-    cacheService = new RedisService(),
     mailServiceInstance = new MailService(),
+    userRepository = new UsersRepository(),
   ) {
-    this.usersService = usersService;
-    this.cacheService = cacheService;
     this.mailService = mailServiceInstance;
+    this.userRepository = userRepository;
   }
 
-  async validateUser(email, password) {
-    const user = await this.usersService.findByEmailWithPassword(email);
+  async _validateUser(email, password) {
+    if (!email) {
+      throw new BadRequestException(AppMessages.Errors.Auth.EMAIL_REQUIRED);
+    }
+    if (!password) {
+      throw new BadRequestException(AppMessages.Errors.Auth.PASSWORD_REQUIRED);
+    }
+    if (!isEmail(email)) {
+      throw new BadRequestException(AppMessages.Errors.Auth.INVALID_EMAIL);
+    }
+    if (
+      !matches(
+        password,
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+      )
+    ) {
+      throw new BadRequestException(AppMessages.Errors.Auth.INVALID_PASSWORD);
+    }
+    const user =
+      await this.userRepository.findByEmailWithPasswordBuilder(email);
 
     if (!user) {
       return null;
@@ -46,18 +62,35 @@ export class AuthService {
       return null;
     }
 
-    if (user.status !== 'ACTIVE' || user.isDeleted) {
-      throw new UnauthorizedException(AppMessages.Errors.User.INACTIVE);
+    if (user.status === 'LOCKED') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_LOCKED);
+    }
+
+    if (user.status === 'INACTIVE') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_INACTIVE);
+    }
+
+    if (user.mustChangePassword) {
+      throw new UnauthorizedException(
+        AppMessages.Errors.Auth.PASSWORD_CHANGE_REQUIRED,
+      );
     }
 
     return user;
   }
 
-  async login(user) {
+  async login(email, password) {
+    const user = await this._validateUser(email, password);
+    if (!user) {
+      throw new UnauthorizedException(
+        AppMessages.Errors.Auth.INVALID_CREDENTIALS,
+      );
+    }
+
     setRequestContextValue('userId', user.id);
     const tokens = await this.generateTokens(user);
-    await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
-    await this.usersService.updateLastLogin(user.id);
+    await this.userRepository.updateRefreshToken(user.id, tokens.refreshToken);
+    await this.userRepository.updateLastLogin(user.id);
     const roles = user.userRoles?.map((ur) => ur.role.roleName) || [];
     const permissions = [
       ...new Set(
@@ -79,36 +112,83 @@ export class AuthService {
   }
 
   async refreshTokens(userId, refreshToken) {
-    const user = await this.usersService.findById(userId);
+    const user = await this.userRepository.findById(userId);
 
-    if (!user || !user.refreshToken) {
-      throw new UnauthorizedException('Access denied');
+    if (!user) {
+      throw new NotFoundException(AppMessages.Errors.Auth.ACCOUNT_NOT_FOUND);
     }
 
-    if (!compareRefreshToken(user.refreshToken, refreshToken)) {
-      throw new UnauthorizedException('Access denied');
+    if (
+      !user.refreshToken ||
+      !compareRefreshToken(user.refreshToken, refreshToken)
+    ) {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.TOKEN_INVALID);
     }
 
-    if (user.status !== 'ACTIVE' || user.isDeleted) {
-      throw new UnauthorizedException(AppMessages.Errors.User.INACTIVE);
+    if (user.status === 'LOCKED') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_LOCKED);
+    }
+
+    if (user.status === 'INACTIVE') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_INACTIVE);
+    }
+
+    if (user.mustChangePassword) {
+      throw new UnauthorizedException(
+        AppMessages.Errors.Auth.PASSWORD_CHANGE_REQUIRED,
+      );
     }
 
     const tokens = await this.generateTokens(user);
-    await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
+    await this.userRepository.updateRefreshToken(user.id, tokens.refreshToken);
 
     return tokens;
   }
 
   async logout(userId) {
-    await this.usersService.updateRefreshToken(userId, null);
-    return { message: 'Logged out successfully' };
+    await this.userRepository.updateRefreshToken(userId, null);
+    return;
   }
 
   async changePassword(userId, changePasswordDto) {
-    const user = await this.usersService.findByIdWithPassword(userId);
+    const { currentPassword, newPassword } = changePasswordDto;
+
+    if (!currentPassword) {
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.PASSWORD_CURRENT_REQUIRED,
+      );
+    }
+    if (
+      !matches(
+        currentPassword,
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+      )
+    ) {
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.PASSWORD_CURRENT_INVALID,
+      );
+    }
+
+    if (!newPassword) {
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.PASSWORD_NEW_REQUIRED,
+      );
+    }
+    if (
+      !matches(
+        newPassword,
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+      )
+    ) {
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.PASSWORD_NEW_INVALID,
+      );
+    }
+
+    const user = await this.userRepository.findByIdWithPassword(userId);
 
     if (!user) {
-      throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
+      throw new NotFoundException(AppMessages.Errors.Auth.ACCOUNT_NOT_FOUND);
     }
 
     const isPasswordValid = await comparePassword(
@@ -117,25 +197,27 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      throw new BadRequestException(AppMessages.Errors.User.INVALID_PASSWORD);
+      throw new BadRequestException(
+        AppMessages.Errors.Auth.PASSWORD_CURRENT_MISMATCH,
+      );
     }
 
     if (changePasswordDto.newPassword === changePasswordDto.currentPassword) {
       throw new BadRequestException(
-        'Mật khẩu mới không được trùng với mật khẩu hiện tại',
+        AppMessages.Errors.Auth.PASSWORD_NOT_DIFFERENT,
       );
     }
 
     const hashedPassword = await hashPassword(changePasswordDto.newPassword);
-    await this.usersService.update(userId, {
-      password: changePasswordDto.newPassword,
+    await this.userRepository.update(userId, {
+      password: hashedPassword,
     });
 
     return { message: 'Đổi mật khẩu thành công' };
   }
 
   async getProfile(userId) {
-    const user = await this.usersService.findById(userId);
+    const user = await this.userRepository.findById(userId);
 
     const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
       where: { userId: userId, isDeleted: false },
@@ -224,6 +306,26 @@ export class AuthService {
   }
 
   async editProfile(userId, updateProfileDto) {
+    const { personalEmail, phoneNumber, currentAddress, permanentAddress } =
+      updateProfileDto;
+
+    if (personalEmail && !isEmail(personalEmail)) {
+      throw new BadRequestException('Định dạng email cá nhân không hợp lệ');
+    }
+    if (phoneNumber && !/^(\+84|0)(3|5|7|8|9)\d{8}$/.test(phoneNumber)) {
+      throw new BadRequestException('Định dạng số điện thoại không hợp lệ');
+    }
+    if (currentAddress && currentAddress.length > 500) {
+      throw new BadRequestException(
+        'Địa chỉ hiện tại không được vượt quá 500 ký tự',
+      );
+    }
+    if (permanentAddress && permanentAddress.length > 500) {
+      throw new BadRequestException(
+        'Địa chỉ thường trú không được vượt quá 500 ký tự',
+      );
+    }
+
     const employeeRepo = new EmployeesRepository();
     const actionLogsRepo = new ActionLogsRepository();
 
@@ -239,7 +341,7 @@ export class AuthService {
     });
 
     if (!employee) {
-      throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+      throw new NotFoundException(AppMessages.Errors.Auth.PROFILE_NOT_FOUND);
     }
 
     // Store previous data for audit logging
@@ -251,16 +353,6 @@ export class AuthService {
       permanentAddress: employee.permanentAddress,
       avatar: employee.avatar,
     };
-
-    // Prevent full name changes coming from client
-    if (
-      updateProfileDto.fullName &&
-      updateProfileDto.fullName !== employee.fullName
-    ) {
-      throw new BadRequestException('Không được phép chỉnh sửa họ và tên');
-    }
-    // Remove if present to avoid accidental overwrite
-    delete updateProfileDto.fullName;
 
     // Update employee
     const updated = await employeeRepo.update(employee.id, updateProfileDto);
@@ -348,7 +440,7 @@ export class AuthService {
     const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
     if (!secret || !refreshSecret) {
-      throw new Error('JWT secrets are not defined');
+      throw new Error('Lỗi hệ thống, vui lòng thử lại sau');
     }
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -364,15 +456,31 @@ export class AuthService {
 
   // ── User-initiated forgot password (send OTP) ─────────────────────────
   async forgotPassword(email) {
-    const user = await this.usersService.findByEmail(email);
+    if (!email) {
+      throw new BadRequestException(AppMessages.Errors.Auth.EMAIL_REQUIRED);
+    }
+    if (!isEmail(email)) {
+      throw new BadRequestException(AppMessages.Errors.Auth.INVALID_EMAIL);
+    }
+    const user = await this.userRepository.findByEmail(email);
 
     if (!user) {
       // For security, don't reveal if email exists
       return { message: 'Nếu email tồn tại, OTP sẽ được gửi' };
     }
 
-    if (user.status !== 'ACTIVE' || user.isDeleted) {
-      throw new BadRequestException(AppMessages.Errors.User.INACTIVE);
+    if (user.status === 'LOCKED') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_LOCKED);
+    }
+
+    if (user.status === 'INACTIVE') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_INACTIVE);
+    }
+
+    if (user.mustChangePassword) {
+      throw new UnauthorizedException(
+        AppMessages.Errors.Auth.PASSWORD_CHANGE_REQUIRED,
+      );
     }
 
     // Generate OTP (6 digits) and otpRequestId (UUID)
@@ -386,7 +494,7 @@ export class AuthService {
     const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     // Save OTP + otpRequestId to DB (don't set mustChangePassword for user-initiated action)
-    await this.usersService.update(user.id, {
+    await this.userRepository.update(user.id, {
       otp: hashedOtp,
       otpExpiresAt,
       otpRequestId,
@@ -410,27 +518,58 @@ export class AuthService {
 
   // ── User verify OTP and reset password ───────────────────────────────
   async resetPasswordWithOtp(otpRequestId, otp, newPassword) {
-    // Find user by otpRequestId
-    const user = await this.usersService.findByOtpRequestId(otpRequestId);
-
-    if (!user) {
-      throw new BadRequestException('OTP request không hợp lệ');
+    if (!otpRequestId) {
+      throw new BadRequestException(AppMessages.Errors.Auth.RESET_OTP_INVALID);
+    }
+    if (!otp) {
+      throw new BadRequestException(AppMessages.Errors.Auth.RESET_OTP_INVALID);
+    }
+    if (!/^\d{6}$/.test(otp)) {
+      throw new BadRequestException(AppMessages.Errors.Auth.RESET_OTP_INVALID);
+    }
+    if (!newPassword) {
+      throw new BadRequestException(AppMessages.Errors.Auth.PASSWORD_REQUIRED);
+    }
+    if (
+      !matches(
+        newPassword,
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+      )
+    ) {
+      throw new BadRequestException(AppMessages.Errors.Auth.INVALID_PASSWORD);
     }
 
-    if (user.status !== 'ACTIVE' || user.isDeleted) {
-      throw new BadRequestException(AppMessages.Errors.User.INACTIVE);
+    // Find user by otpRequestId
+    const user = await this.userRepository.findOne({ otpRequestId });
+
+    if (!user) {
+      throw new BadRequestException(AppMessages.Errors.Auth.ACCOUNT_NOT_FOUND);
+    }
+
+    if (user.status === 'LOCKED') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_LOCKED);
+    }
+
+    if (user.status === 'INACTIVE') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_INACTIVE);
+    }
+
+    if (user.mustChangePassword) {
+      throw new UnauthorizedException(
+        AppMessages.Errors.Auth.PASSWORD_CHANGE_REQUIRED,
+      );
     }
 
     // Check if OTP exists and not expired
     if (!user.otp) {
-      throw new BadRequestException('OTP không hợp lệ hoặc đã hết hạn');
+      throw new BadRequestException(AppMessages.Errors.Auth.RESET_OTP_INVALID);
     }
 
     if (user.otpExpiresAt !== null) {
       const now = new Date();
       if (now > user.otpExpiresAt) {
         throw new BadRequestException(
-          'OTP đã hết hạn. Vui lòng yêu cầu OTP mới',
+          AppMessages.Errors.Auth.RESET_OTP_INVALID,
         );
       }
     }
@@ -438,31 +577,17 @@ export class AuthService {
     // Verify OTP
     const hashedInputOtp = hashResetPasswordToken(otp);
     if (hashedInputOtp !== user.otp) {
-      throw new BadRequestException('OTP không chính xác');
+      throw new BadRequestException(AppMessages.Errors.Auth.RESET_OTP_INVALID);
     }
 
-    // Get user with password to check duplicate
-    const userWithPassword = await this.usersService.findByIdWithPassword(
-      user.id,
-    );
+    const hashNewPassword = await hashPassword(newPassword);
 
-    // Check new password is different from current
-    const duplicatePassword = await comparePassword(
-      newPassword,
-      userWithPassword.password,
-    );
-    if (duplicatePassword) {
-      throw new BadRequestException(
-        AppMessages.Errors.Auth.PASSWORD_NOT_DIFFERENT,
-      );
-    }
-
-    await this.usersService.update(user.id, {
-      password: newPassword,
+    await this.userRepository.update(user.id, {
+      password: hashNewPassword,
       otp: null,
       otpExpiresAt: null,
       otpRequestId: null,
-      mustChangePassword: false, // Ensure this is false for user action
+      mustChangePassword: false,
     });
 
     return { message: 'Mật khẩu đã được đặt lại thành công' };

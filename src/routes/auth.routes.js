@@ -1,15 +1,7 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller.js';
 import { uploadCloud } from '../common/middleware/upload.middleware.js';
-import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import {
-  LoginDto,
-  ChangePasswordDto,
-  ForgotPasswordDto,
-  ResetPasswordOtpDto,
-  UpdateProfileDto,
-} from '../models/dto/auth/index.js';
 import { refreshTokenMiddleware } from '../common/middleware/refresh-token.middleware.js';
 
 const router = Router();
@@ -33,7 +25,7 @@ const authController = new AuthController();
  *       401:
  *         description: Invalid credentials
  */
-router.post('/login', validationMiddleware(LoginDto), authController.login);
+router.post('/login', authController.login);
 
 /**
  * @swagger
@@ -93,12 +85,7 @@ router.post('/logout', authMiddleware, authController.logout);
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  '/change-password',
-  authMiddleware,
-  validationMiddleware(ChangePasswordDto),
-  authController.changePassword,
-);
+router.post('/change-password', authMiddleware, authController.changePassword);
 
 /**
  * @swagger
@@ -142,7 +129,6 @@ router.put(
   '/profile',
   authMiddleware,
   uploadCloud.single('avatar'),
-  validationMiddleware(UpdateProfileDto),
   authController.editProfile,
 );
 
@@ -168,11 +154,7 @@ router.put(
  *       500:
  *         description: Internal server error
  */
-router.post(
-  '/forgot-password',
-  validationMiddleware(ForgotPasswordDto),
-  authController.forgotPassword,
-);
+router.post('/forgot-password', authController.forgotPassword);
 
 /**
  * @swagger
@@ -196,10 +178,6 @@ router.post(
  *       500:
  *         description: Internal server error
  */
-router.post(
-  '/reset-password-otp',
-  validationMiddleware(ResetPasswordOtpDto),
-  authController.resetPasswordWithOtp,
-);
+router.post('/reset-password-otp', authController.resetPasswordWithOtp);
 
 export const authRoutes = router;

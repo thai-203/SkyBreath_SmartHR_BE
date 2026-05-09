@@ -167,4 +167,60 @@ describe('OnboardingPlansService', () => {
 
     expect(plansRepo.save).not.toHaveBeenCalled();
   });
+
+  it('returns the assigned plan when filtering by employeeId with existing progress', async () => {
+    progressRepo.findByEmployeeId.mockResolvedValue({ id: 22, planId: 33 });
+    plansRepo.findById.mockResolvedValue({ id: 33, planName: 'Assigned Plan' });
+
+    const result = await service.findAll({
+      employeeId: 12,
+      page: 1,
+      limit: 10,
+    });
+
+    expect(progressRepo.findByEmployeeId).toHaveBeenCalledWith(12);
+    expect(plansRepo.findById).toHaveBeenCalledWith(33);
+    expect(result.data).toEqual([{ id: 33, planName: 'Assigned Plan' }]);
+    expect(result.meta.totalItems).toBe(1);
+  });
+
+  it('duplicates a plan without carrying over entity ids', async () => {
+    plansRepo.findById.mockResolvedValue({
+      id: 44,
+      planName: 'Starter',
+      description: 'Base plan',
+      durationDays: 30,
+      departmentId: 2,
+      positionId: 3,
+      isTemplate: true,
+      tasks: [
+        {
+          id: 100,
+          taskOrder: 1,
+          description: 'Task A',
+          createdAt: '2026-01-01',
+          updatedAt: '2026-01-02',
+        },
+      ],
+    });
+    plansRepo.create.mockResolvedValue({ id: 55, planName: 'Starter Copy' });
+
+    const result = await service.duplicate(44, 'Starter Copy');
+
+    expect(plansRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planName: 'Starter Copy',
+        tasks: [
+          expect.objectContaining({
+            taskOrder: 1,
+            description: 'Task A',
+            id: undefined,
+            createdAt: undefined,
+            updatedAt: undefined,
+          }),
+        ],
+      }),
+    );
+    expect(result).toEqual({ id: 55, planName: 'Starter Copy' });
+  });
 });

@@ -86,4 +86,23 @@ export class AttendanceBlockingConfigController {
       next(error);
     }
   };
+
+  // Lấy lịch sử log điểm danh
+  getAttendanceLogs = async (req, res, next) => {
+    try {
+      const { page, limit, search, actionType, status, fromDate, toDate } = req.query;
+      const result = await this.attendanceBlockingConfigService.getAttendanceLogs({
+        page: page ? Number(page) : 1,
+        limit: limit ? Number(limit) : 10,
+        search,
+        actionType,
+        status,
+        fromDate,
+        toDate,
+      });
+      ResponseUtil.sendResponse(res, AppMessages.Success.Attendance.BLOCKING_RULES_RETRIEVED, result);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

@@ -3,6 +3,7 @@ import { BaseEntity } from '../../common/entities/base.entity.js';
 import { EmployeeEntity } from './employee.entity.js';
 import { WorkingShiftEntity } from './working-shift.entity.js';
 import { RequestEntity } from './request.entity.js';
+import { ShiftAssignmentEntity } from './shift-assignment.entity.js';
 
 @Entity('processed_attendance_records')
 export class ProcessedAttendanceRecordEntity extends BaseEntity {
@@ -14,6 +15,9 @@ export class ProcessedAttendanceRecordEntity extends BaseEntity {
 
     @Column({ name: 'working_shift_id', type: 'int', nullable: true })
     workingShiftId;
+
+    @Column({ name: 'assignment_id', type: 'int', nullable: true })
+    assignmentId;
 
     @Column({ name: 'check_in_time', type: 'datetime', nullable: true })
     checkInTime;
@@ -66,4 +70,8 @@ export class ProcessedAttendanceRecordEntity extends BaseEntity {
     @ManyToOne(() => RequestEntity)
     @JoinColumn({ name: 'request_id' })
     request;
+
+    @ManyToOne(() => ShiftAssignmentEntity)
+    @JoinColumn({ name: 'assignment_id' })
+    assignment;
 }
