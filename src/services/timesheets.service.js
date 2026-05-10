@@ -1909,7 +1909,18 @@ export class TimesheetsService {
     return (rawMinutes - breakOverlap) / 60;
   }
 
-
+  /**
+   * Half-day calculation based on actual hours vs shift hours
+   * @param {number} actualHours
+   * @param {number} shiftHours
+   * @returns {number} 1, 0.5, or 0
+   */
+  _calcWorkingDay(actualHours, shiftHours) {
+    if (!shiftHours || shiftHours <= 0) return 0;
+    if (actualHours >= shiftHours) return 1;
+    if (actualHours >= shiftHours / 2) return 0.5;
+    return 0;
+  }
 
   _buildDailyDetails(
     records,
