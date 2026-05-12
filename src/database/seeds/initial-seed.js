@@ -135,11 +135,11 @@ const seed = async () => {
       { permissionCode: 'USER_DELETE', description: 'Delete users' },
       { permissionCode: 'ROLE_READ', description: 'Read roles' },
       { permissionCode: 'ROLE_WRITE', description: 'Create/Update roles' },
-      { permissionCode: 'DEPT_READ', description: 'Read departments' },
-      { permissionCode: 'DEPT_CREATE', description: 'Create departments' },
-      { permissionCode: 'DEPT_UPDATE', description: 'Update departments' },
-      { permissionCode: 'DEPT_DELETE', description: 'Delete departments' },
-      { permissionCode: 'DEPT_EXPORT', description: 'Export departments' },
+      { permissionCode: 'DEPARTMENT_READ', description: 'Read departments' },
+      { permissionCode: 'DEPARTMENT_CREATE', description: 'Create departments' },
+      { permissionCode: 'DEPARTMENT_UPDATE', description: 'Update departments' },
+      { permissionCode: 'DEPARTMENT_DELETE', description: 'Delete departments' },
+      { permissionCode: 'DEPARTMENT_EXPORT', description: 'Export departments' },
       { permissionCode: 'EMPLOYEE_READ', description: 'View employees' },
       { permissionCode: 'EMPLOYEE_CREATE', description: 'Create employees' },
       { permissionCode: 'EMPLOYEE_UPDATE', description: 'Update employees' },
@@ -769,9 +769,9 @@ const seed = async () => {
     }
     console.log('Assigned permissions to ADMIN');
 
-    // MANAGER gets DEPT_READ, EMPLOYEE_READ, HOLIDAY_READ, POSITION_READ, JOB_GRADE_READ
+    // MANAGER gets DEPARTMENT_READ, EMPLOYEE_READ, HOLIDAY_READ, POSITION_READ, JOB_GRADE_READ
     const managerPerms = [
-      'DEPT_READ',
+      'DEPARTMENT_READ',
       'EMPLOYEE_READ',
       'HOLIDAY_READ',
       'POSITION_READ',
@@ -828,12 +828,12 @@ const seed = async () => {
     }
     console.log('Assigned permissions to MANAGER');
 
-    // HR gets DEPT_READ, DEPT_CREATE, DEPT_UPDATE, DEPT_EXPORT, Employee.*, Holiday.*, Contract.*, Position.*, JobGrade.*, Salary.*
+    // HR gets DEPARTMENT_READ, DEPARTMENT_CREATE, DEPARTMENT_UPDATE, DEPARTMENT_EXPORT, Employee.*, Holiday.*, Contract.*, Position.*, JobGrade.*, Salary.*
     const hrPerms = [
-      'DEPT_READ',
-      'DEPT_CREATE',
-      'DEPT_UPDATE',
-      'DEPT_EXPORT',
+      'DEPARTMENT_READ',
+      'DEPARTMENT_CREATE',
+      'DEPARTMENT_UPDATE',
+      'DEPARTMENT_EXPORT',
       'EMPLOYEE_READ',
       'EMPLOYEE_CREATE',
       'EMPLOYEE_UPDATE',
@@ -971,10 +971,10 @@ const seed = async () => {
     }
     console.log('Assigned permissions to HR');
 
-    // EMPLOYEE gets TIMESHEET_READ, DEPT_READ, HOLIDAY_READ, OVERTIME_RULE_READ, PENALTY_READ
+    // EMPLOYEE gets TIMESHEET_READ, DEPARTMENT_READ, HOLIDAY_READ, OVERTIME_RULE_READ, PENALTY_READ
     const employeePerms = [
       'TIMESHEET_READ',
-      'DEPT_READ',
+      'DEPARTMENT_READ',
       'EMPLOYEE_READ',
       'HOLIDAY_READ',
       'OVERTIME_RULE_READ',

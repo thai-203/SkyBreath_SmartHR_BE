@@ -15,6 +15,15 @@ describe('ShiftAssignmentsService', () => {
   let assignRepo;
   let scheduleRepo;
 
+  const makeFutureDate = (daysOffset) => {
+    const date = new Date();
+    date.setDate(date.getDate() + daysOffset);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -95,6 +104,8 @@ describe('ShiftAssignmentsService', () => {
       .mockResolvedValue([{ id: 10 }]);
 
     assignRepo.create.mockResolvedValue({ id: 99, assignmentName: 'Ca A' });
+    const startDate = makeFutureDate(7);
+    const endDate = makeFutureDate(21);
 
     const result = await service.createAssignment({
       assignmentName: '  Ca A  ',
@@ -103,8 +114,8 @@ describe('ShiftAssignmentsService', () => {
       shiftIds: ['3', '4'],
       weekdays: ['1', '3'],
       repeatType: 'weekly',
-      startDate: '2026-03-01',
-      endDate: '2026-03-31',
+      startDate,
+      endDate,
     });
 
     expect(assignRepo.create).toHaveBeenCalledWith(
@@ -147,8 +158,8 @@ describe('ShiftAssignmentsService', () => {
       shiftIds: '7',
       weekdays: '1,3',
       repeatType: 'weekly',
-      effectiveFrom: '2026-03-01',
-      effectiveTo: '2026-03-31',
+      effectiveFrom: makeFutureDate(7),
+      effectiveTo: makeFutureDate(21),
     });
 
     jest.spyOn(service, '_resolveTargetEmployees').mockResolvedValue({
@@ -184,6 +195,46 @@ describe('ShiftAssignmentsService', () => {
     expect(result).toEqual({ id: 5, assignmentName: 'New Name' });
   });
 
+  it('rejects updateAssignment when generated schedules conflict with existing rows', async () => {
+    assignRepo.findById.mockResolvedValue({
+      id: 6,
+      assignmentName: 'Old',
+      employeeId: 11,
+      employeeIds: '11',
+      departmentIds: '20',
+      shiftId: 7,
+      shiftIds: '7',
+      weekdays: '1,3',
+      repeatType: 'weekly',
+      effectiveFrom: makeFutureDate(7),
+      effectiveTo: makeFutureDate(21),
+    });
+
+    jest.spyOn(service, '_resolveTargetEmployees').mockResolvedValue({
+      employeeIds: [11],
+      employees: [{ id: 11, departmentId: 20 }],
+      departmentIds: [20],
+    });
+
+    scheduleRepo.findFirstConflict.mockResolvedValue({
+      employeeId: 11,
+      shiftId: 9,
+      workDate: makeFutureDate(10),
+    });
+
+    await expectRejectWithStatus(
+      service.updateAssignment(6, {
+        shiftIds: [9],
+        weekdays: [2],
+        startDate: makeFutureDate(7),
+        endDate: makeFutureDate(21),
+      }),
+      409,
+    );
+
+    expect(assignRepo.update).not.toHaveBeenCalled();
+  });
+
   it('rejects updateAssignment when provided startDate is in the past', async () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -202,8 +253,8 @@ describe('ShiftAssignmentsService', () => {
       shiftIds: '7',
       weekdays: '1,3',
       repeatType: 'weekly',
-      effectiveFrom: '2026-03-01',
-      effectiveTo: '2026-03-31',
+      effectiveFrom: makeFutureDate(7),
+      effectiveTo: makeFutureDate(21),
     });
 
     await expectRejectWithStatus(
@@ -315,8 +366,8 @@ describe('ShiftAssignmentsService', () => {
         shiftIds: [3],
         weekdays: [2],
         repeatType: 'weekly',
-        startDate: '2026-03-01',
-        endDate: '2026-03-31',
+        startDate: makeFutureDate(7),
+        endDate: makeFutureDate(21),
       }),
       409,
     );
