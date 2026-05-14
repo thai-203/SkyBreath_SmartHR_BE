@@ -1,8 +1,6 @@
 import { Router } from 'express';
 import { UsersController } from '../controllers/users.controller.js';
-import { validationMiddleware } from '../common/middleware/validation.middleware.js';
 import { authMiddleware } from '../common/middleware/auth.middleware.js';
-import { CreateUserDto, UpdateUserDto } from '../models/dto/users/index.js';
 import { permissionsMiddleware } from '../common/middleware/permissions.middleware.js';
 
 const router = Router();
@@ -82,7 +80,6 @@ router.post(
   '/',
   authMiddleware,
   permissionsMiddleware('USER_CREATE'),
-  validationMiddleware(CreateUserDto),
   usersController.create,
 );
 router.get(
@@ -157,11 +154,7 @@ router.get(
   usersController.getMetadata,
 );
 
-router.get(
-  '/meta-data/public',
-  authMiddleware,
-  usersController.getMetadata,
-);
+router.get('/meta-data/public', authMiddleware, usersController.getMetadata);
 
 /**
  * @swagger
@@ -246,7 +239,6 @@ router.put(
   '/:id',
   authMiddleware,
   permissionsMiddleware('USER_UPDATE'),
-  validationMiddleware(UpdateUserDto),
   usersController.update,
 );
 router.delete(

@@ -14,48 +14,92 @@ import { AppDataSource } from '../database/data-source.js';
 import { UserRoleRepository } from '../repositories/user-role.repository.js';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { RedisService } from './redis.service.js';
 import { MailService } from './mail.service.js';
 import { config } from '../config/env.config.js';
+import { isEmail, matches } from 'class-validator';
 export class UsersService {
   constructor(
     usersRepository = new UsersRepository(),
     rolesRepository = new RolesRepository(),
     userRoleRepository = new UserRoleRepository(),
-    cacheService = new RedisService(),
     mailServiceInstance = new MailService(),
   ) {
     this.usersRepository = usersRepository;
     this.rolesRepository = rolesRepository;
     this.userRoleRepository = userRoleRepository;
-    this.cacheService = cacheService;
     this.mailService = mailServiceInstance;
   }
 
   async create(createUserDto) {
+    const { email, username, password, roleIds, status } = createUserDto;
+
+    if (!email) {
+      throw new BadRequestException(AppMessages.Errors.Auth.EMAIL_REQUIRED);
+    }
+    if (!isEmail(email)) {
+      throw new BadRequestException(AppMessages.Errors.Auth.INVALID_EMAIL);
+    }
+
+    if (!username) {
+      throw new BadRequestException('Tên đăng nhập không được để trống');
+    }
+    if (username.length > 50) {
+      throw new BadRequestException(
+        'Tên đăng nhập không được vượt quá 50 ký tự',
+      );
+    }
+
+    if (!password) {
+      throw new BadRequestException(AppMessages.Errors.Auth.PASSWORD_REQUIRED);
+    }
+    if (
+      !matches(password, /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).+$/) ||
+      password.length < 8 ||
+      password.length > 50
+    ) {
+      throw new BadRequestException(AppMessages.Errors.Auth.INVALID_PASSWORD);
+    }
+
+    if (roleIds !== undefined && !Array.isArray(roleIds)) {
+      throw new BadRequestException('Danh sách vai trò không hợp lệ');
+    }
+
+    if (status && status.length > 20) {
+      throw new BadRequestException('Trạng thái không hợp lệ');
+    }
+
     // Check if email already exists
     const existingUserByEmail = await this.usersRepository.findByEmail(
       createUserDto.email,
     );
     if (existingUserByEmail) {
-      throw new ConflictException(AppMessages.Errors.User.ALREADY_EXISTS);
+      throw new ConflictException(AppMessages.Errors.User.EMAIL_ALREADY_EXISTS);
     }
 
     // Check if username already exists
     const existingUserByUsername = await this.usersRepository.findOne({
       username: createUserDto.username,
+      isDeleted: false,
     });
     if (existingUserByUsername) {
-      throw new ConflictException('Tên đăng nhập đã tồn tại');
+      throw new ConflictException(
+        AppMessages.Errors.User.USERNAME_ALREADY_EXISTS,
+      );
     }
 
     // Validate roles exist if provided
     let roles = [];
     if (createUserDto.roleIds?.length) {
       roles = await this.rolesRepository.findByIds(createUserDto.roleIds);
-
+      for (const role of roles) {
+        if (role.roleName === 'ADMIN') {
+          throw new ForbiddenException(
+            AppMessages.Errors.User.ROLE_ASIGN_FORBIDDEN,
+          );
+        }
+      }
       if (roles.length !== createUserDto.roleIds.length) {
-        throw new NotFoundException('Một hoặc nhiều vai trò không tồn tại');
+        throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
       }
     }
 
@@ -139,51 +183,69 @@ export class UsersService {
     return this.usersRepository.findByIdWithPassword(id);
   }
 
-  async findByOtpRequestId(otpRequestId) {
-    return this.usersRepository.findOne({ otpRequestId });
-  }
-
   async update(id, updateUserDto) {
+    const { roleIds, ...userData } = updateUserDto;
+    const { email, username, status } = userData;
+
+    if (email && !isEmail(email)) {
+      throw new BadRequestException(AppMessages.Errors.Auth.INVALID_EMAIL);
+    }
+
+    if (username && username.length > 50) {
+      throw new BadRequestException(
+        'Tên đăng nhập không được vượt quá 50 ký tự',
+      );
+    }
+
+    if (roleIds !== undefined && !Array.isArray(roleIds)) {
+      throw new BadRequestException('Danh sách vai trò không hợp lệ');
+    }
+
+    if (status && status.length > 20) {
+      throw new BadRequestException('Trạng thái không hợp lệ');
+    }
+
     const user = await this.findById(id);
 
     // Check email uniqueness if email is being updated
-    if (updateUserDto.email && updateUserDto.email !== user.email) {
-      const existingUser = await this.usersRepository.findByEmail(
-        updateUserDto.email,
-      );
+    if (email && email !== user.email) {
+      const existingUser = await this.usersRepository.findByEmail(email);
       if (existingUser) {
-        throw new ConflictException('Email đã tồn tại');
+        throw new ConflictException(
+          AppMessages.Errors.User.EMAIL_ALREADY_EXISTS,
+        );
       }
     }
 
     // Check username uniqueness if username is being updated
-    if (updateUserDto.username && updateUserDto.username !== user.username) {
+    if (username && username !== user.username) {
       const existingUser = await this.usersRepository.findOne({
-        username: updateUserDto.username,
+        username: username,
       });
       if (existingUser) {
-        throw new ConflictException('Tên đăng nhập đã tồn tại');
+        throw new ConflictException(
+          AppMessages.Errors.User.USERNAME_ALREADY_EXISTS,
+        );
       }
     }
 
     // Validate roles exist if provided
-    if (updateUserDto.roleIds && updateUserDto.roleIds.length > 0) {
-      for (const roleId of updateUserDto.roleIds) {
+    if (roleIds && roleIds.length > 0) {
+      for (const roleId of roleIds) {
         const role = await this.rolesRepository.findById(roleId);
         if (!role) {
-          throw new NotFoundException(`Vai trò với ID ${roleId} không tồn tại`);
+          throw new NotFoundException(AppMessages.Errors.User.ROLE_NOT_FOUND);
+        }
+        if (role.roleName === 'ADMIN') {
+          throw new ForbiddenException(
+            AppMessages.Errors.User.ROLE_ASIGN_FORBIDDEN,
+          );
         }
       }
     }
 
-    // Hash password if being updated
-    if (updateUserDto.password) {
-      updateUserDto.password = await hashPassword(updateUserDto.password);
-    }
-
-    // TODO: Handle role updates via UserRoleEntity if roleIds provided
-    const { roleIds, ...userData } = updateUserDto;
     await this.usersRepository.update(id, userData);
+
     if (roleIds) {
       await this.userRoleRepository.deleteByUserId(id);
       const userRoles = roleIds.map((roleId) => ({
@@ -205,7 +267,7 @@ export class UsersService {
 
     // Check if user is the last system admin
     const userRoles = user.userRoles || [];
-    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+    const isAdmin = userRoles.some((ur) => ur.role.roleName === 'ADMIN');
 
     if (isAdmin) {
       const activeAdminCount = await this.usersRepository.countActiveAdmins();
@@ -223,14 +285,12 @@ export class UsersService {
   async lockUser(id, currentUserId) {
     const user = await this.findById(id);
 
-    // Cannot lock self
     if (id === currentUserId) {
       throw new ForbiddenException('Không thể khóa tài khoản của chính bạn');
     }
 
-    // Check if trying to lock last admin
     const userRoles = user.userRoles || [];
-    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+    const isAdmin = userRoles.some((ur) => ur.role.roleName === 'ADMIN');
 
     if (isAdmin) {
       const activeAdminCount = await this.usersRepository.countActiveAdmins();
@@ -281,7 +341,7 @@ export class UsersService {
       throw new NotFoundException(AppMessages.Errors.User.NOT_FOUND);
     }
     const userRoles = user.userRoles || [];
-    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+    const isAdmin = userRoles.some((ur) => ur.role.roleName === 'ADMIN');
 
     if (isAdmin) {
       const activeAdminCount = await this.usersRepository.countActiveAdmins();
@@ -309,7 +369,7 @@ export class UsersService {
     }
 
     const userRoles = user.userRoles || [];
-    const isAdmin = userRoles.some((ur) => ur.role.name === 'ADMIN');
+    const isAdmin = userRoles.some((ur) => ur.role.roleName === 'ADMIN');
 
     if (isAdmin) {
       const activeAdminCount = await this.usersRepository.countActiveAdmins();
@@ -344,7 +404,7 @@ export class UsersService {
       resetUrl,
     );
 
-    return { 
+    return {
       message: 'OTP đã được gửi đến email của nhân viên',
       otpRequestId,
     };

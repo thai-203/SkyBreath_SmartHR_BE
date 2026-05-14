@@ -15,7 +15,6 @@ export class EmployeesRepository {
   async findAll(options = {}) {
     const {
       skip = 0,
-      take = 10,
       search = '',
       departmentId,
       positionId,
@@ -55,7 +54,6 @@ export class EmployeesRepository {
     const [items, total] = await query
       .orderBy('employee.fullName', 'ASC')
       .skip(skip)
-      .take(take)
       .getManyAndCount();
 
     return { items, total };

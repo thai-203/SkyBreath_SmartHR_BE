@@ -1,6 +1,4 @@
-import {
-  setRequestContextValue,
-} from '../common/context/request-context';
+import { setRequestContextValue } from '../common/context/request-context';
 import { BadRequestException, NotFoundException } from '../common/exceptions';
 import { AppMessages } from '../common/constants/app-messages.constant';
 import { parseUserAgent } from '../common/utils/user-agent.util';
@@ -90,28 +88,60 @@ export class AttendanceService {
 
     const securityConfig = await this.securityRepo.findOneConfig();
 
-    const overtime = await this.requestRepo.getTodayOvertime(employeeId, today);
+    const applyLevel = securityConfig?.applyTo;
+
+    let isApplySecurity = false;
+
+    if (applyLevel === 'ALL') {
+      isApplySecurity = true;
+    }
+
+    if (applyLevel === 'EMPLOYEE') {
+      const attendanceLevel = securityConfig?.targetIds;
+      if (attendanceLevel.includes(employeeId)) {
+        isApplySecurity = true;
+      }
+    }
+
+    const overtimeRaw = await this.requestRepo.getTodayOvertime(
+      employeeId,
+      today,
+    );
+    const firstOt = overtimeRaw?.items?.[0] || null;
 
     return {
       userName: employee?.fullName ?? '',
       hasBiometric: faceCount > 0,
-      hasShift: shifts.length > 0,
-      currentShift: currentShift
-        ? {
-            shiftId: currentShift.id,
-            name: currentShift.shiftName,
-            startTime: currentShift.startTime,
-            endTime: currentShift.endTime,
-          }
-        : null,
+      hasShift: shifts.length > 0 || !!firstOt,
+      currentShift:
+        currentShift || firstOt
+          ? {
+              shiftId: currentShift?.id || `ot-${firstOt?.request?.id || '0'}`,
+              name: currentShift?.shiftName || 'Ca OT',
+              startTime: currentShift?.startTime || firstOt?.startTime,
+              endTime: currentShift?.endTime || firstOt?.endTime,
+            }
+          : null,
 
-      shifts: shifts.map((shift) => ({
-        shiftId: shift.id,
-        name: shift.shiftName,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-      })),
-      overtime: overtime?.items?.[0] || null,
+      shifts: [
+        ...shifts.map((shift) => ({
+          shiftId: shift.id,
+          name: shift.shiftName,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+        })),
+        ...(firstOt
+          ? [
+              {
+                shiftId: `ot-${firstOt.request?.id || '0'}`,
+                name: 'Ca OT',
+                startTime: firstOt.startTime,
+                endTime: firstOt.endTime,
+              },
+            ]
+          : []),
+      ],
+      overtime: firstOt,
       totalWorkMinutes: currentShift
         ? (() => {
             if (!currentShift?.startTime || !currentShift?.endTime) return 0;
@@ -131,7 +161,15 @@ export class AttendanceService {
             }
             return plannedMinutes;
           })()
-        : 0,
+        : firstOt
+          ? (() => {
+              if (!firstOt?.startTime || !firstOt?.endTime) return 0;
+              return (
+                this._timeToMinutes(firstOt.endTime) -
+                this._timeToMinutes(firstOt.startTime)
+              );
+            })()
+          : 0,
       workDate: today,
       attendance: {
         checkInTime: attendanceRecord?.checkInTime ?? null,
@@ -147,7 +185,9 @@ export class AttendanceService {
             requiredFrames: faceConfig.requiredFrames,
             captureIntervalMs: faceConfig.captureIntervalMs,
             faceDetectionMinSize: faceConfig.faceDetectionMinSize,
-            requireLocationCheck: securityConfig?.requireLocationCheck,
+            requireLocationCheck: isApplySecurity
+              ? securityConfig?.requireLocationCheck
+              : false,
           }
         : {
             maxFacesAllowed: 1,
@@ -302,6 +342,15 @@ export class AttendanceService {
 
     const securityStatus =
       await this.securityStatusRepo.findByEmployeeId(employeeId);
+    if (
+      securityStatus?.blockedUntil &&
+      !isNaN(new Date(securityStatus?.blockedUntil).getTime()) &&
+      new Date(securityStatus?.blockedUntil).getTime() > new Date().getTime()
+    ) {
+      throw new BadRequestException(
+        'Bạn đã vượt quá giới hạn check-in thất bại. Vui lòng liên hệ quản lý.',
+      );
+    }
     setRequestContextValue('customAction', 'check_in');
     setRequestContextValue(
       'evidenceImageUrl',
@@ -319,27 +368,64 @@ export class AttendanceService {
     });
     const shifts = shiftSchedules.map((s) => s.shift).filter(Boolean);
 
-    if (!shifts)
+    const overtimeRaw = await this.requestRepo.getTodayOvertime(
+      employeeId,
+      today,
+    );
+    const overtime = overtimeRaw?.items?.[0];
+
+    if (shifts.length === 0 && !overtime)
       throw new NotFoundException(AppMessages.Errors.Attendance.NO_SHIFT_TODAY);
 
     const securityConfig = await this.securityRepo.findOneConfig();
-    await this._validateSecurityChecks(location, securityConfig);
+
+    let isApplySecurity = false;
+
+    if (securityConfig.applyTo === 'ALL') {
+      isApplySecurity = true;
+    }
+
+    if (securityConfig.applyTo === 'EMPLOYEE') {
+      const attendanceLevel = securityConfig.targetIds;
+      if (attendanceLevel.includes(employeeId)) {
+        isApplySecurity = true;
+      }
+    }
+
+    if (isApplySecurity) {
+      await this._validateSecurityChecks(location, securityConfig);
+    }
 
     const faceConfig = await this.faceConfigRepo.findOneConfig();
     await this._validateFace(employeeId, files, faceConfig);
 
-    const shift = this._getCurrentShift(shifts);
-    const shiftSchedule = shiftSchedules.find((ss) => ss.shiftId === shift.id);
-
+    let workingShiftId = null;
+    let assignmentId = null;
+    let lateMinutes = 0;
     const now = new Date();
-    const lateMinutes = this._calcLateMinutes(now, shift.startTime);
+
+    if (shifts && shifts.length > 0) {
+      const shift = this._getCurrentShift(shifts);
+      workingShiftId = shift?.id ?? null;
+
+      // Tìm assignmentId tương ứng với ca làm việc
+      const matchedSchedule = shiftSchedules.find(
+        (s) => s.shiftId === workingShiftId,
+      );
+      assignmentId = matchedSchedule?.assignmentId ?? null;
+
+      lateMinutes = this._calcLateMinutes(now, shift.startTime);
+    } else if (overtime) {
+      lateMinutes = this._calcLateMinutes(now, overtime.startTime);
+    }
 
     let record = await this.attendanceRepo.findOne({ employeeId, today });
     if (!record) {
       record = await this.attendanceRepo.create({
         employeeId,
         workDate: today,
-        shiftScheduleId: shiftSchedule.id,
+        workingShiftId: workingShiftId,
+        assignmentId: assignmentId,
         attendanceType: 'FACE',
         checkInTime: now,
         lateMinutes,
@@ -389,6 +475,15 @@ export class AttendanceService {
 
     const securityStatus =
       await this.securityStatusRepo.findByEmployeeId(employeeId);
+    if (
+      securityStatus?.blockedUntil &&
+      !isNaN(new Date(securityStatus?.blockedUntil).getTime()) &&
+      new Date(securityStatus?.blockedUntil).getTime() > new Date().getTime()
+    ) {
+      throw new BadRequestException(
+        'Bạn đã vượt quá giới hạn check-out thất bại. Vui lòng liên hệ quản lý.',
+      );
+    }
     setRequestContextValue('customAction', 'check_out');
     setRequestContextValue(
       'evidenceImageUrl',
@@ -404,7 +499,7 @@ export class AttendanceService {
       employeeId,
       today,
     );
-    const overtime = overtimeRaw.items[0];
+    const overtime = overtimeRaw?.items?.[0];
 
     const record = await this.attendanceRepo.findOne({ employeeId, today });
     if (!record?.checkInTime)
@@ -417,7 +512,23 @@ export class AttendanceService {
       );
 
     const securityConfig = await this.securityRepo.findOneConfig();
-    await this._validateSecurityChecks(location, securityConfig);
+
+    let isApplySecurity = false;
+
+    if (securityConfig.applyTo === 'ALL') {
+      isApplySecurity = true;
+    }
+
+    if (securityConfig.applyTo === 'EMPLOYEE') {
+      const attendanceLevel = securityConfig.targetIds;
+      if (attendanceLevel.includes(employeeId)) {
+        isApplySecurity = true;
+      }
+    }
+
+    if (isApplySecurity) {
+      await this._validateSecurityChecks(location, securityConfig);
+    }
 
     const faceConfig = await this.faceConfigRepo.findOneConfig();
     await this._validateFace(employeeId, files, faceConfig);
@@ -425,6 +536,7 @@ export class AttendanceService {
     const now = new Date();
     const checkInMs = new Date(record.checkInTime).getTime();
     let totalWorkMinutes = Math.round((now.getTime() - checkInMs) / 60000);
+    let earlyLeaveMinutes = 0;
 
     const shiftSchedule = await this.shiftRepo.findTodayShiftByEmpId({
       employeeId,
@@ -432,25 +544,30 @@ export class AttendanceService {
     });
     const shifts = shiftSchedule.map((s) => s.shift).filter(Boolean);
 
-    const shift = this._getCurrentShift(shifts);
+    if (shifts.length > 0) {
+      const shift = this._getCurrentShift(shifts);
 
-    // Subtract break time from totalWorkMinutes if break time exists
-    if (
-      shift &&
-      shift.breakStartTime !== '00:00:00' &&
-      shift.breakEndTime !== '00:00:00'
-    ) {
-      const breakStartMinutes = this._timeToMinutes(shift.breakStartTime);
-      const breakEndMinutes = this._timeToMinutes(shift.breakEndTime);
-      const breakDurationMinutes = breakEndMinutes - breakStartMinutes;
-      if (breakDurationMinutes > 0) {
-        totalWorkMinutes = Math.max(0, totalWorkMinutes - breakDurationMinutes);
+      // Subtract break time from totalWorkMinutes if break time exists
+      if (
+        shift &&
+        shift.breakStartTime !== '00:00:00' &&
+        shift.breakEndTime !== '00:00:00'
+      ) {
+        const breakStartMinutes = this._timeToMinutes(shift.breakStartTime);
+        const breakEndMinutes = this._timeToMinutes(shift.breakEndTime);
+        const breakDurationMinutes = breakEndMinutes - breakStartMinutes;
+        if (breakDurationMinutes > 0) {
+          totalWorkMinutes = Math.max(
+            0,
+            totalWorkMinutes - breakDurationMinutes,
+          );
+        }
       }
-    }
 
-    const earlyLeaveMinutes = shift
-      ? this._calcEarlyLeave(now, shift.endTime)
-      : 0;
+      earlyLeaveMinutes = shift ? this._calcEarlyLeave(now, shift.endTime) : 0;
+    } else if (overtime) {
+      earlyLeaveMinutes = this._calcEarlyLeave(now, overtime.endTime) || 0;
+    }
 
     // Calculate overtimeMinutes based on overtime request if available
     let overtimeMinutes = 0;

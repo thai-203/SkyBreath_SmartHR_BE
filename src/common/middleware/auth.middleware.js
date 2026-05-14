@@ -23,7 +23,7 @@ export const authMiddleware = async (req, res, next) => {
   try {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      throw new Error('JWT_SECRET is not defined');
+      throw new Error('Lỗi hệ thống, vui lòng thử lại sau');
     }
 
     const decoded = jwt.verify(token, secret);
@@ -39,13 +39,18 @@ export const authMiddleware = async (req, res, next) => {
       ],
     });
 
-    if (!user || user.status !== 'ACTIVE') {
-      next(new UnauthorizedException(AppMessages.Errors.User.INACTIVE));
-      return;
+    if (user.status === 'LOCKED') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_LOCKED);
     }
+
+    if (user.status === 'INACTIVE') {
+      throw new UnauthorizedException(AppMessages.Errors.Auth.ACCOUNT_INACTIVE);
+    }
+
     if (user.mustChangePassword) {
-      next(new UnauthorizedException(AppMessages.Errors.Auth.PASSWORD_CHANGE_REQUIRED));
-      return;
+      throw new UnauthorizedException(
+        AppMessages.Errors.Auth.PASSWORD_CHANGE_REQUIRED,
+      );
     }
 
     // Extract unique permissions
@@ -65,7 +70,7 @@ export const authMiddleware = async (req, res, next) => {
       roles: user.userRoles?.map((ur) => ur.role.roleName) || [],
       permissions: Array.from(permissions),
     };
-    setRequestContextValue("userId", user.id)
+    setRequestContextValue('userId', user.id);
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {

@@ -1,10 +1,13 @@
 import { ActionLogsRepository } from '../repositories/action-logs.repository.js';
-import { NotFoundException, BadRequestException } from '../common/exceptions/index.js';
+import {
+  NotFoundException,
+  BadRequestException,
+} from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
 import { parseUserAgent } from '../common/utils/user-agent.util.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
-import { parse, isAfter } from 'date-fns';
+import { parse, isAfter, isValid } from 'date-fns';
 
 export class ActionLogsService {
   constructor(actionLogsRepository = new ActionLogsRepository()) {
@@ -27,28 +30,71 @@ export class ActionLogsService {
   }
 
   validateDateRange(dto) {
-    const { fromDate, toDate } = dto;
-
-    if (!fromDate && !toDate) return;
+    const { fromDate, toDate, status, sortOrder, page, limit } = dto;
 
     const now = new Date();
 
-    const from = fromDate ? parse(fromDate, 'dd/MM/yyyy', new Date()) : null;
+    const parseAndValidateDate = (dateStr, fieldName) => {
+      if (!dateStr) return null;
+      if (dateStr instanceof Date) return dateStr;
 
-    const to = toDate ? parse(toDate, 'dd/MM/yyyy', new Date()) : null;
+      const parsed = parse(dateStr, 'dd/MM/yyyy', new Date());
+      if (!isValid(parsed)) {
+        throw new BadRequestException(
+          `${fieldName === 'fromDate' ? 'Ngày bắt đầu' : 'Ngày kết thúc'} không hợp lệ`,
+        );
+      }
+      if (isAfter(parsed, now)) {
+        throw new BadRequestException(
+          `${fieldName === 'fromDate' ? 'Ngày bắt đầu' : 'Ngày kết thúc'} không được vượt quá ngày hiện tại`,
+        );
+      }
+      return parsed;
+    };
 
-    if (from && isAfter(from, now)) {
-      throw new BadRequestException('fromDate cannot be in the future');
+    const from = parseAndValidateDate(fromDate, 'fromDate');
+    const to = parseAndValidateDate(toDate, 'toDate');
+
+    if (from) {
+      const y = from.getFullYear();
+      const m = String(from.getMonth() + 1).padStart(2, '0');
+      const d = String(from.getDate()).padStart(2, '0');
+      dto.fromDate = `${y}-${m}-${d}`;
     }
 
-    if (to && isAfter(to, now)) {
-      throw new BadRequestException('toDate cannot be in the future');
+    if (to) {
+      const y = to.getFullYear();
+      const m = String(to.getMonth() + 1).padStart(2, '0');
+      const d = String(to.getDate()).padStart(2, '0');
+      dto.toDate = `${y}-${m}-${d}`;
     }
 
     if (from && to && isAfter(from, to)) {
       throw new BadRequestException(
-        'fromDate must be before or equal to toDate',
+        'Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc',
       );
+    }
+
+    if (status && !['SUCCESS', 'FAILED'].includes(status)) {
+      throw new BadRequestException('Trạng thái không hợp lệ');
+    }
+
+    if (sortOrder && !['ASC', 'DESC'].includes(sortOrder)) {
+      throw new BadRequestException('Thứ tự sắp xếp không hợp lệ');
+    }
+
+    if (
+      page !== undefined &&
+      (!Number.isInteger(Number(page)) || Number(page) <= 0)
+    ) {
+      throw new BadRequestException('Trang không hợp lệ');
+    }
+
+    if (
+      limit !== undefined &&
+      (!Number.isInteger(Number(limit)) || Number(limit) <= 0)
+    ) {
+      throw new BadRequestException('Số lượng bản ghi không hợp lệ');
     }
   }
 
@@ -77,7 +123,7 @@ export class ActionLogsService {
 
   async exportExcel() {
     const [items] = await this.actionLogsRepository.findAll({
-      // page: 1,
+      page: 1,
       limit: 10000,
     });
 

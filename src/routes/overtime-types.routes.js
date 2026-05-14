@@ -10,7 +10,7 @@ const controller = new OvertimeTypesController();
 router.get(
   '/',
   authMiddleware,
-  permissionsMiddleware('OVERTIME_RULE_READ'),
+  permissionsMiddleware(['OVERTIME_RULE_READ', 'OVERTIME_RULE_READ_OWN']),
   controller.findAll,
 );
 

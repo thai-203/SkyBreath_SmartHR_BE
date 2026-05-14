@@ -7,7 +7,7 @@ export const AppMessages = {
 
     Auth: {
       LOGIN: 'Đăng nhập thành công',
-      TOKENS_REFRESHED: 'Cập nhật token thành công',
+      TOKENS_REFRESHED: 'Cập nhật phiên làm việc thành công',
       LOGOUT: 'Đăng xuất thành công',
       PASSWORD_CHANGED: 'Đổi mật khẩu thành công',
       PROFILE_RETRIEVED: 'Lấy thông tin hồ sơ thành công',
@@ -159,37 +159,106 @@ export const AppMessages = {
     Auth: {
       PASSWORD_CHANGE_REQUIRED: {
         code: 'AUTH_000',
-        message: 'Yêu cầu đổi mật khẩu',
+        message: 'Bạn cần đổi mật khẩu trước khi tiếp tục',
       },
       INVALID_CREDENTIALS: {
         code: 'AUTH_001',
-        message: 'Thông tin đăng nhập không hợp lệ',
+        message: 'Email hoặc mật khẩu không chính xác',
       },
-      TOKEN_EXPIRED: { code: 'AUTH_002', message: 'Token đã hết hạn' },
-      TOKEN_INVALID: { code: 'AUTH_003', message: 'Token không hợp lệ' },
-      UNAUTHORIZED: { code: 'AUTH_004', message: 'Không được ủy quyền' },
+      TOKEN_EXPIRED: {
+        code: 'AUTH_002',
+        message: 'Phiên đăng nhập đã hết hạn',
+      },
+      TOKEN_INVALID: {
+        code: 'AUTH_003',
+        message: 'Phiên đăng nhập không hợp lệ',
+      },
+      UNAUTHORIZED: {
+        code: 'AUTH_004',
+        message: 'Không có quyền thực hiện hành động này',
+      },
       FORBIDDEN: {
         code: 'AUTH_005',
         message: 'Bạn không có quyền truy cập tính năng này',
       },
-      RESET_TOKEN_INVALID: {
+      RESET_OTP_INVALID: {
         code: 'AUTH_006',
-        message: 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn',
+        message: 'OTP không hợp lệ hoặc đã hết hạn',
       },
       PASSWORD_NOT_DIFFERENT: {
         code: 'AUTH_007',
-        message: 'Mật khẩu mới phải khác mật khẩu cũ',
+        message: 'Mật khẩu mới không được trùng với mật khẩu cũ',
+      },
+      INVALID_EMAIL: {
+        code: 'AUTH_008',
+        message: 'Email không hợp lệ',
+      },
+      INVALID_PASSWORD: {
+        code: 'AUTH_009',
+        message:
+          'Mật khẩu phải chứa ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt',
+      },
+      EMAIL_REQUIRED: {
+        code: 'AUTH_010',
+        message: 'Email không được để trống',
+      },
+      PASSWORD_REQUIRED: {
+        code: 'AUTH_011',
+        message: 'Mật khẩu không được để trống',
+      },
+      ACCOUNT_LOCKED: {
+        code: 'AUTH_012',
+        message: 'Tài khoản của bạn đã bị khóa',
+      },
+      ACCOUNT_INACTIVE: {
+        code: 'AUTH_013',
+        message: 'Tài khoản chưa được kích hoạt',
+      },
+      ACCOUNT_NOT_FOUND: {
+        code: 'AUTH_014',
+        message: 'Không tìm thấy tài khoản',
+      },
+      PROFILE_NOT_FOUND: {
+        code: 'AUTH_015',
+        message: 'Không tìm thấy hồ sơ',
+      },
+      PASSWORD_CURRENT_MISMATCH: {
+        code: 'AUTH_016',
+        message: 'Mật khẩu hiện tại không chính xác',
+      },
+      PASSWORD_CURRENT_REQUIRED: {
+        code: 'AUTH_017',
+        message: 'Mật khẩu hiện tại không được để trống',
+      },
+      PASSWORD_NEW_REQUIRED: {
+        code: 'AUTH_018',
+        message: 'Mật khẩu mới không được để trống',
+      },
+      PASSWORD_CURRENT_INVALID: {
+        code: 'AUTH_019',
+        message: 'Mật khẩu hiện tại không hợp lệ',
+      },
+      PASSWORD_NEW_INVALID: {
+        code: 'AUTH_020',
+        message: 'Mật khẩu mới không hợp lệ',
       },
     },
     User: {
       NOT_FOUND: { code: 'USER_001', message: 'Không tìm thấy người dùng' },
-      ALREADY_EXISTS: { code: 'USER_002', message: 'Người dùng đã tồn tại' },
-      INVALID_PASSWORD: {
+      EMAIL_ALREADY_EXISTS: {
+        code: 'USER_002',
+        message: 'Email đã tồn tại',
+      },
+      USERNAME_ALREADY_EXISTS: {
         code: 'USER_003',
+        message: 'Tên đăng nhập đã tồn tại',
+      },
+      INVALID_PASSWORD: {
+        code: 'USER_004',
         message: 'Mật khẩu hiện tại không đúng',
       },
       INACTIVE: {
-        code: 'USER_004',
+        code: 'USER_005',
         message: 'Tài khoản người dùng không hoạt động',
       },
       LOCKED: { code: 'USER_005', message: 'Tài khoản người dùng bị khóa' },
@@ -227,6 +296,11 @@ export const AppMessages = {
         message: 'Tên người dùng đã tồn tại',
       },
       EMAIL_EXISTS: { code: 'USER_015', message: 'Email đã tồn tại' },
+      ROLE_ASIGN_FORBIDDEN: {
+        code: 'USER_016',
+        message: 'Không thể gán vai trò admin',
+      },
+      ROLE_NOT_FOUND: { code: 'USER_017', message: 'Không tìm thấy vai trò' },
     },
     Employee: {
       NOT_FOUND: { code: 'EMP_001', message: 'Không tìm thấy nhân viên' },

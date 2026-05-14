@@ -4,6 +4,12 @@ import { RequestGroupsRepository } from '../repositories/request-groups.reposito
 import { NotFoundException, BadRequestException, ConflictException } from '../common/exceptions/index.js';
 import { PaginatedResponseDto } from '../common/dto/pagination.dto.js';
 
+/**
+ * Trim + collapse multiple spaces into one
+ * 
+ */
+const normalizeText = (str) => (str ? str.trim().replace(/\s+/g, ' ') : str);
+
 export class RequestTypesService {
     constructor() {
         this.repository = new RequestTypesRepository();
@@ -42,6 +48,9 @@ export class RequestTypesService {
     async create(createDto) {
         const { policy, requestGroupId, ...typeData } = createDto;
 
+        // ✅ Normalize text: trim + collapse khoảng trắng
+        if (typeData.name) typeData.name = normalizeText(typeData.name);
+
         // Check nhóm cha có tồn tại không
         const group = await this.groupsRepo.findById(requestGroupId);
         if (!group) throw new NotFoundException('Không tìm thấy Nhóm Đơn Từ cha');
@@ -76,6 +85,9 @@ export class RequestTypesService {
         const typeItem = await this.findById(id);
         const { policy, requestGroupId, ...typeData } = updateDto;
 
+        // ✅ Normalize text: trim + collapse khoảng trắng
+        if (typeData.name) typeData.name = normalizeText(typeData.name);
+
         // Nếu thay đổi group Id, cần check group mới
         if (requestGroupId && requestGroupId !== typeItem.requestGroupId) {
             const group = await this.groupsRepo.findById(requestGroupId);
@@ -100,7 +112,7 @@ export class RequestTypesService {
             // Check duplicate name nếu thay đổi tên hoặc di chuyển sang group khác
             const nameToCheck = typeData.name || typeItem.name;
             const groupToCheck = typeData.requestGroupId || typeItem.requestGroupId;
-            
+
             const existingType = await this.repository.findByNameAndGroupWithDeleted(nameToCheck, groupToCheck);
             if (existingType && existingType.id !== id) {
                 throw new ConflictException('Tên loại đơn từ này đã tồn tại trong nhóm nguồn/đích, kể cả trong thùng rác.');
@@ -155,10 +167,10 @@ export class RequestTypesService {
 
         // Xóa policy đi kèm
         await this.policyRepo.deleteByTypeId(id);
-        
+
         // Soft delete type
         await this.repository.delete(id);
-        
+
         return { message: 'Xoá loại đơn thành công' };
     }
 

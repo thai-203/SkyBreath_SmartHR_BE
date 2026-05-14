@@ -2,6 +2,7 @@ import { ShiftGroupsRepository } from '../repositories/shift-groups.repository.j
 import {
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 
@@ -31,6 +32,10 @@ export class ShiftGroupsService {
   }
 
   async create(createDto) {
+    if (!createDto?.groupName || !String(createDto.groupName).trim()) {
+      throw new BadRequestException('Tên nhóm ca không được để trống');
+    }
+
     // check duplicate name
     const existing = await this.shiftGroupsRepo.findAll({
       search: createDto.groupName,
@@ -45,6 +50,13 @@ export class ShiftGroupsService {
 
   async update(id, updateDto) {
     const group = await this.findById(id);
+    if (
+      updateDto.groupName !== undefined &&
+      (!updateDto.groupName || !String(updateDto.groupName).trim())
+    ) {
+      throw new BadRequestException('Tên nhóm ca không được để trống');
+    }
+
     if (updateDto.groupName && updateDto.groupName !== group.groupName) {
       const existing = await this.shiftGroupsRepo.findAll({
         search: updateDto.groupName,

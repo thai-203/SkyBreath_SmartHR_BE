@@ -1,8 +1,8 @@
 import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { AppMessages } from '../common/constants/index.js';
 import { RequestGroupCode } from '../common/enums/request.enum.js';
-import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
 import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
+import { ProcessedAttendanceRecordEntity } from '../models/entities/processed-attendance-record.entity.js';
 
 import {
   BadRequestException,
@@ -18,8 +18,10 @@ import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRequestDetailEntity } from '../models/entities/overtime-request-detail.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
+import { PenaltyEntity } from '../models/entities/penalty.entity.js';
 import { RequestEntity } from '../models/entities/request.entity.js';
 import { ShiftAssignmentEntity } from '../models/entities/shift-assignment.entity.js';
+import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 
 /** Đơn được hợp nhất vào bảng công khi sync — theo request_groups.code (không gồm OVERTIME). */
@@ -48,47 +50,47 @@ function _dateKeyFromRequestField(value) {
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function _pickSyncRequestForDay(empRequests, calendarDateKey) {
-  const candidates = empRequests.filter((r) => {
-    const code = r.requestGroup?.code;
-    if (!code || !TIMESHEET_SYNC_GROUP_PRIORITY[code]) return false;
-    const start = _dateKeyFromRequestField(r.startDate);
-    if (!start) return false;
-    const end = _dateKeyFromRequestField(r.endDate) || start;
-    return calendarDateKey >= start && calendarDateKey <= end;
-  });
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-  candidates.sort((a, b) => {
-    const pa = TIMESHEET_SYNC_GROUP_PRIORITY[a.requestGroup?.code] || 0;
-    const pb = TIMESHEET_SYNC_GROUP_PRIORITY[b.requestGroup?.code] || 0;
-    if (pb !== pa) return pb - pa;
-    return (a.id || 0) - (b.id || 0);
-  });
-  return candidates[0];
-}
+
 
 /** Phân tích mã ngắn chấm công (P, L, CT...) từ Request */
 function _resolveRequestCode(req, isWeekend) {
   const groupCode = req.requestGroup?.code;
   if (groupCode === RequestGroupCode.BUSINESS_TRIP) {
     const name = (req.requestType?.name || '').toLowerCase();
-    if (isWeekend || name.includes('ngày nghỉ') || name.includes('cuối tuần')) return 'CT-CN';
+    if (isWeekend || name.includes('ngày nghỉ') || name.includes('cuối tuần'))
+      return 'CT-CN';
     return 'CT';
   }
   if (groupCode === RequestGroupCode.LEAVE) {
     const name = (req.requestType?.name || '').toLowerCase();
     if (name.includes('phép năm') || name.includes('đơn nghỉ phép')) return 'P';
     if (name.includes('thai sản')) return 'M';
-    if (name.includes('không hưởng lương') || name.includes('không lương')) return 'R';
+    if (name.includes('không hưởng lương') || name.includes('không lương'))
+      return 'R';
     if (name.includes('con ốm')) return 'C';
-    if (name.includes('ốm đau') || name.includes('bản thân ốm') || name.includes('nghỉ ốm')) return 'S';
+    if (
+      name.includes('ốm đau') ||
+      name.includes('bản thân ốm') ||
+      name.includes('nghỉ ốm')
+    )
+      return 'S';
     if (name.includes('dưỡng sức')) return 'D';
     if (name.includes('tai nạn')) return 'A';
-    if (name.includes('việc riêng') || name.includes('hiếu') || name.includes('hỉ') || name.includes('cưới')) return 'V';
+    if (
+      name.includes('việc riêng') ||
+      name.includes('hiếu') ||
+      name.includes('hỉ') ||
+      name.includes('cưới')
+    )
+      return 'V';
     if (name.includes('bù lễ')) return 'BL';
     if (name.includes('bù')) return 'B';
-    if (name.includes('học') || name.includes('tham quan') || name.includes('nghỉ mát')) return 'H';
+    if (
+      name.includes('học') ||
+      name.includes('tham quan') ||
+      name.includes('nghỉ mát')
+    )
+      return 'H';
     if (name.includes('kỷ luật') || name.includes('chờ việc')) return 'NC';
     if (name.includes('lễ')) return 'L';
     return 'P'; // Mặc định
@@ -221,7 +223,11 @@ export class TimesheetsService {
         const records = attendanceMap.get(employee.id) || [];
 
         // Get this employee's shift (or default)
-        const shift = await this._getEmployeeShift(employee.id, month, year);
+        const { shift, weekdays } = await this._getEmployeeShift(
+          employee.id,
+          month,
+          year,
+        );
         const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
         console.log(
           `shiftHoursPerDay for employee ${employee.id}:`,
@@ -286,7 +292,7 @@ export class TimesheetsService {
         // Calculate totals with break deduction & half-day support
         let totalWorkingDays = 0;
         let totalWorkingHours = 0;
-        let overtimeHours = 0;
+        let overtimeHours = otDetails.reduce((sum, item) => sum + parseFloat(item.totalHours || 0), 0);
 
         for (const [dateKey, { checkIn, checkOut }] of dailyMap) {
           let actualHours = this._calcActualHours(checkIn, checkOut, shift);
@@ -304,28 +310,14 @@ export class TimesheetsService {
             actualHours = shiftHoursPerDay;
           }
 
+          // Cap actual hours at shift hours for regular working hours/days
+          actualHours = Math.min(actualHours, shiftHoursPerDay);
+
           totalWorkingHours += actualHours;
           totalWorkingDays += this._calcWorkingDay(
             actualHours,
             shiftHoursPerDay,
           );
-
-          if (actualHours > shiftHoursPerDay) {
-            const actualOtHours = actualHours - shiftHoursPerDay;
-            console.log(`actualOtHours for ${dateKey}:`, actualOtHours);
-
-            const otDetail = otDetails.find((r) => {
-              const d = new Date(r.workDate);
-              const detailDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-              return detailDate === dateKey;
-            });
-            console.log(`otDetail for ${dateKey}:`, otDetail);
-
-            const otHoursAllowed = otDetail
-              ? parseFloat(otDetail.totalHours || 0)
-              : 0;
-            overtimeHours += Math.min(actualOtHours, otHoursAllowed);
-          }
         }
 
         // Upsert: check for existing timesheet
@@ -346,6 +338,7 @@ export class TimesheetsService {
             totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
             totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
             overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+            standardDays: parseFloat(standardWorkingDays.toFixed(2)),
             isLocked: false,
           });
           updatedCount++;
@@ -357,10 +350,15 @@ export class TimesheetsService {
             totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
             totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
             overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+            standardDays: parseFloat(standardWorkingDays.toFixed(2)),
             isLocked: false,
           });
           generatedCount++;
         }
+
+        // Trigger granular summary update (calculates standardDays, officialDays, etc.)
+        await this.summarizeTimesheet(employee.id, month, year, userContext);
+
         results.push(timesheet);
       } catch (err) {
         console.error(
@@ -470,7 +468,11 @@ export class TimesheetsService {
       .getMany();
 
     // Calc totals with per-employee shift, break deduction & half-day
-    const shift = await this._getEmployeeShift(employeeId, month, year);
+    const { shift, weekdays } = await this._getEmployeeShift(
+      employeeId,
+      month,
+      year,
+    );
     const shiftHoursPerDay = shift ? this._calcShiftHours(shift) : 8;
 
     // Group records by date
@@ -491,18 +493,36 @@ export class TimesheetsService {
       }
     });
 
+    // Fetch OT Requests for this employee
+    const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
+    const otDetails = await otDetailRepo
+      .createQueryBuilder('detail')
+      .innerJoin('detail.request', 'request')
+      .innerJoin('request.requestGroup', 'requestGroup')
+      .where('request.employeeId = :employeeId', { employeeId })
+      .andWhere('request.status = :status', { status: 'APPROVED' })
+      .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
+      .andWhere('detail.workDate >= :startDate', {
+        startDate: startDate.toISOString().split('T')[0],
+      })
+      .andWhere('detail.workDate <= :endDate', {
+        endDate: endDate.toISOString().split('T')[0],
+      })
+      .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
+      .getMany();
+
     let totalWorkingDays = 0;
     let totalWorkingHours = 0;
-    let overtimeHours = 0;
+    let overtimeHours = otDetails.reduce((sum, item) => sum + parseFloat(item.totalHours || 0), 0);
 
     for (const [, { checkIn, checkOut }] of dailyMap) {
-      const actualHours = this._calcActualHours(checkIn, checkOut, shift);
+      let actualHours = this._calcActualHours(checkIn, checkOut, shift);
+      
+      // Cap actual hours at shift hours for regular working hours/days
+      actualHours = Math.min(actualHours, shiftHoursPerDay);
+
       totalWorkingHours += actualHours;
       totalWorkingDays += this._calcWorkingDay(actualHours, shiftHoursPerDay);
-
-      if (actualHours > shiftHoursPerDay) {
-        overtimeHours += actualHours - shiftHoursPerDay;
-      }
     }
 
     const timesheet = await this.timesheetsRepository.create({
@@ -512,8 +532,11 @@ export class TimesheetsService {
       totalWorkingDays: parseFloat(totalWorkingDays.toFixed(2)),
       totalWorkingHours: parseFloat(totalWorkingHours.toFixed(2)),
       overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+      standardDays: 0, // Will be updated by summarizeTimesheet below
       isLocked: false,
     });
+
+    await this.summarizeTimesheet(employeeId, month, year);
 
     return timesheet;
   }
@@ -644,7 +667,7 @@ export class TimesheetsService {
         'time_sheets',
         'ts',
         'ts.employee_id = emp.id AND ts.month = :month AND ts.year = :year AND ts.deleted_at IS NULL',
-        { month, year }
+        { month, year },
       )
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
@@ -771,7 +794,7 @@ export class TimesheetsService {
       .getMany();
 
     // Get employee's shift assignment
-    const shift = await this._getEmployeeShift(
+    const { shift, weekdays } = await this._getEmployeeShift(
       timesheet.employeeId,
       timesheet.month,
       timesheet.year,
@@ -906,6 +929,7 @@ export class TimesheetsService {
       leaveRequests,
       otDetails,
       excuseRequests,
+      weekdays, // Pass weekdays for proper holiday logic
     );
 
     // Enrich daily details with shift schedule info
@@ -997,7 +1021,11 @@ export class TimesheetsService {
       if (records.length === 0 && !isHR) continue;
 
       // Get shift
-      const shift = await this._getEmployeeShift(employee.id, month, year);
+      const { shift, weekdays } = await this._getEmployeeShift(
+        employee.id,
+        month,
+        year,
+      );
 
       // Get excuse requests
       const excuseRequests = await requestRepo.find({
@@ -1021,6 +1049,7 @@ export class TimesheetsService {
         [], // No leaves
         [], // No OT
         excuseRequests,
+        weekdays, // Pass weekdays for proper weekday logic
       );
 
       // Filter based on role
@@ -1076,7 +1105,7 @@ export class TimesheetsService {
       .andWhere('att.checkInTime <= :end', { end: endDate })
       .getMany();
 
-    const shift = await this._getEmployeeShift(
+    const { shift, weekdays } = await this._getEmployeeShift(
       timesheet.employeeId,
       timesheet.month,
       timesheet.year,
@@ -1176,7 +1205,12 @@ export class TimesheetsService {
     }
 
     // Call summarizeTimesheet which now handles all logic including OT
-    const updatedTimesheet = await this.summarizeTimesheet(timesheet.employeeId, timesheet.month, timesheet.year, userContext);
+    const updatedTimesheet = await this.summarizeTimesheet(
+      timesheet.employeeId,
+      timesheet.month,
+      timesheet.year,
+      userContext,
+    );
 
     if (this.actionLogsService) {
       await this.actionLogsService.log({
@@ -1393,7 +1427,7 @@ export class TimesheetsService {
     search,
     userContext,
   ) {
-    // Export "giống như Ma trận dữ liệu chấm công" (processed_attendance_records),
+    // Export "giống như dữ liệu chấm công" (processed_attendance_records),
     // not raw attendance_records.
     const daysInMonth = new Date(year, month, 0).getDate();
     const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -1564,7 +1598,7 @@ export class TimesheetsService {
     const matrixCellValue = (rec) => {
       if (!rec) return '-';
       const status = rec.attendanceStatus;
-      if (status === 'WEEKEND') return 'N';
+      if (status === 'WEEKEND' || status === 'N') return 'N';
       if (['X', 'KL', 'ABSENT', '0'].includes(status)) {
         return rec.workValue !== undefined && rec.workValue !== null
           ? Number(rec.workValue)
@@ -1612,9 +1646,7 @@ export class TimesheetsService {
           horizontal: colNumber <= 2 ? 'left' : 'center',
           wrapText: true,
         };
-        if (isNumeric) {
-          cell.numFmt = '0.##';
-        }
+
         // weekend background for day columns
         const isDayCol =
           colNumber > baseColumns.length &&
@@ -1679,9 +1711,8 @@ export class TimesheetsService {
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day);
       const dayOfWeek = date.getDay();
-      const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      // Skip weekends (0=Sun, 6=Sat) and holidays
-      if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateKey)) {
+      // Skip weekends (0=Sun, 6=Sat)
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         count++;
       }
     }
@@ -1698,14 +1729,134 @@ export class TimesheetsService {
 
   async _getEmployeeShift(employeeId, month, year) {
     const assignmentRepo = AppDataSource.getRepository(ShiftAssignmentEntity);
-    const assignment = await assignmentRepo.findOne({
-      where: { employeeId, isDeleted: false },
-      relations: ['shift'],
-      order: { effectiveFrom: 'DESC' },
+
+    // Get employee info for department lookup
+    const empRepo = AppDataSource.getRepository(EmployeeEntity);
+    const employee = await empRepo.findOne({
+      where: { id: employeeId, isDeleted: false },
+      select: ['id', 'departmentId'],
+    });
+    const employeeDeptId = employee?.departmentId;
+
+    // Build effective date range for the month
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`;
+
+    // Find all assignments that could apply to this employee
+    // Note: We fetch all and filter in memory because MySQL JSON functions vary by version
+    const allAssignments = await assignmentRepo
+      .createQueryBuilder('sa')
+      .leftJoinAndSelect('sa.shift', 'shift')
+      .where('sa.isDeleted = :isDel', { isDel: false })
+      .getMany();
+
+    // Filter in memory for employee/department match
+    const applicableAssignments = allAssignments.filter((a) => {
+      // Employee direct match
+      if (a.employeeId === employeeId) return true;
+      // Employee IDs array match
+      if (
+        a.employeeIds &&
+        Array.isArray(a.employeeIds) &&
+        a.employeeIds.includes(employeeId)
+      )
+        return true;
+      // Department direct match
+      if (a.departmentId === employeeDeptId) return true;
+      // Department IDs array match
+      if (
+        a.departmentIds &&
+        Array.isArray(a.departmentIds) &&
+        a.departmentIds.includes(employeeDeptId)
+      )
+        return true;
+      return false;
     });
 
-    if (assignment?.shift) return assignment.shift;
-    return this._getDefaultShift();
+    // Filter to assignments that are effective during this month
+    const effectiveAssignments = applicableAssignments.filter((a) => {
+      if (!a.effectiveFrom) return true; // No start date = always effective
+      const effFrom = new Date(a.effectiveFrom);
+      const effTo = a.effectiveTo ? new Date(a.effectiveTo) : null;
+      // Check if overlaps with month
+      return effFrom <= monthEnd && (!effTo || effTo >= monthStart);
+    });
+
+    // Sort by priority: direct employeeId > employeeIds array > departmentId > departmentIds > most recent
+    const sortedAssignments = effectiveAssignments.sort((a, b) => {
+      // Direct employeeId match gets highest priority
+      if (a.employeeId === employeeId && b.employeeId !== employeeId) return -1;
+      if (b.employeeId === employeeId && a.employeeId !== employeeId) return 1;
+
+      // EmployeeIds array match
+      if (
+        a.employeeIds &&
+        a.employeeIds.includes(employeeId) &&
+        (!b.employeeIds || !b.employeeIds.includes(employeeId))
+      )
+        return -1;
+      if (
+        b.employeeIds &&
+        b.employeeIds.includes(employeeId) &&
+        (!a.employeeIds || !a.employeeIds.includes(employeeId))
+      )
+        return 1;
+
+      // Department match
+      if (
+        a.departmentId === employeeDeptId &&
+        b.departmentId !== employeeDeptId
+      )
+        return -1;
+      if (
+        b.departmentId === employeeDeptId &&
+        a.departmentId !== employeeDeptId
+      )
+        return 1;
+
+      // Most recent effectiveFrom wins
+      const dateA = a.effectiveFrom ? new Date(a.effectiveFrom) : new Date(0);
+      const dateB = b.effectiveFrom ? new Date(b.effectiveFrom) : new Date(0);
+      return dateB - dateA;
+    });
+
+    const assignment = sortedAssignments[0];
+
+    if (assignment?.shift) {
+      // Parse weekdays from string "1,2,3,4,5" to array [1,2,3,4,5]
+      const weekdays = this._parseWeekdays(assignment.weekdays);
+      return {
+        shift: assignment.shift,
+        weekdays,
+      };
+    }
+
+    // Default: no shift assignment, treat MON-FRI as working days, SAT-SUN as weekend
+    return {
+      shift: await this._getDefaultShift(),
+      weekdays: [1, 2, 3, 4, 5], // Mon-Fri only (Vietnam standard)
+    };
+  }
+
+  /**
+   * Parse weekdays from database string format to array of numbers.
+   * @param {string|number[]|null} value - weekdays value from DB (e.g., "1,2,3,4,5" or [1,2,3,4,5])
+   * @returns {number[]} - array of weekday numbers (0=Sun, 1=Mon, ..., 6=Sat)
+   */
+  _parseWeekdays(value) {
+    if (!value) return [1, 2, 3, 4, 5]; // Default: Mon-Fri (Vietnam standard)
+    if (Array.isArray(value)) {
+      return value.map(Number).filter((v) => Number.isFinite(v));
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isFinite(v));
+    }
+    return [1, 2, 3, 4, 5];
   }
 
   _calcShiftHours(shift) {
@@ -1759,18 +1910,15 @@ export class TimesheetsService {
   }
 
   /**
-   * Calculate working day value based on actual hours vs shift hours.
-   * - Full day  : actualHours >= 75% of shiftHours  (e.g. ≥6h for 8h shift → 1 day)
-   * - Half day  : actualHours >= 40% of shiftHours  (e.g. ≥3.2h for 8h shift → 0.5 day)
-   * - No day    : actualHours < 40% of shiftHours
-   * This avoids penalising small lateness (e.g. 18 min late out of 8h) with a 0.5-day deduction.
-   * @param {number} actualHours - hours worked (after break deduction)
-   * @param {number} shiftHours  - standard shift hours for 1 full day
-   * @returns {number} 1 | 0.5 | 0
+   * Half-day calculation based on actual hours vs shift hours
+   * @param {number} actualHours
+   * @param {number} shiftHours
+   * @returns {number} 1, 0.5, or 0
    */
   _calcWorkingDay(actualHours, shiftHours) {
-    if (actualHours >= shiftHours * 0.75) return 1;
-    if (actualHours >= shiftHours * 0.4) return 0.5;
+    if (!shiftHours || shiftHours <= 0) return 0;
+    if (actualHours >= shiftHours) return 1;
+    if (actualHours >= shiftHours / 2) return 0.5;
     return 0;
   }
 
@@ -1783,6 +1931,7 @@ export class TimesheetsService {
     leaveRequests = [],
     otDetails = [],
     excuseRequests = [],
+    weekdays = [1, 2, 3, 4, 5], // Default: Mon-Fri (Vietnam standard)
   ) {
     const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -1807,7 +1956,7 @@ export class TimesheetsService {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day);
-      const dayOfWeek = date.getDay();
+      const dayOfWeek = date.getDay(); // 0=CN, 1=T2, ..., 6=T7
       const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
       const formattedDate = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
@@ -1871,14 +2020,23 @@ export class TimesheetsService {
         };
       }
 
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
+      // === LOGIC MỚI: Check weekdays TRƯỚC khi check holiday ===
+      // Ngày không nằm trong ca làm việc (weekdays) → WEEKEND
+      // Chỉ ngày NẰM TRONG CA LÀM VIỆC mới có thể là HOLIDAY
+      const isWorkingDay = weekdays.includes(dayOfWeek);
+
+      if (!isWorkingDay) {
+        // Ngày không có trong ca làm việc (ví dụ: T7, CN với ca T2-T6)
         detail.status = 'WEEKEND';
+        detail.attendanceStatus = 'WEEKEND';
         details.push(detail);
         continue;
       }
 
+      // Ngày nằm trong ca làm VIỆC và là ngày LỄ → HOLIDAY
       if (holidayDates.has(dateKey)) {
         detail.status = 'HOLIDAY';
+        detail.attendanceStatus = 'HOLIDAY';
         details.push(detail);
         continue;
       }
@@ -2057,8 +2215,8 @@ export class TimesheetsService {
     if (scopedEmployeeIds.length === 0) return { synced: 0 };
 
     // 2) Fetch raw attendance records (ONLY for employees in scope)
-    //    IMPORTANT: lấy ca làm theo từng ngày từ attendance_records.shift_schedule_id
-    //    (join shift_schedules -> working_shifts) để tính late/early đúng và lưu shift_start_time/end_time.
+    //    IMPORTANT: lấy ca làm theo từng ngày từ attendance_records.working_shift_id
+    //    (join working_shifts) để tính late/early đúng và lưu shift_start_time/end_time.
     const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
     const rawRecords = await attendanceRepo
       .createQueryBuilder('att')
@@ -2066,7 +2224,8 @@ export class TimesheetsService {
         'att.id',
         'att.employeeId',
         'att.workDate',
-        'att.shiftScheduleId',
+        'att.workingShiftId',
+        'att.assignmentId',
         'att.checkInTime',
         'att.checkOutTime',
       ])
@@ -2076,8 +2235,7 @@ export class TimesheetsService {
       })
       .andWhere('att.workDate >= :start', { start: monthStartStr })
       .andWhere('att.workDate <= :end', { end: monthEndStr })
-      .leftJoinAndSelect('att.shiftSchedule', 'shiftSchedule')
-      .leftJoinAndSelect('shiftSchedule.shift', 'workingShift')
+      .leftJoinAndSelect('att.workingShift', 'workingShift')
       .getMany();
 
     // Build minimal map: employeeId -> dateKey -> { id, checkInTime, checkOutTime, shiftStartTime, shiftEndTime, workingShiftId }
@@ -2092,10 +2250,13 @@ export class TimesheetsService {
         currentMonthData.set(record.employeeId, empMap);
       }
       const existing = empMap.get(dateKey);
-      const shift = record.shiftSchedule?.shift ?? null;
+      const shift = record.workingShift ?? null;
       const shiftStartTime = shift?.startTime || '08:00:00';
       const shiftEndTime = shift?.endTime || '17:00:00';
+      const breakStartTime = shift?.breakStartTime || null;
+      const breakEndTime = shift?.breakEndTime || null;
       const workingShiftId = shift?.id ?? null;
+      const assignmentId = record.assignmentId ?? null;
       if (!existing) {
         empMap.set(dateKey, {
           id: record.id,
@@ -2103,7 +2264,10 @@ export class TimesheetsService {
           checkOutTime: record.checkOutTime || null,
           shiftStartTime,
           shiftEndTime,
+          breakStartTime,
+          breakEndTime,
           workingShiftId,
+          assignmentId,
         });
       } else {
         if (
@@ -2121,11 +2285,14 @@ export class TimesheetsService {
           existing.checkOutTime = record.checkOutTime;
         }
 
-        // Nếu có ca theo schedule thì giữ lại để tính đúng (ưu tiên record có schedule)
+        // Ưu tiên record có shift/assignment
         if (workingShiftId && !existing.workingShiftId) {
           existing.workingShiftId = workingShiftId;
+          existing.assignmentId = assignmentId;
           existing.shiftStartTime = shiftStartTime;
           existing.shiftEndTime = shiftEndTime;
+          existing.breakStartTime = breakStartTime;
+          existing.breakEndTime = breakEndTime;
         }
       }
     }
@@ -2300,29 +2467,195 @@ export class TimesheetsService {
       .andWhere('is_finalized = :final', { final: false })
       .execute();
 
-    // 7) Rebuild day-by-day using pure objects + bulk insert (faster than entity create/save)
+    // 7) Fetch shift assignments with weekdays for all employees (for proper holiday logic)
+    // Now supporting multiple assignment types: employeeId, employeeIds[], departmentId, departmentIds[]
+    const shiftAssignmentRepo = AppDataSource.getRepository(
+      ShiftAssignmentEntity,
+    );
+
+    // First, get employee department info
+    const empRepoForSync = AppDataSource.getRepository(EmployeeEntity);
+    const employeesInfo = await empRepoForSync
+      .createQueryBuilder('emp')
+      .select(['emp.id', 'emp.departmentId'])
+      .where('emp.id IN (:...empIds)', { empIds: scopedEmployeeIds })
+      .getMany();
+
+    const employeeDeptMap = new Map();
+    for (const emp of employeesInfo) {
+      employeeDeptMap.set(emp.id, emp.departmentId);
+    }
+
+    // Fetch all potentially applicable assignments
+    const allAssignments = await shiftAssignmentRepo
+      .createQueryBuilder('sa')
+      .leftJoinAndSelect('sa.shift', 'shift')
+      .where('sa.isDeleted = :isDel', { isDel: false })
+      .andWhere(
+        `(
+        (sa.employeeId IN (:...empIds)) OR
+        (sa.departmentId IN (:...deptIds)) OR
+        (sa.employeeIds IS NOT NULL AND sa.employeeIds != '') OR
+        (sa.departmentIds IS NOT NULL AND sa.departmentIds != '')
+      )`,
+        {
+          empIds: scopedEmployeeIds,
+          deptIds: [
+            ...new Set(
+              employeesInfo.map((e) => e.departmentId).filter(Boolean),
+            ),
+          ],
+        },
+      )
+      .getMany();
+
+    // Build lookup map: assignmentId -> assignment entity (for per-record weekday validation)
+    const assignmentById = new Map();
+    for (const a of allAssignments) {
+      assignmentById.set(a.id, a);
+    }
+
+    // Build map: employeeId -> weekdays array
+    const employeeWeekdaysMap = new Map();
+    for (const empId of scopedEmployeeIds) {
+      const empDeptId = employeeDeptMap.get(empId);
+
+      // Filter to applicable assignments for this employee
+      const applicableAssignments = allAssignments.filter((a) => {
+        // Check if overlaps with month
+        if (a.effectiveFrom) {
+          const effFrom = new Date(a.effectiveFrom);
+          const effTo = a.effectiveTo ? new Date(a.effectiveTo) : null;
+          const monthStart = new Date(parseInt(year), parseInt(month) - 1, 1);
+          const monthEnd = new Date(parseInt(year), parseInt(month), 0);
+          if (effFrom > monthEnd) return false;
+          if (effTo && effTo < monthStart) return false;
+        }
+
+        // Check if assignment applies to this employee
+        if (a.employeeId === empId) return true;
+        if (a.employeeIds && a.employeeIds.includes(empId)) return true;
+        if (a.departmentId === empDeptId) return true;
+        if (a.departmentIds && a.departmentIds.includes(empDeptId)) return true;
+
+        return false;
+      });
+
+      // Sort by priority
+      const sortedAssignments = applicableAssignments.sort((a, b) => {
+        // Direct employeeId match gets highest priority
+        if (a.employeeId === empId && b.employeeId !== empId) return -1;
+        if (b.employeeId === empId && a.employeeId !== empId) return 1;
+
+        // EmployeeIds array match
+        if (
+          a.employeeIds &&
+          a.employeeIds.includes(empId) &&
+          (!b.employeeIds || !b.employeeIds.includes(empId))
+        )
+          return -1;
+        if (
+          b.employeeIds &&
+          b.employeeIds.includes(empId) &&
+          (!a.employeeIds || !a.employeeIds.includes(empId))
+        )
+          return 1;
+
+        // Department match
+        if (a.departmentId === empDeptId && b.departmentId !== empDeptId)
+          return -1;
+        if (b.departmentId === empDeptId && a.departmentId !== empDeptId)
+          return 1;
+
+        // Most recent effectiveFrom wins
+        const dateA = a.effectiveFrom ? new Date(a.effectiveFrom) : new Date(0);
+        const dateB = b.effectiveFrom ? new Date(b.effectiveFrom) : new Date(0);
+        return dateB - dateA;
+      });
+
+      const assignment = sortedAssignments[0];
+      if (assignment?.weekdays) {
+        const weekdays = this._parseWeekdays(assignment.weekdays);
+        employeeWeekdaysMap.set(empId, { weekdays, assignmentId: assignment.id });
+      } else {
+        // Default: Mon-Fri working days
+        employeeWeekdaysMap.set(empId, { weekdays: [1, 2, 3, 4, 5], assignmentId: assignment?.id || null });
+      }
+    }
+
+    // 8) Rebuild day-by-day using pure objects + bulk insert (faster than entity create/save)
     const recordsToInsert = [];
     for (const empId of scopedEmployeeIds) {
       const empRawMap = currentMonthData.get(empId) || new Map();
       const empRequests = requestsByEmployeeId.get(empId) || [];
+      const config = employeeWeekdaysMap.get(empId) || { weekdays: [1, 2, 3, 4, 5], assignmentId: null };
+      const weekdays = config.weekdays;
+      const plannedAssignmentId = config.assignmentId;
 
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         if (protectedKeySet.has(`${empId}|${dateStr}`)) continue;
 
         const dateObj = new Date(year, month - 1, day);
-        const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+        const dayOfWeek = dateObj.getDay(); // 0=CN, 1=T2, ..., 6=T7
 
         const raw = empRawMap.get(dateStr);
         const shiftStartStr = raw?.shiftStartTime || '08:00:00';
         const shiftEndStr = raw?.shiftEndTime || '17:00:00';
+        const breakStartStr = raw?.breakStartTime || null;
+        const breakEndStr = raw?.breakEndTime || null;
         const workingShiftId = raw?.workingShiftId ?? null;
+        // assignmentId trong processed record dùng cho audit — vẫn giữ fallback cho ngày WEEKEND/HOLIDAY/ABSENT
+        const assignmentId = raw?.assignmentId ?? plannedAssignmentId;
         const checkIn = raw?.checkInTime ? new Date(raw.checkInTime) : null;
         const checkOut = raw?.checkOutTime ? new Date(raw.checkOutTime) : null;
+
+        // Xác định ngày làm việc dựa trên weekdays của ca trong record chấm công.
+        // Ưu tiên: weekdays từ att.assignmentId → planned assignment của NV → default T2-T6.
+        // Quan trọng: chấm công vào ngày không nằm trong weekdays của ca → không tính công (WEEKEND).
+        const attAssignmentId = raw?.assignmentId ?? null;
+        let effectiveWeekdays;
+        if (attAssignmentId && assignmentById.has(attAssignmentId)) {
+          effectiveWeekdays = this._parseWeekdays(
+            assignmentById.get(attAssignmentId).weekdays,
+          );
+        } else {
+          // Không có ca trong record → dùng ca kế hoạch của NV hoặc default T2-T6
+          effectiveWeekdays = (
+            employeeWeekdaysMap.get(empId) || { weekdays: [1, 2, 3, 4, 5] }
+          ).weekdays;
+        }
+        const isWorkingDay = effectiveWeekdays.includes(dayOfWeek);
+        const isWeekendDay = !isWorkingDay;
 
         const shiftStart = new Date(`${dateStr}T${shiftStartStr}`);
         const shiftEnd = new Date(`${dateStr}T${shiftEndStr}`);
 
+        // T7/CN luôn là ngày nghỉ - không tính lễ, không tính công
+        if (isWeekendDay) {
+          recordsToInsert.push({
+            employeeId: empId,
+            attendanceDate: dateStr,
+            workingShiftId,
+            assignmentId,
+            checkInTime: checkIn,
+            checkOutTime: checkOut,
+            shiftStartTime: shiftStartStr,
+            shiftEndTime: shiftEndStr,
+            lateMinutes: 0,
+            earlyMinutes: 0,
+            attendanceStatus: 'WEEKEND',
+            workValue: 0.0,
+            sourceType: 1,
+            rawRecordId: raw?.id || null,
+            requestId: null,
+            isFinalized: false,
+            updatedBy: userContext?.id || null,
+          });
+          continue; // Skip to next day
+        }
+
+        // T2-T6: xử lý bình thường (check-in/out, requests, holiday)
         let lateMins = 0;
         let earlyMins = 0;
         if (checkIn && checkIn > shiftStart) {
@@ -2340,39 +2673,46 @@ export class TimesheetsService {
         const hasOnlyPartial = (checkIn || checkOut) && !hasBothCheckInOut;
 
         if (hasBothCheckInOut) {
-          // Có cả check-in lẫn check-out → tính công theo số giờ thực làm / giờ ca
-          // (tránh trường hợp chấm 2 phút nhưng vẫn ra 1 công).
+          // Có cả check-in lẫn check-out → tính công chính xác theo ca.
           attendanceStatus = 'X';
 
-          // Build a minimal "shift" object for hour calculation (supports break time if present later)
           const shiftForCalc = {
             startTime: shiftStartStr,
             endTime: shiftEndStr,
+            breakStartTime: breakStartStr,
+            breakEndTime: breakEndStr,
           };
           const shiftHours = this._calcShiftHours(shiftForCalc);
-          const actualHours = this._calcActualHours(checkIn, checkOut, null);
-          workValue = this._calcWorkingDay(actualHours, shiftHours);
 
-          // Apply penalty conversion rules (late/early) on top of hour-based value.
-          // This only reduces value further when policy requires.
-          if (workValue > 0) {
-            const lookup = penaltyLookupByDay[day];
-            const lateHours = penaltyHours(lookup.late, lateMins);
-            const earlyHours = penaltyHours(lookup.early, earlyMins);
-            const totalPenaltyHours = lateHours + earlyHours;
+          // ── Giờ làm thực tế ──────────────────────────────────────────────
+          // effectiveStart = max(checkIn, shiftStart):
+          //   - Đến đúng/trước giờ → tính từ đầu ca (không cộng giờ đến sớm)
+          //   - Đến muộn          → tính từ lúc vào
+          const effectiveStart = checkIn > shiftStart ? checkIn : shiftStart;
+          let workedMins = Math.max(0, (checkOut - effectiveStart) / 60000);
 
-            if (totalPenaltyHours > 0) {
-              workValue -= totalPenaltyHours / (shiftHours || 8);
-              if (workValue <= 0) {
-                workValue = 0;
-                attendanceStatus = 'ABSENT';
-              } else if (workValue < 1.0) {
-                attendanceStatus = 'KL';
-              }
-            }
+          // Trừ giờ nghỉ giữa ca nằm trong khoảng [effectiveStart, checkOut]
+          if (breakStartStr && breakEndStr) {
+            const breakS = new Date(`${dateStr}T${breakStartStr}`);
+            const breakE = new Date(`${dateStr}T${breakEndStr}`);
+            const oStart = Math.max(effectiveStart.getTime(), breakS.getTime());
+            const oEnd = Math.min(checkOut.getTime(), breakE.getTime());
+            workedMins -= Math.max(0, (oEnd - oStart) / 60000);
           }
+          const workedHours = Math.max(0, workedMins / 60);
 
-          if (workValue === 0) {
+          // ── Áp penalty: trừ trực tiếp khỏi giờ làm, không trừ vào workValue ──
+          const lookup = penaltyLookupByDay[day];
+          const lateH = penaltyHours(lookup.late, lateMins);
+          const earlyH = penaltyHours(lookup.early, earlyMins);
+          const netHours = Math.max(0, workedHours - lateH - earlyH);
+
+          // workValue = netHours / shiftHours, tối đa 1.0
+          workValue =
+            shiftHours > 0 ? Math.min(1.0, netHours / shiftHours) : 0;
+
+          if (workValue <= 0) {
+            workValue = 0;
             attendanceStatus = 'ABSENT';
           } else if (workValue < 1.0) {
             attendanceStatus = 'KL';
@@ -2395,12 +2735,13 @@ export class TimesheetsService {
         });
 
         const correctionReq = dayRequests.find(
-          (r) => r.requestGroup?.code === RequestGroupCode.ATTENDANCE_CORRECTION
+          (r) =>
+            r.requestGroup?.code === RequestGroupCode.ATTENDANCE_CORRECTION,
         );
         const codeRequests = dayRequests.filter(
           (r) =>
             r.requestGroup?.code === RequestGroupCode.LEAVE ||
-            r.requestGroup?.code === RequestGroupCode.BUSINESS_TRIP
+            r.requestGroup?.code === RequestGroupCode.BUSINESS_TRIP,
         );
 
         if (correctionReq) {
@@ -2411,7 +2752,11 @@ export class TimesheetsService {
           reqId = correctionReq.id;
         } else if (codeRequests.length > 0) {
           reqId = codeRequests[0].id;
-          const mappedCodes = codeRequests.map((r) => _resolveRequestCode(r, isWeekend));
+          // For request display, use isWorkingDay instead of weekend
+          const isInSchedule = isWorkingDay;
+          const mappedCodes = codeRequests.map((r) =>
+            _resolveRequestCode(r, !isInSchedule),
+          );
 
           if (codeRequests.length >= 2) {
             // [Mã 1]/[Mã 2] - Sáng làm mã 1, chiều mã 2
@@ -2420,14 +2765,16 @@ export class TimesheetsService {
             for (let i = 0; i < 2; i++) {
               const isWorked =
                 codeRequests[i].isWorkedTime ||
-                codeRequests[i].requestGroup?.code === RequestGroupCode.BUSINESS_TRIP;
+                codeRequests[i].requestGroup?.code ===
+                RequestGroupCode.BUSINESS_TRIP;
               if (isWorked) workValue += 0.5;
             }
           } else {
             const reqCode = mappedCodes[0];
             const isWorked =
               codeRequests[0].isWorkedTime ||
-              codeRequests[0].requestGroup?.code === RequestGroupCode.BUSINESS_TRIP;
+              codeRequests[0].requestGroup?.code ===
+              RequestGroupCode.BUSINESS_TRIP;
 
             // Trường hợp 0.5/[Mã] - nửa làm nửa nghỉ
             if (workValue > 0 && workValue < 1.0) {
@@ -2436,15 +2783,17 @@ export class TimesheetsService {
               if (workValue > 1) workValue = 1; // max 1 công
             } else {
               // Nghỉ cả ngày mã đó
-              attendanceStatus = reqCode || (isWeekend ? 'CT-CN' : 'CT');
+              attendanceStatus = reqCode || (!isInSchedule ? 'CT-CN' : 'CT');
               workValue = isWorked ? 1.0 : 0.0;
             }
           }
-        } else if (holidayDates.has(dateStr)) {
+        } else if (isWorkingDay && holidayDates.has(dateStr)) {
+          // CHỈ là HOLIDAY khi ngày đó nằm trong ca làm việc
           attendanceStatus = 'L';
           workValue = 1.0;
-        } else if (isWeekend && !checkIn && !checkOut) {
-          attendanceStatus = 'N'; // Mã nghỉ hằng tuần chuẩn
+        } else if (!isWorkingDay && !checkIn && !checkOut) {
+          // Không phải ngày làm việc (T7/CN với ca T2-T6) → Nghỉ hằng tuần
+          attendanceStatus = 'WEEKEND'; // Thống nhất với _buildDailyDetails
           workValue = 0.0;
         } else {
           // No requests, not a holiday/normal weekend
@@ -2467,6 +2816,7 @@ export class TimesheetsService {
           employeeId: empId,
           attendanceDate: dateStr,
           workingShiftId,
+          assignmentId,
           checkInTime: checkIn,
           checkOutTime: checkOut,
           shiftStartTime: shiftStartStr,
@@ -2531,16 +2881,18 @@ export class TimesheetsService {
       });
     }
 
-
-
     // AFTER successful sync, trigger a summary update for all affected employees
     try {
-      console.log(`[SyncAttendance] Syncing summary for ${scopedEmployeeIds.length} employees...`);
+      console.log(
+        `[SyncAttendance] Syncing summary for ${scopedEmployeeIds.length} employees...`,
+      );
       for (const empId of scopedEmployeeIds) {
         await this.summarizeTimesheet(empId, month, year, userContext);
       }
     } catch (err) {
-      console.error(`[SyncAttendance] Failed to update summaries: ${err.message}`);
+      console.error(
+        `[SyncAttendance] Failed to update summaries: ${err.message}`,
+      );
     }
 
     return {
@@ -2564,7 +2916,7 @@ export class TimesheetsService {
         'time_sheets',
         'ts',
         'ts.employee_id = emp.id AND ts.month = :month AND ts.year = :year AND ts.deleted_at IS NULL',
-        { month, year }
+        { month, year },
       )
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
@@ -2630,7 +2982,9 @@ export class TimesheetsService {
 
     const standardDays = this._countWorkingDays(year, month, holidayDates);
 
-    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity,
+    );
     const records = await processedRepo
       .createQueryBuilder('par')
       .leftJoinAndSelect('par.request', 'req')
@@ -2699,7 +3053,7 @@ export class TimesheetsService {
         empOtDetails,
         activeRules,
         ruleDepts,
-        standardDays
+        standardDays,
       );
 
       return {
@@ -2710,9 +3064,13 @@ export class TimesheetsService {
         departmentName: emp.department?.departmentName || '',
         employmentStatus: emp.employmentStatus,
         standardDays,
-        baseSalary: salaries.find(s => Number(s.employeeId) === Number(emp.id))?.baseSalary || 0,
-        salaryType: salaries.find(s => Number(s.employeeId) === Number(emp.id))?.salaryType,
-        ...summary
+        baseSalary:
+          salaries.find((s) => Number(s.employeeId) === Number(emp.id))
+            ?.baseSalary || 0,
+        salaryType: salaries.find(
+          (s) => Number(s.employeeId) === Number(emp.id),
+        )?.salaryType,
+        ...summary,
       };
     });
 
@@ -2789,7 +3147,7 @@ export class TimesheetsService {
         userId: userContext?.id,
         actionType: 'FINALIZE',
         targetTable: 'processed_attendance_records',
-        description: `Chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+        description: `Chốt công tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
       });
     }
 
@@ -2855,7 +3213,7 @@ export class TimesheetsService {
         userId: userContext?.id,
         actionType: 'UNFINALIZE',
         targetTable: 'processed_attendance_records',
-        description: `Bỏ chốt công ma trận tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
+        description: `Bỏ chốt công tháng ${month}/${year}${departmentId ? ` | departmentId=${departmentId}` : ''}${search ? ` | search="${search}"` : ''}: ${result.affected || 0} bản ghi`,
       });
     }
 
@@ -2891,9 +3249,16 @@ export class TimesheetsService {
 
     // Synchronize to the main timesheets summary table
     try {
-      await this.summarizeTimesheet(record.employeeId, record.attendanceDate.getMonth() + 1, record.attendanceDate.getFullYear(), userContext);
+      await this.summarizeTimesheet(
+        record.employeeId,
+        record.attendanceDate.getMonth() + 1,
+        record.attendanceDate.getFullYear(),
+        userContext,
+      );
     } catch (err) {
-      console.error(`Failed to summarize timesheet after record update: ${err.message}`);
+      console.error(
+        `Failed to summarize timesheet after record update: ${err.message}`,
+      );
     }
 
     if (this.actionLogsService) {
@@ -2917,10 +3282,19 @@ export class TimesheetsService {
    */
   async summarizeTimesheet(employeeId, month, year, userContext) {
     const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
-    let timesheet = await this.timesheetsRepository.findByEmployeeAndPeriod(employeeId, month, year);
+    let timesheet = await this.timesheetsRepository.findByEmployeeAndPeriod(
+      employeeId,
+      month,
+      year,
+    );
     if (!timesheet) {
       // Create if not exists (though typically created by generate)
-      timesheet = timesheetRepo.create({ employeeId, month, year, isLocked: false });
+      timesheet = timesheetRepo.create({
+        employeeId,
+        month,
+        year,
+        isLocked: false,
+      });
     }
     if (timesheet.isLocked) return timesheet;
 
@@ -2937,41 +3311,82 @@ export class TimesheetsService {
     const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
     const holidays = await holidayRepo.find({
       where: [
-        { startDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
-        { endDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
-        { startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]), endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]), isDeleted: false },
+        {
+          startDate: Between(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0],
+          ),
+          isDeleted: false,
+        },
+        {
+          endDate: Between(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0],
+          ),
+          isDeleted: false,
+        },
+        {
+          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
+          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          isDeleted: false,
+        },
       ],
     });
     const holidayDates = new Set();
-    holidays.forEach(h => {
+    holidays.forEach((h) => {
       let cur = new Date(h.startDate);
       let stop = new Date(h.endDate || h.startDate);
-      while (cur <= stop) { holidayDates.add(cur.toISOString().split('T')[0]); cur.setDate(cur.getDate() + 1); }
+      while (cur <= stop) {
+        holidayDates.add(cur.toISOString().split('T')[0]);
+        cur.setDate(cur.getDate() + 1);
+      }
     });
     const standardDays = this._countWorkingDays(year, month, holidayDates);
 
     // 2. Get Processed Records
-    const processedRepo = AppDataSource.getRepository(ProcessedAttendanceRecordEntity);
-    const records = await processedRepo.createQueryBuilder('par')
-      .leftJoinAndSelect('par.request', 'req').leftJoinAndSelect('req.requestGroup', 'rg')
+    const processedRepo = AppDataSource.getRepository(
+      ProcessedAttendanceRecordEntity,
+    );
+    const records = await processedRepo
+      .createQueryBuilder('par')
+      .leftJoinAndSelect('par.request', 'req')
+      .leftJoinAndSelect('req.requestGroup', 'rg')
       .leftJoinAndSelect('par.workingShift', 'ws')
-      .where('MONTH(par.attendanceDate) = :m AND YEAR(par.attendanceDate) = :y', { m: month, y: year })
-      .andWhere('par.employeeId = :employeeId', { employeeId }).getMany();
+      .where(
+        'MONTH(par.attendanceDate) = :m AND YEAR(par.attendanceDate) = :y',
+        { m: month, y: year },
+      )
+      .andWhere('par.employeeId = :employeeId', { employeeId })
+      .getMany();
 
     // 3. Get OT Details
-    const otDetailRepo = AppDataSource.getRepository(OvertimeRequestDetailEntity);
-    const otDetails = await otDetailRepo.createQueryBuilder('otd')
-      .leftJoinAndSelect('otd.request', 'req').leftJoinAndSelect('req.requestGroup', 'rg')
-      .leftJoinAndSelect('otd.overtimeRule', 'rule').leftJoinAndSelect('rule.overtimeType', 'type')
-      .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', { m: month, y: year })
+    const otDetailRepo = AppDataSource.getRepository(
+      OvertimeRequestDetailEntity,
+    );
+    const otDetails = await otDetailRepo
+      .createQueryBuilder('otd')
+      .leftJoinAndSelect('otd.request', 'req')
+      .leftJoinAndSelect('req.requestGroup', 'rg')
+      .leftJoinAndSelect('otd.overtimeRule', 'rule')
+      .leftJoinAndSelect('rule.overtimeType', 'type')
+      .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', {
+        m: month,
+        y: year,
+      })
       .andWhere('req.status = :s', { s: 'APPROVED' })
       .andWhere('rg.code = :groupCode', { groupCode: 'OVERTIME' })
-      .andWhere('req.employeeId = :employeeId', { employeeId }).getMany();
+      .andWhere('req.employeeId = :employeeId', { employeeId })
+      .getMany();
 
     // Rules for OT resolution
     const ruleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
-    const activeRules = await ruleRepo.find({ where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false }, relations: ['overtimeType'] });
-    const ruleDeptRepo = AppDataSource.getRepository(OvertimeRuleDepartmentEntity);
+    const activeRules = await ruleRepo.find({
+      where: { versionStatus: 'ACTIVE', status: 'ACTIVE', isDeleted: false },
+      relations: ['overtimeType'],
+    });
+    const ruleDeptRepo = AppDataSource.getRepository(
+      OvertimeRuleDepartmentEntity,
+    );
     const ruleDepts = await ruleDeptRepo.find({ where: { isDeleted: false } });
 
     // 4. Aggregate
@@ -2981,24 +3396,30 @@ export class TimesheetsService {
       otDetails,
       activeRules,
       ruleDepts,
-      standardDays
+      standardDays,
     );
 
     // 5. Update TimeSheetEntity
     Object.assign(timesheet, {
       standardDays,
       totalWorkingDays: summary.totalMonthlyDays,
-      totalWorkingHours: records.reduce((sum, r) => sum + (Number(r.workValue) * 8), 0), // Base hours approximation
+      totalWorkingHours: records.reduce(
+        (sum, r) => sum + Number(r.workValue) * 8,
+        0,
+      ), // Base hours approximation
       overtimeHours: summary.totalOtHours,
       officialDays: summary.officialDays,
       probationDays: summary.probationDays,
       businessTripDays: summary.businessTripDays,
       holidayDays: summary.holidayDays,
-      benefitLeaveDays: summary.benefitLeaveDays,
-      waitingDays: summary.waitingDays || 0,
+      benefitLeaveDays: summary.benefitLeaveDays, // H, V, C, S, D, A, M, BL, B
+      annualLeaveDays: summary.annualLeaveDays, // P = Nghỉ phép năm
+      unpaidLeaveDays: summary.unpaidLeaveDays, // R, KL, ABSENT
+      waitingDays: summary.waitingDays || 0, // NC
       mealCount: summary.mealCount || 0,
       nightShiftOfficialDays: summary.nightShiftOfficialDays,
       nightShiftProbationDays: summary.nightShiftProbationDays,
+      usedLeaveDays: summary.usedLeaveDays || 0, // Phép đã dùng
       otWeekday: summary.otWeekday,
       otWeekdayNight: summary.otWeekdayNight,
       otWeekend: summary.otWeekend,
@@ -3013,61 +3434,122 @@ export class TimesheetsService {
   /**
    * Shared helper for aggregating attendance data for a single employee.
    */
-  _aggregateEmployeeAttendanceSummary(emp, empRecords, empOtDetails, activeRules, ruleDepts, standardDays) {
+  _aggregateEmployeeAttendanceSummary(
+    emp,
+    empRecords,
+    empOtDetails,
+    activeRules,
+    ruleDepts,
+    standardDays,
+  ) {
     let officialDays = 0;
     let probationDays = 0;
     let businessTripDays = 0;
     let holidayDays = 0;
-    let paidLeaveDays = 0;
     let unpaidLeaveDays = 0;
     let nightShiftOfficialDays = 0;
     let nightShiftProbationDays = 0;
     let mealCount = 0;
     let waitingDays = 0;
+    let annualLeaveDays = 0; // P = Nghỉ phép năm
+    let benefitLeaveDaysCount = 0; // H, V, C, S, D, A, M, BL, B = Nghỉ chế độ
 
-    // Aggregate Attendance
     empRecords.forEach((r) => {
       const val = Number(r.workValue) || 0;
+      const status = r.attendanceStatus;
+      const request = r.request;
+      const reqCode = request?.requestGroup?.code;
 
       const ws = r.workingShift;
-      const isNightShift = ws && (
-        (ws.startTime >= '22:00:00' || ws.startTime < '06:00:00') ||
-        (ws.shiftName && (ws.shiftName.includes('Đêm') || ws.shiftName.toLowerCase().includes('night')))
-      );
+      const isNightShift =
+        ws &&
+        (ws.startTime >= '22:00:00' ||
+          ws.startTime < '06:00:00' ||
+          (ws.shiftName &&
+            (ws.shiftName.includes('Đêm') ||
+              ws.shiftName.toLowerCase().includes('night'))));
 
-      if (isNightShift) {
+      if (isNightShift && val > 0) {
         if (emp.employmentStatus === 'ACTIVE') nightShiftOfficialDays += val;
-        else if (emp.employmentStatus === 'PROBATION') nightShiftProbationDays += val;
+        else if (emp.employmentStatus === 'PROBATION')
+          nightShiftProbationDays += val;
       }
 
       let isWorkingDay = false;
 
-      if (r.attendanceStatus === 'HOLIDAY') {
+      // WEEKEND = T7/CN nghỉ (không tính vào ngày công nào)
+      if (status === 'WEEKEND') {
+        // Không tính vào ngày công nào
+        return;
+      }
+
+      // Xử lý theo mã chấm công
+      if (status === 'L') {
+        // L = Nghỉ lễ
         holidayDays += val;
         isWorkingDay = true;
-      } else if (r.attendanceStatus === 'WAITING') {
+      } else if (status === 'P') {
+        // P = Nghỉ phép năm (hưởng nguyên lương)
+        annualLeaveDays += val;
+        isWorkingDay = true;
+      } else if (status === 'R' || status === 'KL' || status === 'ABSENT') {
+        // R, KL, ABSENT = Nghỉ không lương
+        unpaidLeaveDays += val;
+      } else if (status === 'NC') {
+        // NC = Nghỉ chờ việc
         waitingDays += val;
-      } else if (r.request && r.request.requestGroup) {
-        const groupCode = r.request.requestGroup.code;
-        if (groupCode === 'BUSINESS_TRIP' || groupCode === 'WORK_FROM_HOME') {
+      } else if (status === 'CT' || status === 'CT-CN') {
+        // CT, CT-CN = Công tác
+        businessTripDays += val;
+        isWorkingDay = true;
+      } else if (status === 'H') {
+        // H = Học, tham quan, nghỉ mát (hưởng lương)
+        benefitLeaveDaysCount += val;
+        isWorkingDay = true;
+      } else if (status === 'V') {
+        // V = Nghỉ việc riêng có hưởng lương (hiếu, hỉ...)
+        benefitLeaveDaysCount += val;
+        isWorkingDay = true;
+      } else if (
+        status === 'C' ||
+        status === 'S' ||
+        status === 'D' ||
+        status === 'A' ||
+        status === 'M'
+      ) {
+        // C, S, D, A, M = Nghỉ chế độ hưởng nguyên lương
+        benefitLeaveDaysCount += val;
+        isWorkingDay = true;
+      } else if (status === 'BL' || status === 'B') {
+        // BL, B = Nghỉ bù
+        benefitLeaveDaysCount += val;
+        isWorkingDay = true;
+      } else if (request?.requestGroup) {
+        // Xử lý theo request group code
+        if (reqCode === 'BUSINESS_TRIP' || reqCode === 'WORK_FROM_HOME') {
           businessTripDays += val;
           isWorkingDay = true;
-        } else if (groupCode === 'LEAVE') {
-          if (r.request.isWorkedTime) {
-            paidLeaveDays += val;
+        } else if (reqCode === 'LEAVE') {
+          if (request.isWorkedTime) {
+            benefitLeaveDaysCount += val;
             isWorkingDay = true;
           } else {
             unpaidLeaveDays += val;
           }
         } else {
+          // Các loại request khác
           if (emp.employmentStatus === 'ACTIVE') officialDays += val;
           else if (emp.employmentStatus === 'PROBATION') probationDays += val;
           isWorkingDay = true;
         }
-      } else {
+      } else if (status === 'X' || val > 0) {
+        // X = Đi làm đủ công
         if (emp.employmentStatus === 'ACTIVE') officialDays += val;
         else if (emp.employmentStatus === 'PROBATION') probationDays += val;
         isWorkingDay = true;
+      } else {
+        // Không có workValue
+        unpaidLeaveDays += val;
       }
 
       // Count meal only if it's a working day (exclude unpaid leave and waiting)
@@ -3076,7 +3558,12 @@ export class TimesheetsService {
       }
     });
 
-    let otWeekday = 0, otWeekdayNight = 0, otWeekend = 0, otWeekendNight = 0, otHoliday = 0, otHolidayNight = 0;
+    let otWeekday = 0,
+      otWeekdayNight = 0,
+      otWeekend = 0,
+      otWeekendNight = 0,
+      otHoliday = 0,
+      otHolidayNight = 0;
     empOtDetails.forEach((ot) => {
       const hours = Number(ot.totalHours) || 0;
       let typeCode = 'WEEKDAY';
@@ -3085,40 +3572,69 @@ export class TimesheetsService {
         const typeId = ot.overtimeTypeId || ot.request?.overtimeTypeId;
         if (typeId) {
           const workDate = new Date(ot.workDate);
-          effectiveRule = activeRules.find(r => {
+          effectiveRule = activeRules.find((r) => {
             if (r.overtimeTypeId !== typeId) return false;
             const from = r.effectiveFrom ? new Date(r.effectiveFrom) : null;
             const to = r.effectiveTo ? new Date(r.effectiveTo) : null;
             if (from && workDate < from) return false;
             if (to && workDate > to) return false;
-            const depts = ruleDepts.filter(rd => rd.overtimeRuleId === r.id).map(rd => rd.departmentId);
-            if (depts.length > 0 && !depts.includes(emp.departmentId)) return false;
+            const depts = ruleDepts
+              .filter((rd) => rd.overtimeRuleId === r.id)
+              .map((rd) => rd.departmentId);
+            if (depts.length > 0 && !depts.includes(emp.departmentId))
+              return false;
             return true;
           });
         }
       }
-      if (effectiveRule) typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
-      const isNight = ot.startTime && (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
-      if (typeCode === 'WEEKDAY') { if (isNight) otWeekdayNight += hours; else otWeekday += hours; }
-      else if (typeCode === 'WEEKEND') { if (isNight) otWeekendNight += hours; else otWeekend += hours; }
-      else if (typeCode === 'HOLIDAY') { if (isNight) otHolidayNight += hours; else otHoliday += hours; }
+      if (effectiveRule)
+        typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
+      const isNight =
+        ot.startTime &&
+        (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');
+      if (typeCode === 'WEEKDAY') {
+        if (isNight) otWeekdayNight += hours;
+        else otWeekday += hours;
+      } else if (typeCode === 'WEEKEND') {
+        if (isNight) otWeekendNight += hours;
+        else otWeekend += hours;
+      } else if (typeCode === 'HOLIDAY') {
+        if (isNight) otHolidayNight += hours;
+        else otHoliday += hours;
+      }
     });
 
-    const totalOtHours = otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight;
-    const totalMonthlyDays = officialDays + probationDays + businessTripDays + holidayDays + paidLeaveDays;
+    const totalOtHours =
+      otWeekday +
+      otWeekdayNight +
+      otWeekend +
+      otWeekendNight +
+      otHoliday +
+      otHolidayNight;
+    // Tổng công = công chính thức + thử việc + công tác + lễ + phép + chế độ
+    const totalMonthlyDays =
+      officialDays +
+      probationDays +
+      businessTripDays +
+      holidayDays +
+      annualLeaveDays +
+      benefitLeaveDaysCount;
 
     return {
       officialDays: Number(officialDays.toFixed(2)),
       probationDays: Number(probationDays.toFixed(2)),
       businessTripDays: Number(businessTripDays.toFixed(2)),
       holidayDays: Number(holidayDays.toFixed(2)),
-      benefitLeaveDays: Number(paidLeaveDays.toFixed(2)),
+      benefitLeaveDays: Number(benefitLeaveDaysCount.toFixed(2)), // H, V, C, S, D, A, M, BL, B
+      annualLeaveDays: Number(annualLeaveDays.toFixed(2)), // P = Nghỉ phép năm
       unpaidLeaveDays: Number(unpaidLeaveDays.toFixed(2)),
       totalMonthlyDays: Number(totalMonthlyDays.toFixed(2)),
       nightShiftOfficialDays: Number(nightShiftOfficialDays.toFixed(2)),
       nightShiftProbationDays: Number(nightShiftProbationDays.toFixed(2)),
       waitingDays: Number(waitingDays.toFixed(2)),
       mealCount: Number(mealCount),
+      usedLeaveDays: Number(annualLeaveDays.toFixed(2)), // Phép đã dùng = số ngày nghỉ phép năm
+      remainingLeaveDays: 0, // Cần cập nhật từ leave_balances hoặc nhập thủ công
       otWeekday: Number(otWeekday.toFixed(2)),
       otWeekdayNight: Number(otWeekdayNight.toFixed(2)),
       otWeekend: Number(otWeekend.toFixed(2)),

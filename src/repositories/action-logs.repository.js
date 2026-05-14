@@ -6,7 +6,17 @@ import { ActionLogEntity } from '../models/entities/action-log.entity.js';
 const KNOWN_TARGET_TABLES = new Set([
   'timesheets',
   'processed_attendance_records',
+  'employees',
+  'users',
+  'departments',
 ]);
+const SORT_MAPPING = {
+  createdAt: 'actionLog.createdAt',
+  updatedAt: 'actionLog.updatedAt',
+  status: 'actionLog.status',
+  actionType: 'actionLog.actionType',
+  userName: 'user.username',
+};
 
 function resolveTargetTables(targetTable) {
   if (targetTable == null || targetTable === '') return null;
@@ -35,6 +45,8 @@ export class ActionLogsRepository {
       fromDate,
       toDate,
       status,
+      sortBy,
+      sortOrder,
     } = paginationDto;
     const baseQuery = this.repo
       .createQueryBuilder('actionLog')
@@ -52,8 +64,11 @@ export class ActionLogsRepository {
     if (userId) {
       baseQuery.andWhere('actionLog.userId = :userId', { userId });
     }
+
     const targetTables = resolveTargetTables(targetTable);
+    console.log(targetTables);
     if (targetTables?.length === 1) {
+      console.log(targetTables[0]);
       baseQuery.andWhere('actionLog.targetTable = :targetTable', {
         targetTable: targetTables[0],
       });
@@ -66,20 +81,21 @@ export class ActionLogsRepository {
       baseQuery.andWhere('actionLog.status = :status', { status });
     }
     if (fromDate) {
-      const [d, m, y] = fromDate.split('/');
       baseQuery.andWhere('actionLog.createdAt >= :fromDate', {
-        fromDate: `${y}-${m}-${d} 00:00:00`,
+        fromDate: `${fromDate} 00:00:00`,
       });
     }
+
     if (toDate) {
-      const [d, m, y] = toDate.split('/');
       baseQuery.andWhere('actionLog.createdAt <= :toDate', {
-        toDate: `${y}-${m}-${d} 23:59:59`,
+        toDate: `${toDate} 23:59:59`,
       });
     }
-    const order = paginationDto.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+    const sortColumn =
+      SORT_MAPPING[sortBy] || 'actionLog.createdAt';
+    const order = sortOrder === 'ASC' ? 'ASC' : 'DESC';
     baseQuery
-      .orderBy('actionLog.createdAt', order)
+      .orderBy(sortColumn, order)
       .skip(skip || 0)
       .take(limit || 10);
     const [data, total] = await baseQuery.getManyAndCount();
@@ -105,5 +121,69 @@ export class ActionLogsRepository {
       order: { createdAt: 'DESC' },
       take: limit,
     });
+  }
+
+  /**
+   * Lấy log điểm danh (check_in, check_out, join) với đầy đủ thông tin nhân viên
+   * Dùng cho bảng tổng hợp ở màn Attendance Blocking
+   */
+  async findAttendanceLogs({ page = 1, limit = 10, search, actionType, status } = {}) {
+    const skip = (page - 1) * limit;
+    const ACTION_TYPES = ['check_in', 'check_out'];
+
+    const qb = this.repo
+      .createQueryBuilder('log')
+      .leftJoin('employees', 'employee', 'employee.user_id = log.user_id AND employee.deleted_at IS NULL')
+      .select([
+        'log.id AS id',
+        'log.action_type AS actionType',
+        'log.status AS status',
+        'log.error_message AS errorMessage',
+        'log.evidence_image_url AS evidenceImageUrl',
+        'log.request_ip AS requestIp',
+        'log.created_at AS time',
+        'log.user_id AS userId',
+        'employee.id AS empId',
+        'employee.full_name AS empFullName',
+        'employee.employee_code AS empCode',
+      ])
+      .where('log.deleted_at IS NULL')
+      .andWhere('log.action_type IN (:...actionTypes)', { actionTypes: ACTION_TYPES });
+
+    if (actionType && ACTION_TYPES.includes(actionType)) {
+      qb.andWhere('log.action_type = :actionType', { actionType });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(employee.full_name LIKE :search OR employee.employee_code LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    if (status) {
+      qb.andWhere('log.status = :status', { status });
+    }
+
+    const total = await qb.getCount();
+
+    qb.orderBy('log.created_at', 'DESC').offset(skip).limit(limit);
+    const raw = await qb.getRawMany();
+
+    const items = raw.map((row) => ({
+      id: row.id,
+      actionType: row.actionType,
+      status: row.status,
+      time: row.time,
+      requestIp: row.requestIp,
+      errorMessage: row.errorMessage,
+      evidenceImageUrl: row.evidenceImageUrl,
+      userId: row.userId,
+      empId: row.empId ?? null,
+      empCode: row.empCode ?? null,
+      empFullName: row.empFullName ?? null,
+    }));
+
+    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 }

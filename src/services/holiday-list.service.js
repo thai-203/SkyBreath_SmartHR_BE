@@ -52,11 +52,37 @@ export class HolidayListService {
         }
     }
 
-    async create(data) {
+    _validateHolidayData(data) {
+        if (!data.holidayName) {
+            throw new BadRequestException('Tên ngày lễ là bắt buộc');
+        }
+        if (!data.startDate) {
+            throw new BadRequestException('Ngày bắt đầu là bắt buộc');
+        }
+        if (!data.endDate) {
+            throw new BadRequestException('Ngày kết thúc là bắt buộc');
+        }
+        if (!data.holidayType) {
+            throw new BadRequestException('Loại ngày nghỉ là bắt buộc');
+        }
+        if (!data.holidayGroupId) {
+            throw new BadRequestException('Danh mục ngày lễ là bắt buộc');
+        }
+
+        if (typeof data.startDate === 'number' || isNaN(new Date(data.startDate).getTime())) {
+            throw new BadRequestException('Ngày bắt đầu không hợp lệ');
+        }
+        if (typeof data.endDate === 'number' || isNaN(new Date(data.endDate).getTime())) {
+            throw new BadRequestException('Ngày kết thúc không hợp lệ');
+        }
+
         if (new Date(data.startDate) > new Date(data.endDate)) {
             throw new BadRequestException('Ngày kết thúc không được trước ngày bắt đầu');
         }
-        
+    }
+
+    async create(data) {
+        this._validateHolidayData(data);
         this._validateCompensatoryDays(data.compensatoryDays);
 
         // Validate date format or uniqueness if needed
@@ -71,10 +97,11 @@ export class HolidayListService {
     }
 
     async update(id, data) {
-        if (data.startDate && data.endDate && new Date(data.startDate) > new Date(data.endDate)) {
-            throw new BadRequestException('Ngày kết thúc không được trước ngày bắt đầu');
+        if (!id) {
+            throw new BadRequestException('Cập nhật ngày nghỉ thất bại: ID không hợp lệ');
         }
 
+        this._validateHolidayData(data);
         this._validateCompensatoryDays(data.compensatoryDays);
 
         const holiday = await this.findById(id);

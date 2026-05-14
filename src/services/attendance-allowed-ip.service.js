@@ -1,4 +1,5 @@
 import { AppMessages } from '../common/constants/app-messages.constant.js';
+import { BadRequestException } from '../common/exceptions/index.js';
 import { AttendanceAllowedIpRepository } from '../repositories/attendance-allowed-ip.repository.js';
 import { AttendanceSecurityConfigService } from './attendance-security-config.service.js';
 
@@ -17,14 +18,22 @@ export class AttendanceAllowedIpService {
   }
 
   async createAllowedIp(data) {
-    const config = await this.configService.getConfig();
+    const { ipRange } = data;
 
-    const existing = await this.repo.findByIpAndConfig(data.ipRange, config.id);
-    if (existing) {
-      throw new Error(AppMessages.Errors.Attendance.ALLOWED_IP_ALREADY_EXISTS.message);
+    if (!ipRange || typeof ipRange !== 'string' || ipRange.trim() === '') {
+      throw new BadRequestException('IP Range không hợp lệ hoặc bị trống');
     }
 
-    return this.repo.create({ ...data, config });
+    const config = await this.configService.getConfig();
+
+    const existing = await this.repo.findByIpAndConfig(ipRange, config.id);
+    if (existing) {
+      throw new BadRequestException(
+        AppMessages.Errors.Attendance.ALLOWED_IP_ALREADY_EXISTS.message,
+      );
+    }
+
+    return this.repo.create({ ipRange, config });
   }
 
   async deleteAllowedIp(id) {
