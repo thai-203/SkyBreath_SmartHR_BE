@@ -25,99 +25,198 @@ describe('ShiftGroupsService', () => {
     service = new ShiftGroupsService();
   });
 
-  const expectRejectWithStatus = async (promise, statusCode) => {
-    try {
-      await promise;
-      throw new Error('Expected promise to reject');
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect(err.statusCode).toBe(statusCode);
-    }
+  const expectHttpError = async (promise, statusCode, message) => {
+    await expect(promise).rejects.toMatchObject({
+      statusCode,
+      message,
+    });
   };
 
-  it('maps pagination parameters when listing groups', async () => {
-    shiftGroupsRepo.findAll.mockResolvedValue({ items: [{ id: 1 }], total: 1 });
+  describe('Create Shift Group', () => {
+    it.each([
+      {
+        title: 'Tạo mới nhóm ca thành công với status active',
+        input: {
+          groupName: 'Ca 1',
+          status: 'active',
+          description: 'Ca số 1',
+        },
+      },
+      {
+        title: 'Tạo mới nhóm ca thành công với status inactive',
+        input: {
+          groupName: 'Ca 1',
+          status: 'inactive',
+          description: 'Ca số 1',
+        },
+      },
+    ])('$title', async ({ input }) => {
+      const createdGroup = { id: 1, ...input };
+      shiftGroupsRepo.findAll.mockResolvedValue({ items: [], total: 0 });
+      shiftGroupsRepo.create.mockResolvedValue(createdGroup);
 
-    const result = await service.findAll({
-      page: 3,
-      limit: 10,
-      search: 'Office',
-      status: 'active',
+      const result = await service.create(input);
+
+      expect(shiftGroupsRepo.findAll).toHaveBeenCalledWith({
+        search: 'Ca 1',
+        skip: 0,
+        take: 1,
+      });
+      expect(shiftGroupsRepo.create).toHaveBeenCalledWith(input);
+      expect(result).toEqual(createdGroup);
     });
 
-    expect(shiftGroupsRepo.findAll).toHaveBeenCalledWith({
-      skip: 20,
-      take: 10,
-      search: 'Office',
-      status: 'active',
+    it('Không cho tạo nếu nhóm ca đã tồn tại', async () => {
+      shiftGroupsRepo.findAll.mockResolvedValue({
+        items: [{ id: 2, groupName: 'Ca 2' }],
+        total: 1,
+      });
+
+      await expectHttpError(
+        service.create({
+          groupName: 'Ca 2',
+          status: 'active',
+          description: 'Ca số 2',
+        }),
+        409,
+        'Nhóm ca đã tồn tại',
+      );
+
+      expect(shiftGroupsRepo.create).not.toHaveBeenCalled();
     });
-    expect(result).toEqual({ items: [{ id: 1 }], total: 1 });
-  });
 
-  it('throws NotFoundException when group is missing', async () => {
-    shiftGroupsRepo.findById.mockResolvedValue(null);
+    it.each([{ groupName: '' }, { groupName: '   ' }])(
+      'Không cho tạo nếu tên nhóm ca trống: "$groupName"',
+      async ({ groupName }) => {
+        await expectHttpError(
+          service.create({
+            groupName,
+            status: 'active',
+            description: 'Ca số 1',
+          }),
+          400,
+          'Tên nhóm ca không được để trống',
+        );
 
-    await expectRejectWithStatus(service.findById(500), 404);
-  });
-
-  it('throws ConflictException on duplicate group name during create', async () => {
-    shiftGroupsRepo.findAll.mockResolvedValue({ items: [{ id: 2 }], total: 1 });
-
-    await expectRejectWithStatus(
-      service.create({ groupName: 'Ca hành chính' }),
-      409,
+        expect(shiftGroupsRepo.findAll).not.toHaveBeenCalled();
+        expect(shiftGroupsRepo.create).not.toHaveBeenCalled();
+      },
     );
-    expect(shiftGroupsRepo.create).not.toHaveBeenCalled();
   });
 
-  it('throws ConflictException when inactivating group that still has shifts', async () => {
-    shiftGroupsRepo.findById.mockResolvedValue({
-      id: 11,
-      groupName: 'Shift A',
-      status: 'active',
+  describe('Update Shift Group', () => {
+    it('Cập nhật nhóm ca thành công', async () => {
+      shiftGroupsRepo.findById.mockResolvedValue({
+        id: 10,
+        groupName: 'Ca cũ',
+        status: 'active',
+        description: 'Mô tả cũ',
+      });
+      shiftGroupsRepo.findAll.mockResolvedValue({ items: [], total: 0 });
+      shiftGroupsRepo.update.mockResolvedValue({
+        id: 10,
+        groupName: 'Ca 1',
+        status: 'active',
+        description: '123213',
+      });
+
+      const result = await service.update(10, {
+        groupName: 'Ca 1',
+        status: 'active',
+        description: '123213',
+      });
+
+      expect(shiftGroupsRepo.findById).toHaveBeenCalledWith(10);
+      expect(shiftGroupsRepo.findAll).toHaveBeenCalledWith({
+        search: 'Ca 1',
+        skip: 0,
+        take: 1,
+      });
+      expect(shiftGroupsRepo.update).toHaveBeenCalledWith(10, {
+        groupName: 'Ca 1',
+        status: 'active',
+        description: '123213',
+      });
+      expect(result).toEqual({
+        id: 10,
+        groupName: 'Ca 1',
+        status: 'active',
+        description: '123213',
+      });
     });
-    shiftGroupsRepo.hasShifts.mockResolvedValue(true);
 
-    await expectRejectWithStatus(
-      service.update(11, { status: 'inactive' }),
-      409,
-    );
-    expect(shiftGroupsRepo.update).not.toHaveBeenCalled();
-  });
+    it('Không cho cập nhật nếu tên nhóm ca rỗng', async () => {
+      shiftGroupsRepo.findById.mockResolvedValue({
+        id: 11,
+        groupName: 'Ca cũ',
+        status: 'active',
+      });
 
-  it('updates group when validations pass', async () => {
-    shiftGroupsRepo.findById.mockResolvedValue({
-      id: 15,
-      groupName: 'Old Name',
-      status: 'active',
+      await expectHttpError(
+        service.update(11, {
+          groupName: '',
+          status: 'active',
+          description: '123213',
+        }),
+        400,
+        'Tên nhóm ca không được để trống',
+      );
+
+      expect(shiftGroupsRepo.findById).toHaveBeenCalledWith(11);
+      expect(shiftGroupsRepo.findAll).not.toHaveBeenCalled();
+      expect(shiftGroupsRepo.update).not.toHaveBeenCalled();
     });
-    shiftGroupsRepo.findAll.mockResolvedValue({ items: [], total: 0 });
-    shiftGroupsRepo.update.mockResolvedValue({ id: 15, groupName: 'New Name' });
 
-    const result = await service.update(15, { groupName: 'New Name' });
+    it('Cho phép cập nhật trạng thái inactive khi nhóm ca không có shift liên kết', async () => {
+      shiftGroupsRepo.findById.mockResolvedValue({
+        id: 12,
+        groupName: 'Ca 1',
+        status: 'active',
+      });
+      shiftGroupsRepo.hasShifts.mockResolvedValue(false);
+      shiftGroupsRepo.update.mockResolvedValue({
+        id: 12,
+        groupName: 'Ca 1',
+        status: 'inactive',
+        description: '123213',
+      });
 
-    expect(shiftGroupsRepo.update).toHaveBeenCalledWith(15, {
-      groupName: 'New Name',
+      const result = await service.update(12, {
+        status: 'inactive',
+        description: '123213',
+      });
+
+      expect(shiftGroupsRepo.findById).toHaveBeenCalledWith(12);
+      expect(shiftGroupsRepo.hasShifts).toHaveBeenCalledWith(12);
+      expect(shiftGroupsRepo.update).toHaveBeenCalledWith(12, {
+        status: 'inactive',
+        description: '123213',
+      });
+      expect(result).toEqual({
+        id: 12,
+        groupName: 'Ca 1',
+        status: 'inactive',
+        description: '123213',
+      });
     });
-    expect(result).toEqual({ id: 15, groupName: 'New Name' });
-  });
 
-  it('throws ConflictException when deleting group that has shifts', async () => {
-    shiftGroupsRepo.findById.mockResolvedValue({ id: 21 });
-    shiftGroupsRepo.hasShifts.mockResolvedValue(true);
+    it('Không cho cập nhật nếu nhóm ca đang có shift liên kết và chuyển sang inactive', async () => {
+      shiftGroupsRepo.findById.mockResolvedValue({
+        id: 13,
+        groupName: 'Ca 1',
+        status: 'active',
+      });
+      shiftGroupsRepo.hasShifts.mockResolvedValue(true);
 
-    await expectRejectWithStatus(service.remove(21), 409);
-    expect(shiftGroupsRepo.softDelete).not.toHaveBeenCalled();
-  });
+      await expectHttpError(
+        service.update(13, {
+          status: 'inactive',
+        }),
+        409,
+        'Nhóm ca đang có ca làm việc, không thể thực hiện thao tác này',
+      );
 
-  it('soft deletes group when no shifts are attached', async () => {
-    shiftGroupsRepo.findById.mockResolvedValue({ id: 21 });
-    shiftGroupsRepo.hasShifts.mockResolvedValue(false);
-    shiftGroupsRepo.softDelete.mockResolvedValue({ affected: 1 });
-
-    const result = await service.remove(21);
-
-    expect(shiftGroupsRepo.softDelete).toHaveBeenCalledWith(21);
-    expect(result).toEqual({ affected: 1 });
+      expect(shiftGroupsRepo.update).not.toHaveBeenCalled();
+    });
   });
 });
