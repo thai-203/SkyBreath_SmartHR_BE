@@ -638,6 +638,22 @@ const seed = async () => {
         description: 'Cập nhật bảng công',
         module: 'Timesheet',
       },
+      {
+        permissionCode: 'AI_PROMPT_CREATE',
+        description: 'Tạo prompt AI',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_UPDATE',
+        description: 'Cập nhật prompt AI',
+        module: 'AI',
+      },
+      {
+        permissionCode: 'AI_PROMPT_DELETE',
+        description: 'Xóa prompt AI',
+        module: 'AI',
+      },
+
       // ================= USER =================
       {
         permissionCode: 'USER_ACTION_LOG_EXPORT',
@@ -931,3 +947,4 @@ const seed = async () => {
 };
 
 seed();
+
