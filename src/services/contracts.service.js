@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
@@ -20,6 +21,104 @@ export class ContractsService {
   constructor() {
     this.contractsRepository = new ContractsRepository();
     this.employeesRepository = new EmployeesRepository();
+  }
+
+  static CONTRACT_STATUSES = {
+    DRAFT: 'DRAFT',
+    PENDING: 'PENDING',
+    NOT_EFFECTIVE: 'NOT_EFFECTIVE',
+    ACTIVE: 'ACTIVE',
+    SIGNED: 'SIGNED',
+    TERMINATED: 'TERMINATED',
+    EXPIRED: 'EXPIRED',
+    CANCELLED: 'CANCELLED',
+    CANCELED: 'CANCELED',
+  };
+
+  static EDITABLE_STATUSES = new Set([
+    ContractsService.CONTRACT_STATUSES.DRAFT,
+    ContractsService.CONTRACT_STATUSES.PENDING,
+    ContractsService.CONTRACT_STATUSES.NOT_EFFECTIVE,
+  ]);
+
+  static LOCKED_MUTATION_STATUSES = new Set([
+    ContractsService.CONTRACT_STATUSES.ACTIVE,
+    ContractsService.CONTRACT_STATUSES.SIGNED,
+    ContractsService.CONTRACT_STATUSES.TERMINATED,
+    ContractsService.CONTRACT_STATUSES.EXPIRED,
+  ]);
+
+  static ALLOWED_STATUSES = new Set([
+    ContractsService.CONTRACT_STATUSES.DRAFT,
+    ContractsService.CONTRACT_STATUSES.PENDING,
+    ContractsService.CONTRACT_STATUSES.NOT_EFFECTIVE,
+    ContractsService.CONTRACT_STATUSES.ACTIVE,
+    ContractsService.CONTRACT_STATUSES.SIGNED,
+    ContractsService.CONTRACT_STATUSES.TERMINATED,
+    ContractsService.CONTRACT_STATUSES.EXPIRED,
+    ContractsService.CONTRACT_STATUSES.CANCELLED,
+    ContractsService.CONTRACT_STATUSES.CANCELED,
+  ]);
+
+  static STATE_TRANSITIONS = {
+    DRAFT: new Set(['PENDING', 'CANCELLED', 'CANCELED']),
+    PENDING: new Set(['DRAFT', 'NOT_EFFECTIVE', 'CANCELLED', 'CANCELED']),
+    NOT_EFFECTIVE: new Set(['PENDING', 'ACTIVE', 'CANCELLED', 'CANCELED']),
+    ACTIVE: new Set(['SIGNED', 'TERMINATED', 'EXPIRED']),
+    SIGNED: new Set(['TERMINATED', 'EXPIRED']),
+    TERMINATED: new Set(),
+    EXPIRED: new Set(),
+    CANCELLED: new Set(),
+    CANCELED: new Set(),
+  };
+
+  normalizeContractStatus(status) {
+    return String(status || '')
+      .trim()
+      .toUpperCase();
+  }
+
+  ensureMutationAllowedStatus(contract, actionName) {
+    const status = this.normalizeContractStatus(contract?.contractStatus);
+
+    if (!ContractsService.ALLOWED_STATUSES.has(status)) {
+      throw new BadRequestException(
+        `Trạng thái hợp đồng không hợp lệ: ${status}`,
+      );
+    }
+
+    if (
+      ContractsService.LOCKED_MUTATION_STATUSES.has(status) ||
+      !ContractsService.EDITABLE_STATUSES.has(status)
+    ) {
+      throw new BadRequestException(
+        `Không được ${actionName} hợp đồng ở trạng thái ${status}`,
+      );
+    }
+  }
+
+  ensureValidStateTransition(currentStatus, nextStatus) {
+    if (currentStatus === nextStatus) return;
+
+    const nextCandidates = ContractsService.STATE_TRANSITIONS[currentStatus];
+    if (!nextCandidates || !nextCandidates.has(nextStatus)) {
+      throw new BadRequestException(
+        `Không thể chuyển trạng thái hợp đồng từ ${currentStatus} sang ${nextStatus}`,
+      );
+    }
+  }
+
+  async ensureNotSelfContractOperation(contract, userId) {
+    if (!userId) return;
+
+    const actorEmployee = await this.employeesRepository.findByUserId(userId);
+    if (!actorEmployee) return;
+
+    if (Number(actorEmployee.id) === Number(contract.employeeId)) {
+      throw new ForbiddenException(
+        'Không được phép thao tác hợp đồng của chính mình',
+      );
+    }
   }
 
   _isBlockingContractForCreate(contract) {
@@ -165,14 +264,16 @@ export class ContractsService {
     return this.contractsRepository.findByEmployeeId(employeeId);
   }
 
-  async update(id, updateDto) {
-    await this.findById(id);
+  async update(id, updateDto, userId) {
+    const currentContract = await this.findById(id);
+
+    this.ensureMutationAllowedStatus(currentContract, 'cập nhật');
+    await this.ensureNotSelfContractOperation(currentContract, userId);
 
     // contractNumber is immutable once created
     if (updateDto.contractNumber) {
       console.log('updateDto', updateDto);
-      const current = await this.findById(id);
-      if (updateDto.contractNumber !== current.contractNumber) {
+      if (updateDto.contractNumber !== currentContract.contractNumber) {
         throw new BadRequestException('Không được phép thay đổi mã hợp đồng');
       }
       const existing = await this.contractsRepository.findByContractNumber(
@@ -184,8 +285,7 @@ export class ContractsService {
     }
     // employee cannot be reassigned – only act if the field is present
     if (updateDto.employeeId !== undefined) {
-      const current = await this.findById(id);
-      if (updateDto.employeeId !== current.employeeId) {
+      if (updateDto.employeeId !== currentContract.employeeId) {
         throw new BadRequestException(
           'Không được phép thay đổi nhân viên của hợp đồng',
         );
@@ -222,8 +322,7 @@ export class ContractsService {
     if (updateDto.baseSalary !== undefined) {
       let gradeId = updateDto.jobGradeId;
       if (!gradeId) {
-        const existingContract = await this.findById(id);
-        gradeId = existingContract.jobGradeId;
+        gradeId = currentContract.jobGradeId;
       }
       if (gradeId) {
         const grade = await AppDataSource.getRepository(JobGradeEntity).findOne(
@@ -243,8 +342,9 @@ export class ContractsService {
 
     // Validate dates
     if (updateDto.endDate) {
-      const contract = await this.findById(id);
-      const startDate = new Date(updateDto.startDate || contract.startDate);
+      const startDate = new Date(
+        updateDto.startDate || currentContract.startDate,
+      );
       const endDate = new Date(updateDto.endDate);
 
       if (startDate >= endDate) {
@@ -260,11 +360,50 @@ export class ContractsService {
         );
       }
     }
+
+    if (updateDto.contractStatus !== undefined) {
+      const currentStatus = this.normalizeContractStatus(
+        currentContract.contractStatus,
+      );
+      const nextStatus = this.normalizeContractStatus(updateDto.contractStatus);
+
+      if (!ContractsService.ALLOWED_STATUSES.has(nextStatus)) {
+        throw new BadRequestException(
+          `Trạng thái hợp đồng không hợp lệ: ${nextStatus}`,
+        );
+      }
+
+      this.ensureValidStateTransition(currentStatus, nextStatus);
+      updateDto.contractStatus = nextStatus;
+    }
+
     return this.contractsRepository.update(id, updateDto);
   }
 
   async terminate(id, terminationData, userId) {
     const contract = await this.findById(id);
+    const currentStatus = this.normalizeContractStatus(contract.contractStatus);
+
+    if (!ContractsService.ALLOWED_STATUSES.has(currentStatus)) {
+      throw new BadRequestException(
+        `Trạng thái hợp đồng không hợp lệ: ${currentStatus}`,
+      );
+    }
+
+    const disallowedTerminationStatuses = new Set([
+      ContractsService.CONTRACT_STATUSES.TERMINATED,
+      ContractsService.CONTRACT_STATUSES.EXPIRED,
+      ContractsService.CONTRACT_STATUSES.CANCELLED,
+      ContractsService.CONTRACT_STATUSES.CANCELED,
+    ]);
+
+    if (disallowedTerminationStatuses.has(currentStatus)) {
+      throw new BadRequestException(
+        `Không được chấm dứt hợp đồng ở trạng thái ${currentStatus}`,
+      );
+    }
+
+    await this.ensureNotSelfContractOperation(contract, userId);
 
     if (String(contract.contractStatus || '').toUpperCase() === 'TERMINATED') {
       throw new BadRequestException('Hợp đồng đã được chấm dứt');
@@ -294,7 +433,6 @@ export class ContractsService {
       }
     }
     // termination cannot be in the future
-    const now = new Date();
     // allow future termination dates; the record will be updated later by a scheduler
     // (validation above already checked date is valid and not before start)
 
@@ -320,8 +458,12 @@ export class ContractsService {
     return this.contractsRepository.terminate(id, terminationData, userId);
   }
 
-  async remove(id) {
-    await this.findById(id);
+  async remove(id, userId) {
+    const contract = await this.findById(id);
+
+    this.ensureMutationAllowedStatus(contract, 'xóa');
+    await this.ensureNotSelfContractOperation(contract, userId);
+
     await this.contractsRepository.delete(id);
   }
 
@@ -501,11 +643,23 @@ export class ContractsService {
   /**
    * Periodically check contracts with a termination date or end date that has arrived.
    * Terminates/Expires them automatically.
-   * @param {number|null} userId id of the user performing automatic actions (optional)
    */
-  async processScheduledUpdates(userId = null) {
+  async processScheduledUpdates() {
     const repo = AppDataSource.getRepository(ContractEntity);
     const now = new Date();
+
+    // activate contracts whose effective date has arrived
+    await repo
+      .createQueryBuilder()
+      .update(ContractEntity)
+      .set({ contractStatus: 'ACTIVE' })
+      .where('startDate <= :now', { now })
+      .andWhere('startDate IS NOT NULL')
+      .andWhere('UPPER(contractStatus) = :notEffective', {
+        notEffective: 'NOT_EFFECTIVE',
+      })
+      .andWhere('(terminationDate IS NULL OR terminationDate > :now)', { now })
+      .execute();
 
     // apply terminations whose date has arrived and are not yet marked
     await repo
@@ -514,7 +668,6 @@ export class ContractsService {
       .set({
         contractStatus: 'TERMINATED',
         terminatedAt: now,
-        terminatedBy: userId,
       })
       .where('terminationDate <= :now', { now })
       .andWhere('terminationDate IS NOT NULL')

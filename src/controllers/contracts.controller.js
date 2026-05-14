@@ -209,7 +209,7 @@ export class ContractsController {
         forbidNonWhitelisted: false,
       });
 
-      const result = await this.contractsService.update(id, dto);
+      const result = await this.contractsService.update(id, dto, req.user?.id);
 
       return res.status(200).json({
         success: true,
@@ -230,7 +230,17 @@ export class ContractsController {
       // validate contractStatus if provided
       if (queryDto.contractStatus !== undefined) {
         const statusVal = String(queryDto.contractStatus || '').trim();
-        const valid = ['ACTIVE', 'TERMINATED', 'EXPIRED'];
+        const valid = [
+          'DRAFT',
+          'PENDING',
+          'NOT_EFFECTIVE',
+          'ACTIVE',
+          'SIGNED',
+          'TERMINATED',
+          'EXPIRED',
+          'CANCELLED',
+          'CANCELED',
+        ];
         if (!statusVal || !valid.includes(statusVal.toUpperCase())) {
           return res.status(400).json({
             success: false,
@@ -311,7 +321,7 @@ export class ContractsController {
   remove = async (req, res, next) => {
     try {
       const id = Number(req.params.id);
-      await this.contractsService.remove(id);
+      await this.contractsService.remove(id, req.user?.id);
 
       return res.status(200).json({
         success: true,
@@ -351,7 +361,17 @@ export class ContractsController {
 
       status = status.toUpperCase();
       // only these statuses are supported
-      const valid = ['ACTIVE', 'TERMINATED', 'EXPIRED'];
+      const valid = [
+        'DRAFT',
+        'PENDING',
+        'NOT_EFFECTIVE',
+        'ACTIVE',
+        'SIGNED',
+        'TERMINATED',
+        'EXPIRED',
+        'CANCELLED',
+        'CANCELED',
+      ];
       if (!valid.includes(status)) {
         return res.status(400).json({
           success: false,
