@@ -223,4 +223,228 @@ describe('OnboardingPlansService', () => {
     );
     expect(result).toEqual({ id: 55, planName: 'Starter Copy' });
   });
+
+  describe('Create Onboarding Plan - Success Cases', () => {
+    it('creates a new onboarding plan successfully with valid data', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById.mockResolvedValue({
+        id: 15,
+        fullName: 'Nguyen Van A',
+        departmentId: 2,
+        positionId: 5,
+      });
+      plansRepo.create.mockResolvedValue({
+        id: 100,
+        planName: 'Onboarding Mới',
+        employeeId: 15,
+        startDate: '2026-05-15',
+        departmentId: 2,
+        positionId: 5,
+        isTemplate: false,
+        durationDays: 14,
+      });
+      progressRepo.create.mockResolvedValue({
+        id: 200,
+        planId: 100,
+        employeeId: 15,
+      });
+      tasksRepo.findByPlanId.mockResolvedValue([
+        { id: 300, taskOrder: 1, description: 'Task 1' },
+      ]);
+      assignmentsRepo.create.mockResolvedValue({ id: 400 });
+
+      const result = await service.create(
+        {
+          planName: 'Onboarding Mới',
+          isTemplate: false,
+          employeeId: 15,
+          startDate: '2026-05-15',
+          departmentId: 2,
+          positionId: 5,
+          durationDays: 14,
+          tasks: [
+            { taskOrder: 1, description: 'Task 1', dueDate: '2026-05-20' },
+          ],
+        },
+        1,
+      );
+
+      expect(plansRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          planName: 'Onboarding Mới',
+          isTemplate: false,
+          employeeId: 15,
+        }),
+      );
+      expect(result.id).toBe(100);
+      expect(result.planName).toBe('Onboarding Mới');
+    });
+  });
+
+  describe('Create Onboarding Plan - Validation Cases', () => {
+    it('throws error when plan name is missing', async () => {
+      await expectRejectWithStatus(
+        service.create(
+          {
+            isTemplate: false,
+            employeeId: 20,
+            startDate: '2026-05-15',
+            departmentId: 2,
+            positionId: 5,
+          },
+          1,
+        ),
+        400,
+      );
+    });
+
+    it('throws error when start date is missing', async () => {
+      await expectRejectWithStatus(
+        service.create(
+          {
+            planName: 'Plan Test',
+            isTemplate: false,
+            employeeId: 20,
+            departmentId: 2,
+            positionId: 5,
+          },
+          1,
+        ),
+        400,
+      );
+    });
+
+    it('throws error when department or position is missing', async () => {
+      await expectRejectWithStatus(
+        service.create(
+          {
+            planName: 'Plan Test',
+            isTemplate: false,
+            employeeId: 20,
+            startDate: '2026-05-15',
+          },
+          1,
+        ),
+        400,
+      );
+    });
+
+    it('throws ConflictException when employee already has active onboarding plan', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue({
+        id: 25,
+        employeeId: 18,
+        overallStatus: 'IN_PROGRESS',
+      });
+
+      await expectRejectWithStatus(
+        service.create(
+          {
+            planName: 'Onboarding Duplicate',
+            isTemplate: false,
+            employeeId: 18,
+            startDate: '2026-05-15',
+            departmentId: 2,
+            positionId: 5,
+          },
+          1,
+        ),
+        409,
+      );
+
+      expect(plansRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Create Onboarding Template - Success Cases', () => {
+    it('creates a template successfully with valid data', async () => {
+      plansRepo.findTemplateByDepartmentAndPosition.mockResolvedValue(null);
+      plansRepo.create.mockResolvedValue({
+        id: 50,
+        planName: 'Template Dev 14 days',
+        isTemplate: true,
+        departmentId: 2,
+        positionId: 3,
+        durationDays: 14,
+        status: 'draft',
+      });
+
+      const result = await service.create(
+        {
+          planName: 'Template Dev 14 days',
+          isTemplate: true,
+          departmentId: 2,
+          positionId: 3,
+          durationDays: 14,
+          status: 'draft',
+        },
+        1,
+      );
+
+      expect(plansRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          planName: 'Template Dev 14 days',
+          isTemplate: true,
+        }),
+      );
+      expect(result.id).toBe(50);
+    });
+  });
+
+  describe('Create Onboarding Template - Validation Cases', () => {
+    it('throws error when template plan name is missing', async () => {
+      plansRepo.findTemplateByDepartmentAndPosition.mockResolvedValue(null);
+
+      await expectRejectWithStatus(
+        service.create(
+          {
+            isTemplate: true,
+            departmentId: 2,
+            positionId: 3,
+            durationDays: 14,
+          },
+          1,
+        ),
+        400,
+      );
+    });
+
+    it('throws error when department or position is missing for template', async () => {
+      await expectRejectWithStatus(
+        service.create(
+          {
+            planName: 'Template Test',
+            isTemplate: true,
+            durationDays: 14,
+          },
+          1,
+        ),
+        400,
+      );
+    });
+
+    it('throws ConflictException when template already exists for department and position', async () => {
+      plansRepo.findTemplateByDepartmentAndPosition.mockResolvedValue({
+        id: 45,
+        planName: 'Existing Template',
+        departmentId: 2,
+        positionId: 3,
+      });
+
+      await expectRejectWithStatus(
+        service.create(
+          {
+            planName: 'Template Dev Duplicate',
+            isTemplate: true,
+            departmentId: 2,
+            positionId: 3,
+            durationDays: 14,
+          },
+          1,
+        ),
+        409,
+      );
+
+      expect(plansRepo.create).not.toHaveBeenCalled();
+    });
+  });
 });
