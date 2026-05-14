@@ -17,13 +17,17 @@ export class ContractsRepository {
     await queryRunner.startTransaction();
 
     try {
+      const initialStatus = String(
+        data.contractStatus ?? 'NOT_EFFECTIVE',
+      ).toUpperCase();
+
       const contract = queryRunner.manager.create(ContractEntity, {
         employeeId: data.employeeId,
         contractNumber: data.contractNumber,
         contractType: data.contractType,
         startDate: data.startDate,
         endDate: data.endDate,
-        contractStatus: data.contractStatus ?? 'ACTIVE',
+        contractStatus: initialStatus,
         signedDate: data.signedDate,
         workingHours: data.workingHours ?? 8,
         attachments: data.attachments,
@@ -31,6 +35,19 @@ export class ContractsRepository {
       });
 
       const savedContract = await queryRunner.manager.save(contract);
+
+      // Soft delete old salary records for this employee
+      await queryRunner.manager.update(
+        EmployeeSalaryEntity,
+        { 
+          employeeId: data.employeeId,
+          isDeleted: false
+        },
+        {
+          isDeleted: true,
+          deletedAt: new Date(),
+        },
+      );
 
       const employeeSalary = queryRunner.manager.create(EmployeeSalaryEntity, {
         employeeId: data.employeeId,
@@ -179,7 +196,10 @@ export class ContractsRepository {
           endDate: data.endDate ?? contract.endDate,
           signedDate: data.signedDate ?? contract.signedDate,
           workingHours: data.workingHours ?? contract.workingHours,
-          contractStatus: data.contractStatus ?? contract.contractStatus,
+          contractStatus:
+            data.contractStatus !== undefined
+              ? String(data.contractStatus).toUpperCase()
+              : contract.contractStatus,
           attachments:
             data.attachments !== undefined
               ? data.attachments
@@ -312,6 +332,7 @@ export class ContractsRepository {
         terminationReason: data.terminationReason,
         terminationCompensation: data.terminationCompensation ?? 0,
         terminationNote: data.terminationNote ?? null,
+        terminatedBy: userId,
       };
 
       if (termDate <= now) {

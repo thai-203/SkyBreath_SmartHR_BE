@@ -6,6 +6,7 @@ import {
   IsNumber,
   Min,
   Allow,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -161,6 +162,17 @@ export class UpdateContractDto {
 
   @IsOptional()
   @IsString()
+  @IsIn([
+    'DRAFT',
+    'PENDING',
+    'NOT_EFFECTIVE',
+    'ACTIVE',
+    'SIGNED',
+    'TERMINATED',
+    'EXPIRED',
+    'CANCELLED',
+    'CANCELED',
+  ])
   contractStatus;
 
   @IsOptional()
