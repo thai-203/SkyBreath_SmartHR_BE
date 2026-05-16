@@ -16,7 +16,9 @@ export class PerformanceReviewsController {
 
     findAll = async (req, res, next) => {
         try {
-            const queryDto = plainToInstance(PerformanceReviewQueryDto, req.query);
+            const queryDto = plainToInstance(PerformanceReviewQueryDto, req.query, {
+                enableImplicitConversion: true,
+            });
             const result = await this.performanceReviewsService.findAll(queryDto);
             ResponseUtil.sendResponse(res, 'Lấy danh sách đánh giá thành công', result);
         } catch (error) {
