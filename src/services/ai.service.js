@@ -22,11 +22,12 @@ const KEYWORD_TABLE_MAP = [
   // Đơn từ
   { keywords: ['đơn', 'đơn từ', 'yêu cầu', 'request', 'đơn nghỉ', 'nộp đơn', 'phê duyệt', 'đơn chờ'], tables: ['requests', 'request_types', 'request_groups'] },
   // Chấm công - truy vấn tổng quát
-  { keywords: ['chấm công', 'điểm danh', 'check in', 'check out', 'muộn', 'trễ', 'về sớm', 'vắng', 'có mặt', 'buổi', 'attendance', 'bảng cấm công'], tables: ['processed_attendance_records', 'attendance_records', 'employees'] },
+  { keywords: ['chấm công', 'điểm danh', 'check in','check-in', 'check out', 'muộn', 'trễ', 'về sớm', 'vắng', 'có mặt', 'buổi', 'attendance', 'bảng chấm công'], tables: ['processed_attendance_records', 'attendance_records', 'employees', 'time_sheets',
+    'working_shifts',] },
   // Liệt kê ngày cụ thể - "những ngày nào", "các ngày"
-  { keywords: ['những ngày nào', 'ngày nào', 'các ngày', 'ngày làm việc', 'danh sách ngày', 'liệt kê ngày', 'danh sách công', 'công'], tables: ['processed_attendance_records', 'attending_records', 'employees'] },
+  { keywords: ['những ngày nào', 'ngày nào', 'các ngày', 'ngày làm việc', 'danh sách ngày', 'liệt kê ngày', 'danh sách công', 'công'], tables: ['processed_attendance_records', 'attendance_records', 'employees'] },
   // Tổng công tháng (timesheet)
-  { keywords: ['tổng công', 'ngày công', 'timesheet', 'time sheet', 'tháng này', 'cả tháng', 'chấm bao nhiêu', 'bảng cấm công'], tables: ['time_sheets', 'processed_attendance_records', 'employees'] },
+  { keywords: ['tổng công', 'ngày công', 'timesheet', 'time sheet', 'tháng này', 'cả tháng', 'chấm bao nhiêu', 'bảng chấm công'], tables: ['time_sheets', 'processed_attendance_records', 'employees'] },
   // Tăng ca, OT
   { keywords: ['ot', 'tăng ca', 'overtime', 'làm thêm', 'ngoài giờ'], tables: ['overtime_request_details', 'overtime_rules', 'overtime_types', 'requests'] },
   // Hợp đồng
@@ -260,7 +261,7 @@ ${schemaText}
 --- MẪU JOIN PHỔ BIẾN ---
 Lương: FROM employees e JOIN employee_salaries es ON es.employee_id = e.id AND es.salary_status='ACTIVE' AND es.is_deleted=0
 Phép còn: FROM employees e JOIN leave_balances lb ON lb.employee_id=e.id AND lb.year=YEAR(CURDATE()) AND lb.is_deleted=0 JOIN leave_types lt ON lt.id=lb.leave_type_id AND lt.is_deleted=0 JOIN leave_policies lp ON lp.leave_type_id=lt.id AND lp.is_deleted=0
-Công tháng: FROM employees e JOIN processed_attendance_records par ON par.employee_id=e.id AND par.is_deleted=0 WHERE MONTH(par.work_date)=M AND YEAR(par.work_date)=Y
+Công tháng: FROM employees e JOIN processed_attendance_records par ON par.employee_id=e.id AND par.is_deleted=0 WHERE MONTH(par.check_in_time)=M AND YEAR(par.check_in_time)=Y
 Phòng ban: FROM employees e JOIN departments d ON d.id=e.department_id AND d.is_deleted=0 JOIN positions p ON p.id=e.position_id AND p.is_deleted=0
 Ca làm việc: FROM employees e JOIN shift_assignments sa ON sa.employee_id=e.id AND sa.is_deleted=0 AND (sa.effective_to IS NULL OR sa.effective_to>=CURDATE()) JOIN working_shifts ws ON ws.id=sa.shift_id AND ws.is_deleted=0
 Phạt muộn: FROM penalties WHERE violation_type='LATE' AND status='ACTIVE' AND is_deleted=0 AND from_minute<=X AND to_minute>=X AND effective_from<=CURDATE() AND (effective_to IS NULL OR effective_to>=CURDATE())
