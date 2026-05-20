@@ -30,6 +30,8 @@ import { HolidayListEntity } from '../models/entities/holiday-list.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { PayrollConfigEntity } from '../models/entities/payroll-config.entity.js';
 import { PayrollAttachmentRepository } from '../repositories/payroll-attachment.repository.js';
+import { TimesheetsService } from './timesheets.service.js';
+import { TimesheetsRepository } from '../repositories/timesheets.repository.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -194,6 +196,16 @@ export class PayrollService {
         const standardDaysMonth = this._countWorkingDays(payrollYear, payrollMonth, holidayDates) || 22;
 
         // ── Bước 4: Lấy dữ liệu chấm công ──
+        // Tự động summarize lại chấm công để lấy dữ liệu mới nhất (gồm cả OT vừa được duyệt)
+        const tsService = new TimesheetsService(new TimesheetsRepository());
+        for (const employee of employees) {
+            try {
+                await tsService.summarizeTimesheet(employee.id, payrollMonth, payrollYear);
+            } catch (err) {
+                console.error(`[autoCalculate] Lỗi summarize timesheet cho NV ${employee.id}:`, err.message);
+            }
+        }
+
         const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
         const timesheets = await timesheetRepo.find({
             where: { month: payrollMonth, year: payrollYear, employeeId: In(empIds), isDeleted: false },
@@ -243,14 +255,28 @@ export class PayrollService {
             const tsStdDays = parseFloat(ts.standardDays) || standardDaysMonth;
             const workingDays = this._calcWorkingDays(ts);
 
+            // OT hours: luôn lấy từ timesheet (đã được summarizeTimesheet cập nhật từ bảng requests)
+            const otWeekday = _parseNumber(ts?.otWeekday);
+            const otWeekdayNight = _parseNumber(ts?.otWeekdayNight);
+            const otWeekend = _parseNumber(ts?.otWeekend);
+            const otWeekendNight = _parseNumber(ts?.otWeekendNight);
+            const otHoliday = _parseNumber(ts?.otHoliday);
+            const otHolidayNight = _parseNumber(ts?.otHolidayNight);
+
+            const tsForOT = { otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight };
+
             // Tính lương OT
             const overtimePay = this._calcOvertimePay(
-                ts, salary.baseSalary, tsStdDays, employee.departmentId, activeRules, ruleDepts
+                tsForOT, salary.baseSalary, tsStdDays, employee.departmentId, activeRules, ruleDepts
             );
 
             // Tính lương thực nhận (P1, P2.1, P2.2, TV)
+            const tsForCalc = {
+                ...ts,
+                otWeekday, otWeekdayNight, otWeekend, otWeekendNight, otHoliday, otHolidayNight
+            };
             const { earnedP1, earnedP21, earnedP22, probationSalary } = this._calcEarnedSalaries(
-                salary, ts, tsStdDays, workingDays, p21Percent, p22Percent, employee.employmentStatus
+                salary, tsForCalc, tsStdDays, workingDays, p21Percent, p22Percent, employee.employmentStatus
             );
 
             // ── Phụ cấp thực nhận (43) ──
@@ -329,13 +355,13 @@ export class PayrollService {
                 waitingDays       : parseFloat(ts.waitingDays        || 0),
                 nightShiftOfficialDays  : parseFloat(ts.nightShiftOfficialDays   || 0),
                 nightShiftProbationDays : parseFloat(ts.nightShiftProbationDays  || 0),
-                otWeekday         : parseFloat(ts.otWeekday          || 0),
-                otWeekdayNight    : parseFloat(ts.otWeekdayNight     || 0),
-                otWeekend         : parseFloat(ts.otWeekend          || 0),
-                otWeekendNight    : parseFloat(ts.otWeekendNight     || 0),
-                otHoliday         : parseFloat(ts.otHoliday          || 0),
-                otHolidayNight    : parseFloat(ts.otHolidayNight     || 0),
-                totalOtHours      : this._sumOTHours(ts),
+                otWeekday         : otWeekday,
+                otWeekdayNight    : otWeekdayNight,
+                otWeekend         : otWeekend,
+                otWeekendNight    : otWeekendNight,
+                otHoliday         : otHoliday,
+                otHolidayNight    : otHolidayNight,
+                totalOtHours      : otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight,
                 mealCount         : parseFloat(ts.mealCount          || 0),
                 // Lương P2 từ employee_salaries
                 performanceSalary,
@@ -436,6 +462,16 @@ export class PayrollService {
         const perfMap = new Map(perfReviews.map(p => [p.employeeId, p]));
 
         // Lấy timesheets (attendance data)
+        // Tự động summarize lại chấm công trước khi upsert details (đảm bảo dữ liệu OT mới nhất)
+        const tsService = new TimesheetsService(new TimesheetsRepository());
+        for (const empId of empIds) {
+            try {
+                await tsService.summarizeTimesheet(empId, payrollMonth, payrollYear);
+            } catch (err) {
+                console.error(`[upsertDetails] Lỗi summarize timesheet cho NV ${empId}:`, err.message);
+            }
+        }
+
         const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
         const timesheets = await timesheetRepo.find({
             where: { month: payrollMonth, year: payrollYear, employeeId: In(empIds), isDeleted: false },
@@ -494,13 +530,13 @@ export class PayrollService {
                 const usedLeaveDays = _parseNumber(item.usedLeaveDays) || _parseNumber(ts?.usedLeaveDays) || 0;
                 const remainingLeaveDays = _parseNumber(item.remainingLeaveDays) || _parseNumber(ts?.remainingLeaveDays) || 0;
 
-                // OT hours từ frontend
-                const otWeekday = _parseNumber(item.otWeekday);
-                const otWeekdayNight = _parseNumber(item.otWeekdayNight);
-                const otWeekend = _parseNumber(item.otWeekend);
-                const otWeekendNight = _parseNumber(item.otWeekendNight);
-                const otHoliday = _parseNumber(item.otHoliday);
-                const otHolidayNight = _parseNumber(item.otHolidayNight);
+                // OT hours: ưu tiên từ frontend, fallback về timesheet (đã được summarizeTimesheet cập nhật)
+                const otWeekday = _parseNumber(item.otWeekday) || _parseNumber(ts?.otWeekday) || 0;
+                const otWeekdayNight = _parseNumber(item.otWeekdayNight) || _parseNumber(ts?.otWeekdayNight) || 0;
+                const otWeekend = _parseNumber(item.otWeekend) || _parseNumber(ts?.otWeekend) || 0;
+                const otWeekendNight = _parseNumber(item.otWeekendNight) || _parseNumber(ts?.otWeekendNight) || 0;
+                const otHoliday = _parseNumber(item.otHoliday) || _parseNumber(ts?.otHoliday) || 0;
+                const otHolidayNight = _parseNumber(item.otHolidayNight) || _parseNumber(ts?.otHolidayNight) || 0;
                 const totalOtHours = otWeekday + otWeekdayNight + otWeekend + otWeekendNight + otHoliday + otHolidayNight;
 
                 // Tính workingDays từ các ngày công (đảm bảo là số sạch)
@@ -1762,13 +1798,13 @@ export class PayrollService {
      */
     _calcPIT(taxableIncome) {
         const brackets = [
-            { max: 5_000_000, rate: 0.05 },
+            { max:  5_000_000, rate: 0.05 },
             { max: 10_000_000, rate: 0.10 },
             { max: 18_000_000, rate: 0.15 },
             { max: 32_000_000, rate: 0.20 },
             { max: 52_000_000, rate: 0.25 },
             { max: 80_000_000, rate: 0.30 },
-            { max: Infinity, rate: 0.35 },
+            { max: Infinity,   rate: 0.35 },
         ];
 
         let tax = 0;
