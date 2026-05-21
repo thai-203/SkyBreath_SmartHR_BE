@@ -2,6 +2,7 @@ import { AttendanceAllowedIpService } from '../services/attendance-allowed-ip.se
 import { AppMessages } from '../common/constants/index.js';
 import { ResponseUtil } from '../common/utils/response.util.js';
 import { CreateAttendanceAllowedIpDto } from '../models/dto/attendance-allowed-ip/create-attendance-allowed-ip.dto.js';
+import { plainToInstance } from 'class-transformer';
 
 export class AttendanceAllowedIpController {
   constructor() {
@@ -23,7 +24,7 @@ export class AttendanceAllowedIpController {
 
   create = async (req, res, next) => {
     try {
-      const createDto = plainToClass(CreateAttendanceAllowedIpDto, req.body);
+      const createDto = plainToInstance(CreateAttendanceAllowedIpDto, req.body);
       const item = await this.service.createAllowedIp(createDto);
       ResponseUtil.sendResponse(
         res,

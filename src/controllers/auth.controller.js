@@ -1,6 +1,7 @@
 import { AuthService } from '../services/auth.service.js';
 import { ResponseUtil } from '../common/utils/response.util.js';
 import { AppMessages } from '../common/constants/index.js';
+import { config } from '../config/env.config.js';
 import ms from 'ms';
 import { plainToInstance } from 'class-transformer';
 import { LoginDto } from '../models/dto/auth/login.dto.js';
@@ -24,7 +25,8 @@ export class AuthController {
         httpOnly: true,
         secure: false,
         sameSite: 'lax',
-        maxAge: ms(process.env.JWT_REFRESH_EXPIRES_IN),
+        path: '/',
+        maxAge: ms(config.jwt.refreshExpiresIn),
       });
 
       ResponseUtil.sendResponse(
@@ -43,10 +45,11 @@ export class AuthController {
       const userId = req.user.id;
       const result = await this.authService.refreshTokens(userId, refreshToken);
       res.cookie('refreshToken', result.refreshToken, {
-        httpOnly: true, // JS frontend không đọc được
+        httpOnly: true,
         secure: false,
-        sameSite: 'lax', // cross-site
-        maxAge: ms(process.env.JWT_REFRESH_EXPIRES_IN), // 7 ngày
+        sameSite: 'lax',
+        path: '/',
+        maxAge: ms(config.jwt.refreshExpiresIn),
       });
       ResponseUtil.sendResponse(
         res,
