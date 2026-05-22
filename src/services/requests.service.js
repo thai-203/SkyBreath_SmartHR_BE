@@ -722,6 +722,24 @@ export class RequestsService {
             recipientUserIds: [approverEmp.userId],
           });
         }
+
+        // 🔔 Thông báo cho nhân viên được tạo đơn hộ
+        if (request.createdByEmployeeId !== request.employeeId) {
+          const creatorEmp = await this.employeeRepo.findOne({
+            where: { id: request.createdByEmployeeId, isDeleted: false },
+          });
+          const creatorByName = creatorEmp?.fullName || 'Người tạo';
+          if (targetEmployee?.userId) {
+            await this.notificationService.createAndNotify({
+              title: 'Đơn được tạo hộ',
+              message: `"${creatorByName}" đã tạo và gửi duyệt đơn "${requestType?.name || ''}" hộ bạn.`,
+              notificationType: 'WORKFLOW',
+              link: '/requests/my-requests',
+              relatedRequestId: request.id,
+              recipientUserIds: [targetEmployee.userId],
+            });
+          }
+        }
       }
     } catch (err) {
       console.error('[Notification] Lỗi gửi thông báo khi submit:', err);
@@ -786,6 +804,26 @@ export class RequestsService {
             });
           }
         }
+
+        // 🔔 Thông báo cho nhân viên được tạo đơn hộ (nếu người hủy không phải chính họ)
+        if (
+          request.createdByEmployeeId !== request.employeeId &&
+          employee?.id !== request.employeeId
+        ) {
+          const targetEmp = await this.employeeRepo.findOne({
+            where: { id: request.employeeId, isDeleted: false },
+          });
+          if (targetEmp?.userId) {
+            await this.notificationService.createAndNotify({
+              title: 'Đơn của bạn đã bị hủy',
+              message: `Đơn "${request.requestCode}" được tạo hộ bạn đã bị hủy.`,
+              notificationType: 'WORKFLOW',
+              link: '/requests/my-requests',
+              relatedRequestId: requestId,
+              recipientUserIds: [targetEmp.userId],
+            });
+          }
+        }
       } catch (err) {
         console.error('[Notification] Lỗi gửi thông báo khi cancel:', err);
       }
@@ -840,20 +878,34 @@ export class RequestsService {
         approvedAt: new Date(),
       });
 
-      // 🔔 Đơn đã duyệt hoàn tất — thông báo cho người tạo đơn
+      // 🔔 Đơn đã duyệt hoàn tất — thông báo cho người tạo đơn + nhân viên được tạo hộ
       try {
+        const approverName = approver?.fullName || 'Người duyệt';
+        const recipientUserIds = [];
+
         const creatorEmp = await this.employeeRepo.findOne({
           where: { id: request.createdByEmployeeId, isDeleted: false },
         });
-        const approverName = approver?.fullName || 'Người duyệt';
-        if (creatorEmp?.userId) {
+        if (creatorEmp?.userId) recipientUserIds.push(creatorEmp.userId);
+
+        // Thêm nhân viên được tạo đơn hộ
+        if (request.createdByEmployeeId !== request.employeeId) {
+          const targetEmp = await this.employeeRepo.findOne({
+            where: { id: request.employeeId, isDeleted: false },
+          });
+          if (targetEmp?.userId && !recipientUserIds.includes(targetEmp.userId)) {
+            recipientUserIds.push(targetEmp.userId);
+          }
+        }
+
+        if (recipientUserIds.length > 0) {
           await this.notificationService.createAndNotify({
             title: 'Đơn đã được duyệt',
             message: `Đơn "${request.requestCode}" đã được duyệt hoàn tất! "${approverName}" đã phê duyệt cấp cuối cùng.`,
             notificationType: 'WORKFLOW',
             link: '/requests/my-requests',
             relatedRequestId: requestId,
-            recipientUserIds: [creatorEmp.userId],
+            recipientUserIds,
           });
         }
       } catch (err) {
@@ -893,18 +945,31 @@ export class RequestsService {
             });
           }
 
-          // → Thông báo cho người tạo đơn
+          // → Thông báo cho người tạo đơn + nhân viên được tạo hộ
+          const midRecipientUserIds = [];
           const creatorEmp = await this.employeeRepo.findOne({
             where: { id: request.createdByEmployeeId, isDeleted: false },
           });
-          if (creatorEmp?.userId) {
+          if (creatorEmp?.userId) midRecipientUserIds.push(creatorEmp.userId);
+
+          // Thêm nhân viên được tạo đơn hộ
+          if (request.createdByEmployeeId !== request.employeeId) {
+            const targetEmp = await this.employeeRepo.findOne({
+              where: { id: request.employeeId, isDeleted: false },
+            });
+            if (targetEmp?.userId && !midRecipientUserIds.includes(targetEmp.userId)) {
+              midRecipientUserIds.push(targetEmp.userId);
+            }
+          }
+
+          if (midRecipientUserIds.length > 0) {
             await this.notificationService.createAndNotify({
               title: 'Đơn đang được xử lý',
               message: `"${approverName}" đã phê duyệt cấp ${request.currentApprovalLevel} cho đơn "${request.requestCode}". Đơn chuyển sang cho "${nextApproverName}" duyệt.`,
               notificationType: 'WORKFLOW',
               link: '/requests/my-requests',
               relatedRequestId: requestId,
-              recipientUserIds: [creatorEmp.userId],
+              recipientUserIds: midRecipientUserIds,
             });
           }
         }
@@ -957,7 +1022,7 @@ export class RequestsService {
       rejectedAt: new Date(),
     });
 
-    // 🔔 Thông báo cho người tạo đơn + các cấp đã approved trước đó
+    // 🔔 Thông báo cho người tạo đơn + nhân viên được tạo hộ + các cấp đã approved trước đó
     try {
       const approverName = approver?.fullName || 'Người duyệt';
       const recipientUserIds = [];
@@ -967,6 +1032,16 @@ export class RequestsService {
         where: { id: request.createdByEmployeeId, isDeleted: false },
       });
       if (creatorEmp?.userId) recipientUserIds.push(creatorEmp.userId);
+
+      // Nhân viên được tạo đơn hộ
+      if (request.createdByEmployeeId !== request.employeeId) {
+        const targetEmp = await this.employeeRepo.findOne({
+          where: { id: request.employeeId, isDeleted: false },
+        });
+        if (targetEmp?.userId && !recipientUserIds.includes(targetEmp.userId)) {
+          recipientUserIds.push(targetEmp.userId);
+        }
+      }
 
       // Các cấp đã approved trước đó
       const allLevels = await this.repo.getApprovalLevels(requestId);
@@ -1084,18 +1159,31 @@ export class RequestsService {
         }
       }
 
-      // → Thông báo cho người tạo đơn
+      // → Thông báo cho người tạo đơn + nhân viên được tạo hộ
+      const revokeRecipientUserIds = [];
       const creatorEmp = await this.employeeRepo.findOne({
         where: { id: request.createdByEmployeeId, isDeleted: false },
       });
-      if (creatorEmp?.userId) {
+      if (creatorEmp?.userId) revokeRecipientUserIds.push(creatorEmp.userId);
+
+      // Thêm nhân viên được tạo đơn hộ
+      if (request.createdByEmployeeId !== request.employeeId) {
+        const targetEmp = await this.employeeRepo.findOne({
+          where: { id: request.employeeId, isDeleted: false },
+        });
+        if (targetEmp?.userId && !revokeRecipientUserIds.includes(targetEmp.userId)) {
+          revokeRecipientUserIds.push(targetEmp.userId);
+        }
+      }
+
+      if (revokeRecipientUserIds.length > 0) {
         await this.notificationService.createAndNotify({
           title: 'Đơn bị hủy phê duyệt',
           message: `"${approverName}" đã hủy phê duyệt đơn "${request.requestCode}". Đơn quay lại cấp "${targetLevel.levelName}" để xử lý lại.`,
           notificationType: 'WORKFLOW',
           link: '/requests/my-requests',
           relatedRequestId: requestId,
-          recipientUserIds: [creatorEmp.userId],
+          recipientUserIds: revokeRecipientUserIds,
         });
       }
     } catch (err) {
