@@ -15,11 +15,14 @@ export class EmployeesRepository {
   async findAll(options = {}) {
     const {
       skip = 0,
+      limit = 10,
       search = '',
       departmentId,
       positionId,
       employmentStatus,
     } = options;
+
+    const take = limit;
     const query = this.repository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
@@ -54,6 +57,7 @@ export class EmployeesRepository {
     const [items, total] = await query
       .orderBy('employee.fullName', 'ASC')
       .skip(skip)
+      .take(take)
       .getManyAndCount();
 
     return { items, total };
@@ -91,7 +95,14 @@ export class EmployeesRepository {
     }
 
     return query
-      .select(['employee.id', 'employee.fullName', 'employee.avatar'])
+      .distinct(true)
+      .select([
+        'employee.id',
+        'employee.fullName',
+        'employee.avatar',
+        'employee.departmentId',
+        'employee.employeeCode',
+      ])
       .orderBy('employee.fullName', 'ASC')
       .getMany();
   }
@@ -215,9 +226,8 @@ export class EmployeesRepository {
 
   async findByRoleNames(roleNames) {
     if (!roleNames || roleNames.length === 0) return [];
-
-    // Normalize to lower case for comparison if needed, but here we assume exact match or case-insensitive
-    const normalizedRoles = roleNames.map((r) => r.toUpperCase());
+    // Use lowercase comparison to avoid case issues and avoid duplicate employees
+    const normalizedRoles = roleNames.map((r) => r.toLowerCase());
 
     return this.repository
       .createQueryBuilder('employee')
@@ -225,8 +235,11 @@ export class EmployeesRepository {
       .leftJoinAndSelect('user.userRoles', 'userRole')
       .leftJoinAndSelect('userRole.role', 'role')
       .leftJoinAndSelect('employee.department', 'department')
-      .where('role.roleName IN (:...roleNames)', { roleNames: normalizedRoles })
+      .where('LOWER(role.roleName) IN (:...roleNames)', {
+        roleNames: normalizedRoles,
+      })
       .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
+      .distinct(true)
       .getMany();
   }
 }

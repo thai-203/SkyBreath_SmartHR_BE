@@ -33,7 +33,11 @@ export class PayrollController {
     // UC27 - Auto-calculate payroll
     autoCalculate = async (req, res, next) => {
         try {
-            const result = await this.payrollService.autoCalculate(parseInt(req.params.id));
+            const payrollId = parseInt(req.params.id);
+            if (isNaN(payrollId)) {
+                return ResponseUtil.sendResponse(res, 'ID bảng lương không hợp lệ', null, 400);
+            }
+            const result = await this.payrollService.autoCalculate(payrollId);
             ResponseUtil.sendResponse(res, AppMessages.Success.Payroll.CALCULATED, result);
         } catch (error) { next(error); }
     };
@@ -49,6 +53,19 @@ export class PayrollController {
             }
             const result = await this.payrollService.updateDetail(parseInt(req.params.detailId), dto);
             ResponseUtil.sendResponse(res, AppMessages.Success.Payroll.UPDATED, result);
+        } catch (error) { next(error); }
+    };
+
+    // UC27 - Bulk upsert payroll details (insert if not exists, update if exists)
+    upsertDetails = async (req, res, next) => {
+        try {
+            const payrollId = parseInt(req.params.id);
+            const { details } = req.body;
+            if (!Array.isArray(details)) {
+                return ResponseUtil.sendResponse(res, 'Dữ liệu không hợp lệ: details phải là mảng', null, 400);
+            }
+            const result = await this.payrollService.upsertDetails(payrollId, details);
+            ResponseUtil.sendResponse(res, 'Đã lưu dữ liệu nhập liệu thành công', result);
         } catch (error) { next(error); }
     };
 

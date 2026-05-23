@@ -61,7 +61,18 @@ export class PerformanceReviewsService {
     }
 
     async findAll(queryDto) {
-        const result = await this.performanceReviewsRepository.findAll(queryDto);
+        const skip = (queryDto.page - 1) * queryDto.limit;
+        const take = queryDto.limit;
+
+        const result = await this.performanceReviewsRepository.findAll({
+            skip,
+            take,
+            search: queryDto.search,
+            month: queryDto.month,
+            year: queryDto.year,
+            employeeId: queryDto.employeeId,
+            managerId: queryDto.managerId,
+        });
         return {
             data: result.items,
             total: result.total,

@@ -82,7 +82,20 @@ export class EmployeesService {
         );
       }
     }
+// Kiểm tra đủ 18 tuổi
+if (createDto.dateOfBirth) {
+  const today = new Date();
+  const dob = new Date(createDto.dateOfBirth);
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
 
+  if (age < 18) {
+    throw new BadRequestException(
+      'Nhân viên phải đủ 18 tuổi.'
+    );
+  }
+}
     // Handle User Account Creation
     if (createDto.companyEmail) {
       const userRepo = AppDataSource.getRepository(UserEntity);
@@ -201,7 +214,20 @@ export class EmployeesService {
         );
       }
     }
+// Kiểm tra đủ 18 tuổi nếu cập nhật ngày sinh
+if (updateDto.dateOfBirth) {
+  const today = new Date();
+  const dob = new Date(updateDto.dateOfBirth);
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
 
+  if (age < 18) {
+    throw new BadRequestException(
+      'Nhân viên phải đủ 18 tuổi.'
+    );
+  }
+}
     if (updateDto.phoneNumber) {
       const existing = await this.employeesRepository.findByField(
         'phoneNumber',

@@ -97,6 +97,14 @@ router.put(
   payrollController.updateDetail,
 );
 
+// UC27 - Bulk upsert payroll details
+router.post(
+  '/:id/upsert-details',
+  authMiddleware,
+  permissionsMiddleware('PAYROLL_UPDATE'),
+  payrollController.upsertDetails,
+);
+
 // UC29 - Submit / Approve / Reject
 router.post(
   '/:id/submit',

@@ -427,25 +427,31 @@ export class AuthService {
       ),
     ];
 
-    const payload = {
+    const accessTokenPayload = {
       sub: user.id,
       email: user.email,
       roles,
       permissions,
     };
 
-    const secret = process.env.JWT_SECRET;
-    const refreshSecret = process.env.JWT_REFRESH_SECRET;
-    const expiresIn = process.env.JWT_EXPIRES_IN || '15m';
-    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+    const refreshTokenPayload = {
+      sub: user.id,
+    };
+
+    const secret = config.jwt.secret;
+    const refreshSecret = config.jwt.refreshSecret;
+    const expiresIn = config.jwt.expiresIn;
+    const refreshExpiresIn = config.jwt.refreshExpiresIn;
 
     if (!secret || !refreshSecret) {
       throw new Error('Lỗi hệ thống, vui lòng thử lại sau');
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      jwt.sign(payload, secret, { expiresIn: expiresIn }),
-      jwt.sign(payload, refreshSecret, { expiresIn: refreshExpiresIn }),
+      jwt.sign(accessTokenPayload, secret, { expiresIn: expiresIn }),
+      jwt.sign(refreshTokenPayload, refreshSecret, {
+        expiresIn: refreshExpiresIn,
+      }),
     ]);
 
     return {
