@@ -40,6 +40,20 @@ const KEYWORD_TABLE_MAP = [
 ];
 
 const BASE_TABLES = ['employees', 'departments'];
+function extractUsage(response) {
+  const usage = response?.usageMetadata || {};
+  return {
+    inputTokens: usage.promptTokenCount || 0,
+    outputTokens: usage.candidatesTokenCount || 0,
+    totalTokens: usage.totalTokenCount || 0,
+  };
+}
+
+function estimateCostVnd(inputTokens, outputTokens) {
+  const baseTokens = 3500 + 150; // ví dụ chuẩn từ thống kê
+  const baseCost = 103; // VND cho tổng token chuẩn
+  return Math.round(((inputTokens + outputTokens) / baseTokens) * baseCost);
+}
 
 // ============================================================================
 // SCHEMA PARSER
@@ -234,7 +248,28 @@ export class AiService {
     if (!employee) {
       throw new Error('Employee not found for the given user.');
     }
+const startedAt = Date.now();
 
+const usageTotal = {
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+  requestCount: 0,
+};
+
+function addUsage(response, label) {
+  const usage = extractUsage(response);
+  usageTotal.inputTokens += usage.inputTokens;
+  usageTotal.outputTokens += usage.outputTokens;
+  usageTotal.totalTokens += usage.totalTokens;
+  usageTotal.requestCount += 1;
+
+  console.log(`[AI USAGE - ${label}]`, {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+  });
+}
     // Resolve or create conversation
     let conversation;
     if (conversationId) {
@@ -370,7 +405,7 @@ Hãy sinh câu lệnh SQL tối ưu nhất và trả lời kết quả thân thi
       console.error('Lỗi gửi message:', err);
       throw err;
     }
-
+addUsage(result.response, 'initial');
     let finalResponseText = result.response.text();
     let functionCalls = result.response.functionCalls();
     let functionCallName = null;
@@ -392,9 +427,23 @@ Hãy sinh câu lệnh SQL tối ưu nhất và trả lời kết quả thân thi
           },
         }
       }]);
+addUsage(functionResponseResult.response, 'function-response');
 
       finalResponseText = functionResponseResult.response.text();
     }
+const responseTimeMs = Date.now() - startedAt;
+const estimatedCostVnd = estimateCostVnd(usageTotal.inputTokens, usageTotal.outputTokens);
+
+console.log('================ AI CHAT METRICS ================');
+console.log('User ID:', userId);
+console.log('Question:', content);
+console.log('Requests:', usageTotal.requestCount);
+console.log('Input tokens:', usageTotal.inputTokens);
+console.log('Output tokens:', usageTotal.outputTokens);
+console.log('Total tokens:', usageTotal.totalTokens);
+console.log('Estimated cost:', `${estimatedCostVnd} VND`);
+console.log('Time:', `${(responseTimeMs / 1000).toFixed(2)}s`);
+console.log('=================================================');
 
     // Save assistant message to DB
     await AiChatMessageRepository.saveMessage({
