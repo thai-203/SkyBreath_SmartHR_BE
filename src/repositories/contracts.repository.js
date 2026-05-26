@@ -39,9 +39,9 @@ export class ContractsRepository {
       // Soft delete old salary records for this employee
       await queryRunner.manager.update(
         EmployeeSalaryEntity,
-        { 
+        {
           employeeId: data.employeeId,
-          isDeleted: false
+          isDeleted: false,
         },
         {
           isDeleted: true,
@@ -145,6 +145,7 @@ export class ContractsRepository {
         'employee.user',
         'employee.department',
         'employee.position',
+        'employee.jobGrade',
       ],
       order,
       skip,
@@ -160,6 +161,7 @@ export class ContractsRepository {
         'employee.user',
         'employee.department',
         'employee.position',
+        'employee.jobGrade',
       ],
     });
   }
@@ -167,7 +169,13 @@ export class ContractsRepository {
   async findByEmployeeId(employeeId) {
     return this.repository.find({
       where: { employeeId, isDeleted: false },
-      relations: ['employee'],
+      relations: [
+        'employee',
+        'employee.user',
+        'employee.department',
+        'employee.position',
+        'employee.jobGrade',
+      ],
       order: { startDate: 'DESC' },
     });
   }
