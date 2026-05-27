@@ -15,7 +15,6 @@ import {
   ConflictException,
 } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
-import { EmployeeStatus } from '../common/enums/status.enum.js';
 import { NotificationsService } from './notifications.service.js';
 
 export class ShiftAssignmentsService {
@@ -286,9 +285,12 @@ export class ShiftAssignmentsService {
       rows.forEach((row) => byId.set(row.id, row));
     }
 
-    const filtered = [...byId.values()].filter(
-      (emp) => emp.employmentStatus !== EmployeeStatus.ON_LEAVE,
-    );
+    const filtered = [...byId.values()].filter((emp) => {
+      const status = String(emp.employmentStatus || '')
+        .trim()
+        .toUpperCase();
+      return status !== 'INACTIVE' && status !== 'ON_LEAVE';
+    });
 
     // Extract unique department IDs from selected employees
     const extractedDeptIds = [

@@ -52,7 +52,12 @@ export class EmployeesController {
   all = async (req, res, next) => {
     try {
       const queryDto = plainToInstance(EmployeeQueryDto, req.query);
-      console.log('debug employees all queryDto:', queryDto, 'skip:', queryDto.skip);
+      console.log(
+        'debug employees all queryDto:',
+        queryDto,
+        'skip:',
+        queryDto.skip,
+      );
       const result = await this.employeesService.findAll(queryDto);
       ResponseUtil.sendResponse(
         res,
@@ -61,7 +66,7 @@ export class EmployeesController {
       );
     } catch (error) {
       console.error('Error:', error);
-      if(error.query) console.error('SQL Query:', error.query);
+      if (error.query) console.error('SQL Query:', error.query);
       next(error);
     }
   };
@@ -97,9 +102,11 @@ export class EmployeesController {
   list = async (req, res, next) => {
     try {
       const noContract = req.query.noContract === 'true';
+      const excludeInactive = req.query.excludeInactive === 'true';
       const list = await this.employeesService.getDropdownList(
         null,
         noContract,
+        excludeInactive,
       );
       ResponseUtil.sendResponse(
         res,
@@ -194,7 +201,9 @@ export class EmployeesController {
 
   getEmployeeNoPlanId = async (req, res, next) => {
     try {
-      const result = await this.employeesService.getEmployeeNoPlanId();
+      const excludeInactive = req.query.excludeInactive === 'true';
+      const result =
+        await this.employeesService.getEmployeeNoPlanId(excludeInactive);
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.Employee.RETRIEVED_ALL,
