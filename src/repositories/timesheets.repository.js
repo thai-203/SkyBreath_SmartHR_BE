@@ -7,12 +7,16 @@ export class TimesheetsRepository {
     }
 
     async findAll(options = {}) {
-        const { skip = 0, take = 10, month, year, departmentId, status, search, employeeId } = options;
+        const { skip = 0, take = 10, month, year, departmentId, status, search, employeeId, showTerminated } = options;
         const query = this.repository.createQueryBuilder('timesheet')
             .leftJoinAndSelect('timesheet.employee', 'employee')
             .leftJoinAndSelect('employee.department', 'department')
             .leftJoinAndSelect('employee.position', 'position')
             .where('timesheet.isDeleted = :isDeleted', { isDeleted: false });
+
+        if (showTerminated === 'false' || showTerminated === false || showTerminated === undefined) {
+            query.andWhere('employee.employmentStatus != :terminatedStatus', { terminatedStatus: 'TERMINATED' });
+        }
 
         if (month && !isNaN(month)) {
             query.andWhere('timesheet.month = :month', { month });
