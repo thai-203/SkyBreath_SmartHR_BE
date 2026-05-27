@@ -47,7 +47,7 @@ export class AttendanceService {
     }
 
     const employeeId = employee.id;
-    const today = new Date().toLocaleDateString('vi-VN');
+    const today = new Date().toLocaleDateString('en-CA');
     const now = new Date();
 
     const shiftSchedule = await this.shiftRepo.findTodayShiftByEmpId({
@@ -361,7 +361,7 @@ export class AttendanceService {
         null,
     );
 
-    const today = new Date().toLocaleDateString('vi-VN');
+    const today = new Date().toLocaleDateString('en-CA');
     const shiftSchedules = await this.shiftRepo.findTodayShiftByEmpId({
       employeeId,
       today,
@@ -493,7 +493,7 @@ export class AttendanceService {
         files?.[0]?.location ??
         null,
     );
-    const today = new Date().toLocaleDateString('vi-VN');
+    const today = new Date().toLocaleDateString('en-CA');
 
     const overtimeRaw = await this.requestRepo.getTodayOvertime(
       employeeId,
@@ -660,7 +660,7 @@ export class AttendanceService {
   }
 
   _getCurrentShift(shifts) {
-    const today = new Date().toLocaleDateString('vi-VN');
+    const today = new Date().toLocaleDateString('en-CA');
     const now = new Date();
 
     if (!shifts || shifts.length === 0) return null;
