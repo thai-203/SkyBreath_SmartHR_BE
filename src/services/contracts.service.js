@@ -16,11 +16,95 @@ import { JobGradeEntity } from '../models/entities/job-grade.entity.js';
 import { ContractEntity } from '../models/entities/contract.entity.js';
 import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
 import { In } from 'typeorm';
+import { NotificationsService } from './notifications.service.js';
 
 export class ContractsService {
   constructor() {
     this.contractsRepository = new ContractsRepository();
     this.employeesRepository = new EmployeesRepository();
+    this.notificationsService = new NotificationsService();
+  }
+
+  async _enrichContractsWithSalary(contracts = []) {
+    if (!Array.isArray(contracts) || contracts.length === 0) {
+      return [];
+    }
+
+    const employeeIds = [
+      ...new Set(
+        contracts
+          .map((item) => Number(item.employeeId))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+
+    if (employeeIds.length === 0) {
+      return contracts;
+    }
+
+    const salaryRepo = AppDataSource.getRepository(EmployeeSalaryEntity);
+
+    const activeSalaries = await salaryRepo.find({
+      where: {
+        employeeId: In(employeeIds),
+        isDeleted: false,
+        salaryStatus: 'ACTIVE',
+      },
+      relations: ['jobGrade'],
+      order: {
+        effectiveFrom: 'DESC',
+        createdAt: 'DESC',
+      },
+    });
+
+    const salaryMap = new Map();
+    for (const salary of activeSalaries) {
+      const employeeId = Number(salary.employeeId);
+      if (!salaryMap.has(employeeId)) {
+        salaryMap.set(employeeId, salary);
+      }
+    }
+
+    return contracts.map((contract) => {
+      const employee = contract.employee || {};
+      const salary = salaryMap.get(Number(contract.employeeId));
+
+      return {
+        ...contract,
+        employeeName: employee.fullName || null,
+        departmentName: employee.department?.departmentName || null,
+        positionName: employee.position?.positionName || null,
+        jobGradeName: salary?.jobGrade?.name || employee.jobGrade?.name || null,
+        baseSalary:
+          salary?.baseSalary !== undefined && salary?.baseSalary !== null
+            ? Number(salary.baseSalary)
+            : null,
+        performanceSalary:
+          salary?.performanceSalary !== undefined &&
+          salary?.performanceSalary !== null
+            ? Number(salary.performanceSalary)
+            : null,
+        lunchAllowance:
+          salary?.lunchAllowance !== undefined &&
+          salary?.lunchAllowance !== null
+            ? Number(salary.lunchAllowance)
+            : null,
+        fuelAllowance:
+          salary?.fuelAllowance !== undefined && salary?.fuelAllowance !== null
+            ? Number(salary.fuelAllowance)
+            : null,
+        phoneAllowance:
+          salary?.phoneAllowance !== undefined &&
+          salary?.phoneAllowance !== null
+            ? Number(salary.phoneAllowance)
+            : null,
+        otherAllowance:
+          salary?.otherAllowance !== undefined &&
+          salary?.otherAllowance !== null
+            ? Number(salary.otherAllowance)
+            : null,
+      };
+    });
   }
 
   static CONTRACT_STATUSES = {
@@ -148,12 +232,67 @@ export class ContractsService {
     return true;
   }
 
+  _normalizeContractNumber(value) {
+    return String(value || '')
+      .trim()
+      .toUpperCase();
+  }
+
+  _buildExpectedContractNumber(employeeCode, signedDate) {
+    const normalizedEmployeeCode = this._normalizeContractNumber(employeeCode);
+    const referenceDate = signedDate ? new Date(signedDate) : new Date();
+    const year = Number.isNaN(referenceDate.getTime())
+      ? new Date().getFullYear()
+      : referenceDate.getFullYear();
+
+    return `HDLD/${year}/${normalizedEmployeeCode}`;
+  }
+
+  _validateCreateContractNumber(contractNumber, employee, signedDate) {
+    const normalizedContractNumber =
+      this._normalizeContractNumber(contractNumber);
+    const expectedContractNumber = this._buildExpectedContractNumber(
+      employee?.employeeCode,
+      signedDate,
+    );
+
+    if (!employee?.employeeCode) {
+      throw new BadRequestException(
+        'Nhân viên chưa có mã nhân sự để tạo mã hợp đồng',
+      );
+    }
+
+    if (normalizedContractNumber !== expectedContractNumber) {
+      throw new BadRequestException(
+        `Mã hợp đồng không đúng định dạng. Mã hợp đồng phải là ${expectedContractNumber}`,
+      );
+    }
+
+    return expectedContractNumber;
+  }
+
   async create(dto) {
     // validate employee
     const employee = await this.employeesRepository.findById(dto.employeeId);
     if (!employee) {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
     }
+
+    if (
+      String(employee.employmentStatus || '')
+        .trim()
+        .toUpperCase() === 'INACTIVE'
+    ) {
+      throw new BadRequestException(
+        'Không thể tạo hợp đồng cho nhân viên không còn hoạt động',
+      );
+    }
+
+    dto.contractNumber = this._validateCreateContractNumber(
+      dto.contractNumber,
+      employee,
+      dto.signedDate,
+    );
 
     // prevent duplicates: employee cannot have another currently effective contract
     const existing = await this.contractsRepository.findByEmployeeId(
@@ -223,7 +362,27 @@ export class ContractsService {
       }
     }
 
-    return this.contractsRepository.create(dto);
+    const createdContract = await this.contractsRepository.create(dto);
+
+    try {
+      const recipientUserId = Number(employee?.userId);
+      if (Number.isFinite(recipientUserId) && recipientUserId > 0) {
+        await this.notificationsService.createAndNotify({
+          title: 'Bạn có hợp đồng mới',
+          message: `Hợp đồng ${dto.contractNumber || ''} đã được tạo cho bạn. Vui lòng kiểm tra thông tin trong hồ sơ cá nhân.`,
+          notificationType: 'WORKFLOW',
+          link: '/settings/general#my-contracts',
+          recipientUserIds: [recipientUserId],
+        });
+      }
+    } catch (notificationError) {
+      console.error(
+        '[ContractsService] Failed to send contract notification:',
+        notificationError,
+      );
+    }
+
+    return createdContract;
   }
 
   async findAll(queryDto) {
@@ -262,6 +421,22 @@ export class ContractsService {
     }
 
     return this.contractsRepository.findByEmployeeId(employeeId);
+  }
+
+  async findMyContracts(userId) {
+    if (!userId) {
+      throw new BadRequestException('Thiếu thông tin người dùng');
+    }
+
+    const employee = await this.employeesRepository.findByUserId(userId);
+    if (!employee) {
+      return [];
+    }
+
+    const contracts = await this.contractsRepository.findByEmployeeId(
+      employee.id,
+    );
+    return this._enrichContractsWithSalary(contracts);
   }
 
   async update(id, updateDto, userId) {

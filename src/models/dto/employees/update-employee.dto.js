@@ -1,11 +1,11 @@
-import { IsString, IsOptional, IsEmail, IsDate, IsInt, Matches, IsIn, MaxDate } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsDate, IsInt, Matches, IsIn, MaxDate, IsNotEmpty } from 'class-validator';
 import { Type, Expose } from 'class-transformer';
 
 export class UpdateEmployeeDto {
     @Expose()
     @IsString()
     @IsOptional()
-    @Matches(/^[A-Za-z0-9-]+$/, { message: 'Mã nhân viên chỉ được chứa chữ cái, số và dấu gạch ngang' })
+    @Matches(/^[A-Za-z0-9.-]+$/, { message: 'Mã nhân viên chỉ được chứa chữ cái, số, dấu gạch ngang và dấu chấm' })
     employeeCode;
 
     @Expose()
@@ -70,11 +70,13 @@ export class UpdateEmployeeDto {
 
     @Expose()
     @IsEmail({}, { message: 'Email cá nhân không hợp lệ' })
+    @IsNotEmpty({ message: 'Email cá nhân không được để trống' })
     @IsOptional()
     personalEmail;
 
     @Expose()
     @IsEmail({}, { message: 'Email công ty không hợp lệ' })
+    @IsNotEmpty({ message: 'Email công ty không được để trống' })
     @IsOptional()
     companyEmail;
 
@@ -133,14 +135,12 @@ export class UpdateEmployeeDto {
     @IsDate({ message: 'Ngày vào làm không hợp lệ' })
     @IsOptional()
     @Type(() => Date)
-    @MaxDate(new Date(), { message: 'Ngày vào làm không được ở tương lai' })
     joinDate;
 
     @Expose()
     @IsDate({ message: 'Ngày chính thức không hợp lệ' })
     @IsOptional()
     @Type(() => Date)
-    @MaxDate(new Date(), { message: 'Ngày chính thức không được ở tương lai' })
     officialStartDate;
 
     @Expose()

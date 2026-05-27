@@ -10,6 +10,7 @@ import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repo
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { OnboardingTasksRepository } from '../repositories/onboarding-tasks.repository.js';
 import { TaskAssignmentsRepository } from '../repositories/task-assignments.repository.js';
+import { NotificationsService } from './notifications.service.js';
 
 export class OnboardingPlansService {
   constructor() {
@@ -18,6 +19,7 @@ export class OnboardingPlansService {
     this.tasksRepository = new OnboardingTasksRepository();
     this.taskAssignmentsRepository = new TaskAssignmentsRepository();
     this.EmployeesRepository = new EmployeesRepository();
+    this.notificationsService = new NotificationsService();
   }
 
   async findAll(queryDto) {
@@ -100,6 +102,21 @@ export class OnboardingPlansService {
         );
       }
 
+      const emp = await this.EmployeesRepository.findById(data.employeeId);
+      if (!emp) {
+        throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+      }
+
+      if (
+        String(emp.employmentStatus || '')
+          .trim()
+          .toUpperCase() === 'INACTIVE'
+      ) {
+        throw new BadRequestException(
+          'Không thể tạo kế hoạch onboarding cho nhân viên không còn hoạt động',
+        );
+      }
+
       if (!data.startDate) {
         throw new BadRequestException('Ngày bắt đầu là thông tin bắt buộc');
       }
@@ -110,7 +127,6 @@ export class OnboardingPlansService {
 
       // attempt to populate department/position from employee if missing
       if (!data.departmentId || !data.positionId) {
-        const emp = await new EmployeesRepository().findById(data.employeeId);
         if (emp) {
           data.departmentId = data.departmentId || emp.departmentId;
           data.positionId = data.positionId || emp.positionId;
@@ -246,13 +262,28 @@ export class OnboardingPlansService {
         });
       }
 
-      const employee = await new EmployeesRepository().findById(
-        data.employeeId,
-      );
+      const employee = await this.EmployeesRepository.findById(data.employeeId);
       if (employee) {
         await this.EmployeesRepository.update(data.employeeId, {
           planId: plan.id,
         });
+        try {
+          const recipientUserId = Number(employee?.userId);
+          if (Number.isFinite(recipientUserId) && recipientUserId > 0) {
+            await this.notificationsService.createAndNotify({
+              title: 'Bạn có kế hoạch onboarding mới',
+              message: `Kế hoạch onboarding "${plan.planName || ''}" đã được tạo cho bạn. Vui lòng kiểm tra chi tiết trong phần Onboarding.`,
+              notificationType: 'WORKFLOW',
+              link: '/onboardings/employee',
+              recipientUserIds: [recipientUserId],
+            });
+          }
+        } catch (notificationError) {
+          console.error(
+            '[OnboardingPlansService] Failed to send onboarding notification:',
+            notificationError,
+          );
+        }
       } else {
         throw new BadRequestException(
           `Nhân viên với ID ${data.employeeId} không được tìm thấy`,

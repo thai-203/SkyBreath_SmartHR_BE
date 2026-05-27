@@ -4,6 +4,10 @@ import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { DepartmentEntity } from '../models/entities/department.entity.js';
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
 import { AppDataSource } from '../database/data-source.js';
+import { TimesheetsRepository } from '../repositories/timesheets.repository.js';
+import { TimesheetsService } from './timesheets.service.js';
+import { PayrollRepository } from '../repositories/payroll.repository.js';
+import { config } from '../config/env.config.js';
 import {
   NotFoundException,
   BadRequestException,
@@ -11,12 +15,75 @@ import {
   ConflictException,
 } from '../common/exceptions/index.js';
 import { AppMessages } from '../common/constants/index.js';
-import { EmployeeStatus } from '../common/enums/status.enum.js';
+import { NotificationsService } from './notifications.service.js';
 
 export class ShiftAssignmentsService {
   constructor() {
     this.assignRepo = new ShiftAssignmentsRepository();
     this.scheduleRepo = new ShiftSchedulesRepository();
+    this.notificationsService = new NotificationsService();
+  }
+
+  async _notifyEmployeesForAssignment({
+    employeeIds = [],
+    shiftIds = [],
+    assignmentName,
+    startDate,
+    endDate,
+    action = 'created',
+  }) {
+    const normalizedEmployeeIds = this._toNumberArray(employeeIds);
+    if (normalizedEmployeeIds.length === 0) return;
+
+    try {
+      const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
+      const employees = await employeeRepo
+        .createQueryBuilder('employee')
+        .where('employee.id IN (:...ids)', { ids: normalizedEmployeeIds })
+        .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
+        .getMany();
+
+      const recipientUserIds = [
+        ...new Set(
+          employees
+            .map((employee) => Number(employee.userId))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      ];
+
+      if (recipientUserIds.length === 0) return;
+
+      const maps = await this._loadLookupMaps([], [], shiftIds);
+      const shiftNames = this._toNumberArray(shiftIds)
+        .map((id) => maps.shiftMap.get(id))
+        .filter(Boolean);
+
+      const title =
+        action === 'updated'
+          ? 'Phân ca của bạn đã được cập nhật'
+          : 'Bạn có lịch phân ca mới';
+      const message = [
+        `Bảng phân ca: ${assignmentName || 'Bảng phân ca'}.`,
+        shiftNames.length > 0 ? `Ca áp dụng: ${shiftNames.join(', ')}.` : null,
+        startDate ? `Từ ngày: ${this._dateOnly(startDate)}.` : null,
+        endDate ? `Đến ngày: ${this._dateOnly(endDate)}.` : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      await this.notificationsService.createAndNotify({
+        title,
+        message,
+        notificationType: 'WORKFLOW',
+        link: '/shifts/personal',
+        recipientUserIds,
+      });
+    } catch (notificationError) {
+      console.error(
+        '[ShiftAssignmentsService] Failed to send shift assignment notification:',
+        notificationError,
+      );
+    }
   }
 
   _toNumberArray(value, fallback = []) {
@@ -64,11 +131,8 @@ export class ShiftAssignmentsService {
       throw new BadRequestException('Ngày bắt đầu không hợp lệ');
     }
 
-    if (normalizedStartDate < this._todayDateOnly()) {
-      throw new BadRequestException(
-        message || 'Không thể phân ca cho ngày trong quá khứ',
-      );
-    }
+    // Allow assigning shifts in the past: do not throw when the start date
+    // is earlier than today. We still validate the date format above.
   }
 
   _resolveRange(startDate, endDate) {
@@ -221,9 +285,12 @@ export class ShiftAssignmentsService {
       rows.forEach((row) => byId.set(row.id, row));
     }
 
-    const filtered = [...byId.values()].filter(
-      (emp) => emp.employmentStatus !== EmployeeStatus.ON_LEAVE,
-    );
+    const filtered = [...byId.values()].filter((emp) => {
+      const status = String(emp.employmentStatus || '')
+        .trim()
+        .toUpperCase();
+      return status !== 'INACTIVE' && status !== 'ON_LEAVE';
+    });
 
     // Extract unique department IDs from selected employees
     const extractedDeptIds = [
@@ -318,7 +385,93 @@ export class ShiftAssignmentsService {
     return this.scheduleRepo.bulkCreate(rowsWithAssignmentId);
   }
 
-  _buildScheduleRowsForPayload(targetEmployees = [], shiftIds = [], payload = {}) {
+  // Return array of { month, year } objects covering inclusive range
+  _monthsBetween(startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const months = [];
+    const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    const last = new Date(end.getFullYear(), end.getMonth(), 1);
+    while (cur <= last) {
+      months.push({ month: cur.getMonth() + 1, year: cur.getFullYear() });
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    return months;
+  }
+
+  async _assertEditWindowAllowed(startDate, endDate) {
+    const allowedDays = Number(config.SHIFT_EDIT_PAST_DAYS) || 7;
+    if (!startDate || !endDate) return;
+    const earliestAllowed = new Date();
+    earliestAllowed.setDate(earliestAllowed.getDate() - allowedDays);
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (start < earliestAllowed || end < earliestAllowed) {
+      throw new BadRequestException(
+        `Không được chỉnh sửa phân ca quá ${allowedDays} ngày so với ngày hiện tại`,
+      );
+    }
+  }
+
+  async _assertNotLockedPeriods(startDate, endDate, employeeIds = []) {
+    if (!startDate || !endDate) return;
+
+    const months = this._monthsBetween(new Date(startDate), new Date(endDate));
+    const timesheetRepo = new TimesheetsRepository();
+    const payrollRepo = new PayrollRepository();
+
+    for (const { month, year } of months) {
+      // check payroll lock for the period
+      const payroll = await payrollRepo.findByPeriod(month, year);
+      if (payroll && payroll.payrollStatus === 'LOCKED') {
+        throw new ForbiddenException(
+          AppMessages.Errors.Payroll.IS_LOCKED.message,
+        );
+      }
+
+      // check timesheet locks for employees
+      for (const empId of employeeIds) {
+        const ts = await timesheetRepo.findByEmployeeAndPeriod(
+          empId,
+          month,
+          year,
+        );
+        if (ts && ts.isLocked) {
+          throw new ForbiddenException(
+            AppMessages.Errors.Timesheet.IS_LOCKED.message,
+          );
+        }
+      }
+    }
+  }
+
+  async _recalculateTimesheetsForRange(startDate, endDate, employeeIds = []) {
+    if (!startDate || !endDate || !employeeIds || employeeIds.length === 0)
+      return;
+    const months = this._monthsBetween(new Date(startDate), new Date(endDate));
+    const timesheetRepo = new TimesheetsRepository();
+    const tsService = new TimesheetsService(timesheetRepo);
+
+    for (const empId of employeeIds) {
+      for (const { month, year } of months) {
+        try {
+          await tsService.summarizeTimesheet(empId, month, year);
+        } catch (err) {
+          // log and continue — do not block assignment update if recalc fails
+          console.error(
+            '[ShiftAssignmentsService] summarizeTimesheet failed',
+            err,
+          );
+        }
+      }
+    }
+  }
+
+  _buildScheduleRowsForPayload(
+    targetEmployees = [],
+    shiftIds = [],
+    payload = {},
+  ) {
     const normalizedShiftIds = this._toNumberArray(payload.shiftIds, shiftIds);
     const normalizedWeekdays = this._toNumberArray(payload.weekdays);
     const workDates = this._generateDates(
@@ -328,7 +481,11 @@ export class ShiftAssignmentsService {
       payload.repeatType,
     );
 
-    return this._buildScheduleRows(targetEmployees, normalizedShiftIds, workDates);
+    return this._buildScheduleRows(
+      targetEmployees,
+      normalizedShiftIds,
+      workDates,
+    );
   }
 
   _buildScheduleRows(employees = [], shiftIds = [], workDates = []) {
@@ -476,6 +633,15 @@ export class ShiftAssignmentsService {
       repeatType: repeatType || 'weekly',
     });
 
+    await this._notifyEmployeesForAssignment({
+      employeeIds: target.employeeIds,
+      shiftIds: normalizedShiftIds,
+      assignmentName: normalizedAssignmentName,
+      startDate,
+      endDate,
+      action: 'created',
+    });
+
     return assignment;
   }
 
@@ -595,7 +761,18 @@ export class ShiftAssignmentsService {
       },
     );
 
+    // 1) Ensure no duplicate schedules
     await this._assertNoDuplicateSchedules(scheduleRows, id);
+
+    // 2) Prevent editing too far in the past (configurable)
+    await this._assertEditWindowAllowed(nextStartDate, nextEndDate);
+
+    // 3) Prevent editing when timesheets or payrolls are locked for affected periods
+    await this._assertNotLockedPeriods(
+      nextStartDate,
+      nextEndDate,
+      target.employeeIds,
+    );
 
     const updated = await this.assignRepo.update(id, {
       assignmentName: nextAssignmentName,
@@ -621,6 +798,22 @@ export class ShiftAssignmentsService {
       repeatType: nextRepeatType,
     });
 
+    await this._notifyEmployeesForAssignment({
+      employeeIds: target.employeeIds,
+      shiftIds: nextShiftIds,
+      assignmentName: nextAssignmentName,
+      startDate: nextStartDate,
+      endDate: nextEndDate,
+      action: 'updated',
+    });
+
+    // 4) Recalculate timesheets / overtime implications for affected employees & periods
+    await this._recalculateTimesheetsForRange(
+      nextStartDate,
+      nextEndDate,
+      target.employeeIds,
+    );
+
     return updated;
   }
 
@@ -633,8 +826,22 @@ export class ShiftAssignmentsService {
       );
     }
 
+    // Prevent cancellation if related timesheets/payrolls are locked for affected period
+    const start = existing.effectiveFrom;
+    const end = existing.effectiveTo;
+    const affectedEmployeeIds = this._toNumberArray(
+      existing.employeeIds,
+      existing.employeeId ? [existing.employeeId] : [],
+    );
+
+    await this._assertEditWindowAllowed(start, end);
+    await this._assertNotLockedPeriods(start, end, affectedEmployeeIds);
+
     await this.assignRepo.softDelete(id);
     await this.scheduleRepo.softDeleteByAssignmentId(id);
+
+    // Recalculate timesheets for affected employees and period
+    await this._recalculateTimesheetsForRange(start, end, affectedEmployeeIds);
 
     return { deletedCount: 1 };
   }

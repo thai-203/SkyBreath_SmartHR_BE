@@ -607,7 +607,7 @@ export class TimesheetsService {
   }
 
   async getMatrix(queryDto, userContext) {
-    const { month, year, departmentId, search } = queryDto;
+    const { month, year, departmentId, search, showTerminated } = queryDto;
     const limit = queryDto.limit || 10;
     const page = queryDto.page || 1;
     const skip = (page - 1) * limit;
@@ -619,6 +619,7 @@ export class TimesheetsService {
       year,
       departmentId,
       search,
+      showTerminated,
     });
 
     const items = [];
@@ -655,7 +656,7 @@ export class TimesheetsService {
   }
 
   async getProcessedMatrix(queryDto, userContext) {
-    const { month, year, departmentId, search } = queryDto;
+    const { month, year, departmentId, search, showTerminated } = queryDto;
     const limit = queryDto.limit || 10;
     const page = queryDto.page || 1;
     const skip = (page - 1) * limit;
@@ -672,6 +673,10 @@ export class TimesheetsService {
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
       .where('emp.isDeleted = :isDeleted', { isDeleted: false });
+
+    if (showTerminated === 'false' || showTerminated === false || showTerminated === undefined) {
+      qb.andWhere('emp.employmentStatus != :terminatedStatus', { terminatedStatus: 'TERMINATED' });
+    }
 
     if (departmentId) {
       qb.andWhere('emp.departmentId = :departmentId', { departmentId });
@@ -2995,6 +3000,7 @@ export class TimesheetsService {
         { month, year },
       )
       .andWhere('par.employeeId IN (:...empIds)', { empIds })
+      .andWhere('par.isFinalized = :isFinalized', { isFinalized: true })
       .getMany();
 
     const salaryRepo = AppDataSource.getRepository(EmployeeSalaryEntity);
@@ -3504,8 +3510,13 @@ export class TimesheetsService {
         annualLeaveDays += val;
         isWorkingDay = true;
       } else if (status === 'R' || status === 'KL' || status === 'ABSENT') {
-        // R, KL, ABSENT = Nghỉ không lương
-        unpaidLeaveDays += val;
+        // R, KL, ABSENT = Nghỉ không lương hoặc đi làm một phần
+        if (val > 0) {
+          if (emp.employmentStatus === 'ACTIVE') officialDays += val;
+          else if (emp.employmentStatus === 'PROBATION') probationDays += val;
+          isWorkingDay = true;
+        }
+        unpaidLeaveDays += (1.0 - val);
       } else if (status === 'NC') {
         // NC = Nghỉ chờ việc
         waitingDays += val;
@@ -3545,7 +3556,12 @@ export class TimesheetsService {
             benefitLeaveDaysCount += val;
             isWorkingDay = true;
           } else {
-            unpaidLeaveDays += val;
+            if (val > 0) {
+              if (emp.employmentStatus === 'ACTIVE') officialDays += val;
+              else if (emp.employmentStatus === 'PROBATION') probationDays += val;
+              isWorkingDay = true;
+            }
+            unpaidLeaveDays += (1.0 - val);
           }
         } else {
           // Các loại request khác
@@ -3559,8 +3575,8 @@ export class TimesheetsService {
         else if (emp.employmentStatus === 'PROBATION') probationDays += val;
         isWorkingDay = true;
       } else {
-        // Không có workValue
-        unpaidLeaveDays += val;
+        // Không có workValue hoặc không khớp các trạng thái trên
+        unpaidLeaveDays += (1.0 - val);
       }
 
       // Count meal only if it's a working day (exclude unpaid leave and waiting)
