@@ -10,6 +10,7 @@ import { OnboardingPlansRepository } from '../repositories/onboarding-plans.repo
 import { OnboardingProgressRepository } from '../repositories/onboarding-progress.repository.js';
 import { OnboardingTasksRepository } from '../repositories/onboarding-tasks.repository.js';
 import { TaskAssignmentsRepository } from '../repositories/task-assignments.repository.js';
+import { NotificationsService } from './notifications.service.js';
 
 export class OnboardingPlansService {
   constructor() {
@@ -18,6 +19,7 @@ export class OnboardingPlansService {
     this.tasksRepository = new OnboardingTasksRepository();
     this.taskAssignmentsRepository = new TaskAssignmentsRepository();
     this.EmployeesRepository = new EmployeesRepository();
+    this.notificationsService = new NotificationsService();
   }
 
   async findAll(queryDto) {
@@ -253,6 +255,23 @@ export class OnboardingPlansService {
         await this.EmployeesRepository.update(data.employeeId, {
           planId: plan.id,
         });
+        try {
+          const recipientUserId = Number(employee?.userId);
+          if (Number.isFinite(recipientUserId) && recipientUserId > 0) {
+            await this.notificationsService.createAndNotify({
+              title: 'Bạn có kế hoạch onboarding mới',
+              message: `Kế hoạch onboarding "${plan.planName || ''}" đã được tạo cho bạn. Vui lòng kiểm tra chi tiết trong phần Onboarding.`,
+              notificationType: 'WORKFLOW',
+              link: '/onboardings/employee',
+              recipientUserIds: [recipientUserId],
+            });
+          }
+        } catch (notificationError) {
+          console.error(
+            '[OnboardingPlansService] Failed to send onboarding notification:',
+            notificationError,
+          );
+        }
       } else {
         throw new BadRequestException(
           `Nhân viên với ID ${data.employeeId} không được tìm thấy`,

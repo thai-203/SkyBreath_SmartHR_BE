@@ -298,6 +298,21 @@ export class ContractsController {
     }
   };
 
+  findMine = async (req, res, next) => {
+    try {
+      const contracts = await this.contractsService.findMyContracts(
+        req.user?.id,
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: contracts,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   terminate = async (req, res, next) => {
     try {
       const contractId = Number(req.params.id);
