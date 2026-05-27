@@ -8,10 +8,20 @@ const router = Router();
 const requestsController = new RequestsController();
 
 // GET /requests/excuses — Đơn giải trình (nhóm LATE_EARLY / ATTENDANCE_CORRECTION)
-router.get('/excuses', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getExcuseRequests);
+router.get(
+  '/excuses',
+  authMiddleware,
+  permissionsMiddleware('REQUEST_READ'),
+  requestsController.getExcuseRequests,
+);
 
 // GET /requests/overtime-detail — Bảng tăng ca chi tiết (nhóm OVERTIME + dòng chi tiết hoặc tổng hợp từ đơn)
-router.get('/overtime-detail', authMiddleware, permissionsMiddleware(['REQUEST_READ', 'REQUEST_READ_OWN']), requestsController.getOvertimeDetailRequests);
+router.get(
+  '/overtime-detail',
+  authMiddleware,
+  permissionsMiddleware(['REQUEST_READ', 'REQUEST_READ_OWN']),
+  requestsController.getOvertimeDetailRequests,
+);
 
 // GET /requests/my — Đơn của tôi
 router.get(
@@ -25,7 +35,11 @@ router.get(
 router.get(
   '/pending',
   authMiddleware,
-  permissionsMiddleware(['REQUEST_READ', 'REQUEST_APPROVE', 'REQUEST_READ_OWN']),
+  permissionsMiddleware([
+    'REQUEST_READ',
+    'REQUEST_APPROVE',
+    'REQUEST_READ_OWN',
+  ]),
   requestsController.getPendingApprovals,
 );
 
@@ -38,10 +52,20 @@ router.get(
 );
 
 // GET /requests/quota-status — Kiểm tra hạn mức policy
-router.get('/quota-status', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.getQuotaStatus);
+router.get(
+  '/quota-status',
+  authMiddleware,
+  permissionsMiddleware(['REQUEST_READ', 'REQUEST_READ_OWN']),
+  requestsController.getQuotaStatus,
+);
 
 // GET /requests/estimate-quantity — Ước tính số lượng ngày/giờ xin phép dựa trên ca làm việc
-router.get('/estimate-quantity', authMiddleware, permissionsMiddleware('REQUEST_READ'), requestsController.estimateQuantity);
+router.get(
+  '/estimate-quantity',
+  authMiddleware,
+  permissionsMiddleware(['REQUEST_READ', 'REQUEST_READ_OWN']),
+  requestsController.estimateQuantity,
+);
 
 // GET /requests — Tất cả (HR/Admin)
 router.get(
@@ -108,6 +132,11 @@ router.post(
 );
 
 // POST /requests/:id/attachments — Upload tài liệu đính kèm
-router.post('/:id/attachments', authMiddleware, uploadCloud.array('files', 10), requestsController.uploadAttachments);
+router.post(
+  '/:id/attachments',
+  authMiddleware,
+  uploadCloud.array('files', 10),
+  requestsController.uploadAttachments,
+);
 
 export const requestsRoutes = router;
