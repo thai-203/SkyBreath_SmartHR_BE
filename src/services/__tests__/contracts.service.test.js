@@ -25,7 +25,8 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
 
   const SAMPLE = {
     employeeId: 5,
-    contractNumber: '00007',
+    employeeCode: 'EMP005',
+    contractNumber: 'HDLD/2026/EMP005',
     departmentId: 1,
     positionId: 2,
     jobGradeId: 12,
@@ -83,7 +84,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Expected message: "Tạo hợp đồng thành công"
 
     // Mocks
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     contractsRepo.findByContractNumber.mockResolvedValue(null);
     AppDataSource.getRepository
@@ -121,7 +125,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Expected result: thất bại
     // Expected message: "Nhân viên đã có hợp đồng đang hoạt động"
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([
       { id: 1, contractStatus: 'ACTIVE', isDeleted: false },
     ]);
@@ -142,7 +149,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Test này được comment vì validation không được implement trong create method
     // Nếu muốn validate, cần add logic vào service.create()
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     contractsRepo.findByContractNumber.mockResolvedValue({
       id: 2,
@@ -162,7 +172,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Expected result: thất bại
     // Expected message: "Phòng ban là bắt buộc"
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
 
     await expectRejectWith(service.create(input), 400, 'Phòng ban là bắt buộc');
@@ -175,7 +188,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Input: missing positionId
     // Expected message: "Vị trí là bắt buộc"
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
 
     await expectRejectWith(service.create(input), 400, 'Vị trí là bắt buộc');
@@ -188,7 +204,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Input: missing jobGradeId
     // Expected message: "Ngạch lương là bắt buộc"
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
 
     await expectRejectWith(
@@ -207,7 +226,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     };
     // Expected message: "Ngày ký hợp đồng không thể sau ngày bắt đầu"
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -228,7 +250,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     const input = { ...SAMPLE, startDate: '2026-03-08', endDate: '2026-03-07' };
     // Expected message: "Ngày kết thúc phải sau ngày bắt đầu"
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -249,7 +274,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     const input = { ...SAMPLE, baseSalary: 6000000 };
     // Expected message: "Lương cơ bản phải nằm trong khoảng 0 - 5000000"
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -271,7 +299,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Note: Service create() không validate performanceSalary, chỉ validate baseSalary range
     // Test này skip vì validation chưa được implement
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -289,7 +320,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -307,7 +341,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -325,7 +362,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -343,7 +383,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue({
@@ -364,7 +407,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Input: SAMPLE + attachments
     // Expected result: tạo thành công
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     contractsRepo.findByContractNumber.mockResolvedValue(null);
     AppDataSource.getRepository
@@ -396,7 +442,10 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     // Input: SAMPLE (không có attachments)
     // Expected result: tạo thành công
 
-    employeesRepo.findById.mockResolvedValue({ id: input.employeeId });
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
     contractsRepo.findByEmployeeId.mockResolvedValue([]);
     contractsRepo.findByContractNumber.mockResolvedValue(null);
     AppDataSource.getRepository

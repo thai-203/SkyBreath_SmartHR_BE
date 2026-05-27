@@ -232,12 +232,56 @@ export class ContractsService {
     return true;
   }
 
+  _normalizeContractNumber(value) {
+    return String(value || '')
+      .trim()
+      .toUpperCase();
+  }
+
+  _buildExpectedContractNumber(employeeCode, signedDate) {
+    const normalizedEmployeeCode = this._normalizeContractNumber(employeeCode);
+    const referenceDate = signedDate ? new Date(signedDate) : new Date();
+    const year = Number.isNaN(referenceDate.getTime())
+      ? new Date().getFullYear()
+      : referenceDate.getFullYear();
+
+    return `HDLD/${year}/${normalizedEmployeeCode}`;
+  }
+
+  _validateCreateContractNumber(contractNumber, employee, signedDate) {
+    const normalizedContractNumber = this._normalizeContractNumber(contractNumber);
+    const expectedContractNumber = this._buildExpectedContractNumber(
+      employee?.employeeCode,
+      signedDate,
+    );
+
+    if (!employee?.employeeCode) {
+      throw new BadRequestException(
+        'Nhân viên chưa có mã nhân sự để tạo mã hợp đồng',
+      );
+    }
+
+    if (normalizedContractNumber !== expectedContractNumber) {
+      throw new BadRequestException(
+        `Mã hợp đồng không đúng định dạng. Mã hợp đồng phải là ${expectedContractNumber}`,
+      );
+    }
+
+    return expectedContractNumber;
+  }
+
   async create(dto) {
     // validate employee
     const employee = await this.employeesRepository.findById(dto.employeeId);
     if (!employee) {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
     }
+
+    dto.contractNumber = this._validateCreateContractNumber(
+      dto.contractNumber,
+      employee,
+      dto.signedDate,
+    );
 
     // prevent duplicates: employee cannot have another currently effective contract
     const existing = await this.contractsRepository.findByEmployeeId(
