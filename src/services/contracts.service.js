@@ -249,7 +249,8 @@ export class ContractsService {
   }
 
   _validateCreateContractNumber(contractNumber, employee, signedDate) {
-    const normalizedContractNumber = this._normalizeContractNumber(contractNumber);
+    const normalizedContractNumber =
+      this._normalizeContractNumber(contractNumber);
     const expectedContractNumber = this._buildExpectedContractNumber(
       employee?.employeeCode,
       signedDate,
@@ -275,6 +276,16 @@ export class ContractsService {
     const employee = await this.employeesRepository.findById(dto.employeeId);
     if (!employee) {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
+
+    if (
+      String(employee.employmentStatus || '')
+        .trim()
+        .toUpperCase() === 'INACTIVE'
+    ) {
+      throw new BadRequestException(
+        'Không thể tạo hợp đồng cho nhân viên không còn hoạt động',
+      );
     }
 
     dto.contractNumber = this._validateCreateContractNumber(

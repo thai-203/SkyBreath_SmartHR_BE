@@ -102,6 +102,21 @@ export class OnboardingPlansService {
         );
       }
 
+      const emp = await this.EmployeesRepository.findById(data.employeeId);
+      if (!emp) {
+        throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+      }
+
+      if (
+        String(emp.employmentStatus || '')
+          .trim()
+          .toUpperCase() === 'INACTIVE'
+      ) {
+        throw new BadRequestException(
+          'Không thể tạo kế hoạch onboarding cho nhân viên không còn hoạt động',
+        );
+      }
+
       if (!data.startDate) {
         throw new BadRequestException('Ngày bắt đầu là thông tin bắt buộc');
       }
@@ -112,7 +127,6 @@ export class OnboardingPlansService {
 
       // attempt to populate department/position from employee if missing
       if (!data.departmentId || !data.positionId) {
-        const emp = await new EmployeesRepository().findById(data.employeeId);
         if (emp) {
           data.departmentId = data.departmentId || emp.departmentId;
           data.positionId = data.positionId || emp.positionId;
@@ -248,9 +262,7 @@ export class OnboardingPlansService {
         });
       }
 
-      const employee = await new EmployeesRepository().findById(
-        data.employeeId,
-      );
+      const employee = await this.EmployeesRepository.findById(data.employeeId);
       if (employee) {
         await this.EmployeesRepository.update(data.employeeId, {
           planId: plan.id,

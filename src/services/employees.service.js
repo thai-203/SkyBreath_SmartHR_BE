@@ -82,20 +82,18 @@ export class EmployeesService {
         );
       }
     }
-// Kiểm tra đủ 18 tuổi
-if (createDto.dateOfBirth) {
-  const today = new Date();
-  const dob = new Date(createDto.dateOfBirth);
-  let age = today.getFullYear() - dob.getFullYear();
-  const m = today.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    // Kiểm tra đủ 18 tuổi
+    if (createDto.dateOfBirth) {
+      const today = new Date();
+      const dob = new Date(createDto.dateOfBirth);
+      let age = today.getFullYear() - dob.getFullYear();
+      const m = today.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
 
-  if (age < 18) {
-    throw new BadRequestException(
-      'Nhân viên phải đủ 18 tuổi.'
-    );
-  }
-}
+      if (age < 18) {
+        throw new BadRequestException('Nhân viên phải đủ 18 tuổi.');
+      }
+    }
     // Handle User Account Creation
     if (createDto.companyEmail) {
       const userRepo = AppDataSource.getRepository(UserEntity);
@@ -184,10 +182,15 @@ if (createDto.dateOfBirth) {
     };
   }
 
-  async getDropdownList(roleName, excludeWithContract = false) {
+  async getDropdownList(
+    roleName,
+    excludeWithContract = false,
+    excludeInactive = false,
+  ) {
     return this.employeesRepository.findDropdownList(
       roleName,
       excludeWithContract,
+      { excludeInactive },
     );
   }
 
@@ -214,20 +217,18 @@ if (createDto.dateOfBirth) {
         );
       }
     }
-// Kiểm tra đủ 18 tuổi nếu cập nhật ngày sinh
-if (updateDto.dateOfBirth) {
-  const today = new Date();
-  const dob = new Date(updateDto.dateOfBirth);
-  let age = today.getFullYear() - dob.getFullYear();
-  const m = today.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    // Kiểm tra đủ 18 tuổi nếu cập nhật ngày sinh
+    if (updateDto.dateOfBirth) {
+      const today = new Date();
+      const dob = new Date(updateDto.dateOfBirth);
+      let age = today.getFullYear() - dob.getFullYear();
+      const m = today.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
 
-  if (age < 18) {
-    throw new BadRequestException(
-      'Nhân viên phải đủ 18 tuổi.'
-    );
-  }
-}
+      if (age < 18) {
+        throw new BadRequestException('Nhân viên phải đủ 18 tuổi.');
+      }
+    }
     if (updateDto.phoneNumber) {
       const existing = await this.employeesRepository.findByField(
         'phoneNumber',
@@ -255,18 +256,21 @@ if (updateDto.dateOfBirth) {
     }
 
     // Status transition validation (BR-33)
-    if (updateDto.employmentStatus && updateDto.employmentStatus !== employee.employmentStatus) {
+    if (
+      updateDto.employmentStatus &&
+      updateDto.employmentStatus !== employee.employmentStatus
+    ) {
       const allowedTransitions = {
-        'PROBATION': ['ACTIVE', 'TERMINATED'],
-        'ACTIVE': ['ON_LEAVE', 'TERMINATED'],
-        'ON_LEAVE': ['ACTIVE', 'TERMINATED'],
-        'TERMINATED': ['PROBATION', 'ACTIVE']
+        PROBATION: ['ACTIVE', 'TERMINATED'],
+        ACTIVE: ['ON_LEAVE', 'TERMINATED'],
+        ON_LEAVE: ['ACTIVE', 'TERMINATED'],
+        TERMINATED: ['PROBATION', 'ACTIVE'],
       };
-      
+
       const allowed = allowedTransitions[employee.employmentStatus] || [];
       if (!allowed.includes(updateDto.employmentStatus)) {
         throw new BadRequestException(
-          `Không thể chuyển trạng thái từ "${employee.employmentStatus}" sang "${updateDto.employmentStatus}". Trạng thái phải tuân theo vòng đời quy định.`
+          `Không thể chuyển trạng thái từ "${employee.employmentStatus}" sang "${updateDto.employmentStatus}". Trạng thái phải tuân theo vòng đời quy định.`,
         );
       }
 
@@ -274,7 +278,13 @@ if (updateDto.dateOfBirth) {
       if (updateDto.employmentStatus === 'TERMINATED' && employee.userId) {
         const userRepo = AppDataSource.getRepository(UserEntity);
         await userRepo.update(employee.userId, { status: 'LOCKED' });
-      } else if (employee.employmentStatus === 'TERMINATED' && ['ACTIVE', 'PROBATION', 'ON_LEAVE'].includes(updateDto.employmentStatus) && employee.userId) {
+      } else if (
+        employee.employmentStatus === 'TERMINATED' &&
+        ['ACTIVE', 'PROBATION', 'ON_LEAVE'].includes(
+          updateDto.employmentStatus,
+        ) &&
+        employee.userId
+      ) {
         const userRepo = AppDataSource.getRepository(UserEntity);
         await userRepo.update(employee.userId, { status: 'ACTIVE' });
       }
@@ -287,7 +297,8 @@ if (updateDto.dateOfBirth) {
     const employee = await this.findById(id);
 
     // Chặn xóa nếu nhân viên đang là quản lý trực tiếp hoặc HR mentor của ai
-    const { EmployeeEntity } = await import('../models/entities/employee.entity.js');
+    const { EmployeeEntity } =
+      await import('../models/entities/employee.entity.js');
     const empRepo = AppDataSource.getRepository(EmployeeEntity);
 
     const dependents = await empRepo
@@ -321,8 +332,8 @@ if (updateDto.dateOfBirth) {
     }
 
     // Cập nhật trạng thái nhân viên sang TERMINATED và khóa tài khoản người dùng liên kết
-    await this.employeesRepository.update(employee.id, { 
-      employmentStatus: 'TERMINATED'
+    await this.employeesRepository.update(employee.id, {
+      employmentStatus: 'TERMINATED',
     });
 
     if (employee.userId) {
@@ -332,8 +343,6 @@ if (updateDto.dateOfBirth) {
 
     return { affected: 1 };
   }
-
-
 
   async findValidationData() {
     return this.employeesRepository.findValidationData();
@@ -432,8 +441,8 @@ if (updateDto.dateOfBirth) {
     return ExcelUtil.export(data, columns, 'Danh sách nhân viên');
   }
 
-  async getEmployeeNoPlanId() {
-    return this.employeesRepository.getEmployeeNoPlanId();
+  async getEmployeeNoPlanId(excludeInactive = false) {
+    return this.employeesRepository.getEmployeeNoPlanId({ excludeInactive });
   }
 
   async getByUserId(userId) {
