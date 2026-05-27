@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 export class CreateEmployeeDto {
     @IsString()
     @IsNotEmpty({ message: 'Mã nhân viên là bắt buộc' })
-    @Matches(/^[A-Za-z0-9-]+$/, { message: 'Mã nhân viên chỉ được chứa chữ cái, số và dấu gạch ngang' })
+    @Matches(/^[A-Za-z0-9.-]+$/, { message: 'Mã nhân viên chỉ được chứa chữ cái, số, dấu gạch ngang và dấu chấm' })
     employeeCode;
 
     @IsInt()
@@ -58,11 +58,11 @@ export class CreateEmployeeDto {
     taxCode;
 
     @IsEmail({}, { message: 'Email cá nhân không hợp lệ' })
-    @IsOptional()
+    @IsNotEmpty({ message: 'Email cá nhân là bắt buộc' })
     personalEmail;
 
     @IsEmail({}, { message: 'Email công ty không hợp lệ' })
-    @IsOptional()
+    @IsNotEmpty({ message: 'Email công ty là bắt buộc' })
     companyEmail;
 
     @IsString()
@@ -110,13 +110,11 @@ export class CreateEmployeeDto {
     @IsDate({ message: 'Ngày vào làm không hợp lệ' })
     @IsOptional()
     @Type(() => Date)
-    @MaxDate(new Date(), { message: 'Ngày vào làm không được ở tương lai' })
     joinDate;
 
     @IsDate({ message: 'Ngày chính thức không hợp lệ' })
     @IsOptional()
     @Type(() => Date)
-    @MaxDate(new Date(), { message: 'Ngày chính thức không được ở tương lai' })
     officialStartDate;
 
     @IsString()

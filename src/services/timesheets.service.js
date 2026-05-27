@@ -607,7 +607,7 @@ export class TimesheetsService {
   }
 
   async getMatrix(queryDto, userContext) {
-    const { month, year, departmentId, search } = queryDto;
+    const { month, year, departmentId, search, showTerminated } = queryDto;
     const limit = queryDto.limit || 10;
     const page = queryDto.page || 1;
     const skip = (page - 1) * limit;
@@ -619,6 +619,7 @@ export class TimesheetsService {
       year,
       departmentId,
       search,
+      showTerminated,
     });
 
     const items = [];
@@ -655,7 +656,7 @@ export class TimesheetsService {
   }
 
   async getProcessedMatrix(queryDto, userContext) {
-    const { month, year, departmentId, search } = queryDto;
+    const { month, year, departmentId, search, showTerminated } = queryDto;
     const limit = queryDto.limit || 10;
     const page = queryDto.page || 1;
     const skip = (page - 1) * limit;
@@ -672,6 +673,10 @@ export class TimesheetsService {
       .leftJoinAndSelect('emp.department', 'dept')
       .leftJoinAndSelect('emp.position', 'pos')
       .where('emp.isDeleted = :isDeleted', { isDeleted: false });
+
+    if (showTerminated === 'false' || showTerminated === false || showTerminated === undefined) {
+      qb.andWhere('emp.employmentStatus != :terminatedStatus', { terminatedStatus: 'TERMINATED' });
+    }
 
     if (departmentId) {
       qb.andWhere('emp.departmentId = :departmentId', { departmentId });

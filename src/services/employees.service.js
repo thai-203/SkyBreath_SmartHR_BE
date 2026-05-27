@@ -254,6 +254,32 @@ if (updateDto.dateOfBirth) {
       }
     }
 
+    // Status transition validation (BR-33)
+    if (updateDto.employmentStatus && updateDto.employmentStatus !== employee.employmentStatus) {
+      const allowedTransitions = {
+        'PROBATION': ['ACTIVE', 'TERMINATED'],
+        'ACTIVE': ['ON_LEAVE', 'TERMINATED'],
+        'ON_LEAVE': ['ACTIVE', 'TERMINATED'],
+        'TERMINATED': ['PROBATION', 'ACTIVE']
+      };
+      
+      const allowed = allowedTransitions[employee.employmentStatus] || [];
+      if (!allowed.includes(updateDto.employmentStatus)) {
+        throw new BadRequestException(
+          `Không thể chuyển trạng thái từ "${employee.employmentStatus}" sang "${updateDto.employmentStatus}". Trạng thái phải tuân theo vòng đời quy định.`
+        );
+      }
+
+      // Sync associated User account status
+      if (updateDto.employmentStatus === 'TERMINATED' && employee.userId) {
+        const userRepo = AppDataSource.getRepository(UserEntity);
+        await userRepo.update(employee.userId, { status: 'LOCKED' });
+      } else if (employee.employmentStatus === 'TERMINATED' && ['ACTIVE', 'PROBATION', 'ON_LEAVE'].includes(updateDto.employmentStatus) && employee.userId) {
+        const userRepo = AppDataSource.getRepository(UserEntity);
+        await userRepo.update(employee.userId, { status: 'ACTIVE' });
+      }
+    }
+
     return this.employeesRepository.update(employee.id, updateDto);
   }
 
@@ -290,11 +316,21 @@ if (updateDto.dateOfBirth) {
       if (isMentor) roles.push('HR mentor');
 
       throw new BadRequestException(
-        `Không thể xóa nhân viên "${employee.fullName}" vì họ đang là ${roles.join(' và ')} của: ${names}. Vui lòng cập nhật thông tin những nhân viên này trước.`,
+        `Không thể cho nhân viên "${employee.fullName}" nghỉ việc vì họ đang là ${roles.join(' và ')} của: ${names}. Vui lòng cập nhật thông tin những nhân viên này trước.`,
       );
     }
 
-    return this.employeesRepository.softDelete(employee.id);
+    // Cập nhật trạng thái nhân viên sang TERMINATED và khóa tài khoản người dùng liên kết
+    await this.employeesRepository.update(employee.id, { 
+      employmentStatus: 'TERMINATED'
+    });
+
+    if (employee.userId) {
+      const userRepo = AppDataSource.getRepository(UserEntity);
+      await userRepo.update(employee.userId, { status: 'LOCKED' });
+    }
+
+    return { affected: 1 };
   }
 
 
