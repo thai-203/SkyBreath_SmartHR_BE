@@ -1,10 +1,19 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
-import { IsNull, Between, In } from 'typeorm';
+import { Between, In } from 'typeorm';
 
 export class EmployeesRepository {
   constructor() {
     this.repository = AppDataSource.getRepository(EmployeeEntity);
+  }
+
+  _excludeInactiveEmployees(query, alias = 'employee') {
+    query.andWhere(
+      `COALESCE(UPPER(${alias}.employmentStatus), '') != :inactiveStatus`,
+      {
+        inactiveStatus: 'INACTIVE',
+      },
+    );
   }
 
   async create(data) {
@@ -20,6 +29,7 @@ export class EmployeesRepository {
       departmentId,
       positionId,
       employmentStatus,
+      excludeInactive = false,
     } = options;
 
     const take = limit;
@@ -54,6 +64,10 @@ export class EmployeesRepository {
       });
     }
 
+    if (excludeInactive) {
+      this._excludeInactiveEmployees(query);
+    }
+
     const [items, total] = await query
       .orderBy('employee.fullName', 'ASC')
       .skip(skip)
@@ -69,7 +83,9 @@ export class EmployeesRepository {
    * @param {boolean=} excludeWithContract when true excludes employees having
    *        an active, non‑deleted contract
    */
-  async findDropdownList(roleName, excludeWithContract = false) {
+  async findDropdownList(roleName, excludeWithContract = false, options = {}) {
+    const { excludeInactive = false } = options;
+
     const query = this.repository
       .createQueryBuilder('employee')
       .leftJoin('employee.user', 'user')
@@ -92,6 +108,10 @@ export class EmployeesRepository {
         { status: 'ACTIVE' },
       );
       query.andWhere('contract.id IS NULL');
+    }
+
+    if (excludeInactive) {
+      this._excludeInactiveEmployees(query);
     }
 
     return query
@@ -177,21 +197,25 @@ export class EmployeesRepository {
     });
   }
 
-  async getEmployeeNoPlanId() {
-    return this.repository.find({
-      where: {
-        isDeleted: false,
-        planId: IsNull(),
-      },
-      relations: [
-        'user',
-        'department',
-        'position',
-        'jobGrade',
-        'directManager',
-        'hrMentor',
-      ],
-    });
+  async getEmployeeNoPlanId(options = {}) {
+    const { excludeInactive = false } = options;
+
+    const query = this.repository
+      .createQueryBuilder('employee')
+      .leftJoinAndSelect('employee.user', 'user')
+      .leftJoinAndSelect('employee.department', 'department')
+      .leftJoinAndSelect('employee.position', 'position')
+      .leftJoinAndSelect('employee.jobGrade', 'jobGrade')
+      .leftJoinAndSelect('employee.directManager', 'directManager')
+      .leftJoinAndSelect('employee.hrMentor', 'hrMentor')
+      .where('employee.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('employee.planId IS NULL');
+
+    if (excludeInactive) {
+      this._excludeInactiveEmployees(query);
+    }
+
+    return query.getMany();
   }
 
   async getByUserId(userId) {
