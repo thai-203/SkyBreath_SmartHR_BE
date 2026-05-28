@@ -2990,7 +2990,10 @@ export class TimesheetsService {
     const processedRepo = AppDataSource.getRepository(
       ProcessedAttendanceRecordEntity,
     );
-    const records = await processedRepo
+    // Lấy tất cả records: ưu tiên isFinalized = true (đã chốt công),
+    // fallback lấy tất cả nếu không có record nào đã chốt (chưa chốt công).
+    // Điều này đảm bảo trang payroll luôn thấy đúng dữ liệu chấm công.
+    const finalizedRecords = await processedRepo
       .createQueryBuilder('par')
       .leftJoinAndSelect('par.request', 'req')
       .leftJoinAndSelect('req.requestGroup', 'rg')
@@ -3002,6 +3005,31 @@ export class TimesheetsService {
       .andWhere('par.employeeId IN (:...empIds)', { empIds })
       .andWhere('par.isFinalized = :isFinalized', { isFinalized: true })
       .getMany();
+
+    // Lấy tất cả records (kể cả chưa chốt)
+    const allRecords = await processedRepo
+      .createQueryBuilder('par')
+      .leftJoinAndSelect('par.request', 'req')
+      .leftJoinAndSelect('req.requestGroup', 'rg')
+      .leftJoinAndSelect('par.workingShift', 'ws')
+      .where(
+        'MONTH(par.attendanceDate) = :month AND YEAR(par.attendanceDate) = :year',
+        { month, year },
+      )
+      .andWhere('par.employeeId IN (:...empIds)', { empIds })
+      .getMany();
+
+    // Nếu một nhân viên có ít nhất 1 ngày đã chốt → dùng finalizedRecords cho nhân viên đó
+    // Nếu nhân viên chưa có ngày nào chốt → fallback dùng allRecords (chưa chốt)
+    const finalizedEmpIds = new Set(finalizedRecords.map(r => r.employeeId));
+    const records = allRecords.filter(r => {
+      if (finalizedEmpIds.has(r.employeeId)) {
+        // Nhân viên đã có record chốt → chỉ dùng records đã chốt
+        return r.isFinalized === true;
+      }
+      // Nhân viên chưa chốt → dùng tất cả records
+      return true;
+    });
 
     const salaryRepo = AppDataSource.getRepository(EmployeeSalaryEntity);
     // Fetch all salary records for these employees and pick the best one in JS
