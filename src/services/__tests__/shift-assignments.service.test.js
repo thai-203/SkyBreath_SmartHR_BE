@@ -1,6 +1,7 @@
 import { ShiftAssignmentsService } from '../shift-assignments.service.js';
 import { ShiftAssignmentsRepository } from '../../repositories/shift-assignments.repository.js';
 import { ShiftSchedulesRepository } from '../../repositories/shift-schedules.repository.js';
+import { AttendanceRepository } from '../../repositories/attendances.repository.js';
 
 jest.mock('../../repositories/shift-assignments.repository.js', () => ({
   ShiftAssignmentsRepository: jest.fn(),
@@ -10,10 +11,15 @@ jest.mock('../../repositories/shift-schedules.repository.js', () => ({
   ShiftSchedulesRepository: jest.fn(),
 }));
 
+jest.mock('../../repositories/attendances.repository.js', () => ({
+  AttendanceRepository: jest.fn(),
+}));
+
 describe('ShiftAssignmentsService', () => {
   let service;
   let assignRepo;
   let scheduleRepo;
+  let attendanceRepo;
 
   const makeFutureDate = (daysOffset) => {
     const date = new Date();
@@ -42,10 +48,18 @@ describe('ShiftAssignmentsService', () => {
       findFirstConflict: jest.fn(),
     };
 
+    attendanceRepo = {
+      countByAssignmentId: jest.fn(),
+    };
+
     ShiftAssignmentsRepository.mockImplementation(() => assignRepo);
     ShiftSchedulesRepository.mockImplementation(() => scheduleRepo);
+    AttendanceRepository.mockImplementation(() => attendanceRepo);
 
     service = new ShiftAssignmentsService();
+    jest.spyOn(service, '_assertNotLockedPeriods').mockResolvedValue();
+    jest.spyOn(service, '_recalculateTimesheetsForRange').mockResolvedValue();
+    jest.spyOn(service, '_notifyEmployeesForAssignment').mockResolvedValue();
   });
 
   const expectRejectWithStatus = async (promise, statusCode) => {
@@ -235,6 +249,36 @@ describe('ShiftAssignmentsService', () => {
     expect(assignRepo.update).not.toHaveBeenCalled();
   });
 
+  it('rejects updateAssignment when assignment already belongs to the past', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const y = yesterday.getFullYear();
+    const m = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const d = String(yesterday.getDate()).padStart(2, '0');
+    const pastDate = `${y}-${m}-${d}`;
+
+    assignRepo.findById.mockResolvedValue({
+      id: 8,
+      assignmentName: 'Old',
+      employeeId: 11,
+      employeeIds: '11',
+      departmentIds: '20',
+      shiftId: 7,
+      shiftIds: '7',
+      weekdays: '1,3',
+      repeatType: 'weekly',
+      effectiveFrom: pastDate,
+      effectiveTo: makeFutureDate(7),
+    });
+
+    await expectRejectWithStatus(
+      service.updateAssignment(8, { assignmentName: 'New Name' }),
+      400,
+    );
+
+    expect(assignRepo.update).not.toHaveBeenCalled();
+  });
+
   it('rejects updateAssignment when provided startDate is in the past', async () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -269,12 +313,29 @@ describe('ShiftAssignmentsService', () => {
     assignRepo.findById.mockResolvedValue({ id: 77 });
     assignRepo.softDelete.mockResolvedValue({ affected: 1 });
     scheduleRepo.softDeleteByAssignmentId.mockResolvedValue({ affected: 5 });
+    attendanceRepo.countByAssignmentId.mockResolvedValue(0);
 
     const result = await service.cancelAssignment(77);
 
     expect(assignRepo.softDelete).toHaveBeenCalledWith(77);
     expect(scheduleRepo.softDeleteByAssignmentId).toHaveBeenCalledWith(77);
     expect(result).toEqual({ deletedCount: 1 });
+  });
+
+  it('rejects cancelAssignment when attendance has already been generated', async () => {
+    assignRepo.findById.mockResolvedValue({
+      id: 78,
+      effectiveFrom: makeFutureDate(1),
+      effectiveTo: makeFutureDate(10),
+      employeeIds: '1',
+      employeeId: 1,
+    });
+    attendanceRepo.countByAssignmentId.mockResolvedValue(2);
+
+    await expectRejectWithStatus(service.cancelAssignment(78), 409);
+
+    expect(assignRepo.softDelete).not.toHaveBeenCalled();
+    expect(scheduleRepo.softDeleteByAssignmentId).not.toHaveBeenCalled();
   });
 
   it('maps schedule rows and normalizes output date in getSchedules', async () => {
