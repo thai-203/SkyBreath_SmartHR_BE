@@ -42,8 +42,8 @@ export class TimesheetsRepository {
 
         if (search) {
             query.andWhere(
-                '(employee.fullName LIKE :search OR employee.employeeCode LIKE :search)',
-                { search: `%${search}%` }
+                '(LOWER(employee.fullName) LIKE BINARY :search OR employee.employeeCode LIKE :search)',
+                { search: `%${search.toLowerCase()}%` }
             );
         }
 

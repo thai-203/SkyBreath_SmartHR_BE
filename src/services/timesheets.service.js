@@ -117,11 +117,11 @@ export class TimesheetsService {
       regenerate = false,
     } = generateDto;
 
-    // Get month boundaries
+    // Xác định mốc thời gian đầu tháng và cuối tháng
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    // 1. Get active employees
+    // 1. Lấy danh sách nhân viên đang hoạt động (ACTIVE hoặc PROBATION)
     const employeeRepo = AppDataSource.getRepository(EmployeeEntity);
     const employeeQuery = employeeRepo
       .createQueryBuilder('employee')
@@ -151,7 +151,7 @@ export class TimesheetsService {
       return { generated: 0, timesheets: [] };
     }
 
-    // 2. Get holidays for this month
+    // 2. Lấy danh sách các ngày lễ được cấu hình trong tháng này
     const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
     const holidays = await holidayRepo.find({
       where: [
@@ -186,14 +186,14 @@ export class TimesheetsService {
       }
     });
 
-    // 3. Calculate standard working days (weekdays minus holidays)
+    // 3. Tính toán số ngày công chuẩn của tháng (tổng số ngày thường trừ đi ngày lễ)
     const standardWorkingDays = this._countWorkingDays(
       year,
       month,
       holidayDates,
     );
 
-    // 4. Get attendance records for all employees this month
+    // 4. Lấy tất cả bản ghi chấm công thô của nhân viên trong tháng
     const attendanceRepo = AppDataSource.getRepository(AttendanceRecordEntity);
     const allAttendance = await attendanceRepo
       .createQueryBuilder('att')
@@ -211,7 +211,7 @@ export class TimesheetsService {
       attendanceMap.get(record.employeeId).push(record);
     });
 
-    // 5. Generate/update timesheets (per-employee shift)
+    // 5. Vòng lặp sinh hoặc cập nhật bảng công cho từng nhân viên
     let generatedCount = 0;
     let updatedCount = 0;
     let failedCount = 0;
@@ -222,7 +222,7 @@ export class TimesheetsService {
       try {
         const records = attendanceMap.get(employee.id) || [];
 
-        // Get this employee's shift (or default)
+        // Lấy ca làm việc được phân công của nhân viên này trong tháng/năm
         const { shift, weekdays } = await this._getEmployeeShift(
           employee.id,
           month,
@@ -234,7 +234,7 @@ export class TimesheetsService {
           shiftHoursPerDay,
         );
 
-        // Group records by date, taking earliest check-in & latest check-out per day
+        // Gom nhóm chấm công thô theo ngày, chọn Check-In sớm nhất và Check-Out trễ nhất trong ngày
         const dailyMap = new Map();
         records.forEach((record) => {
           if (record.checkInTime && record.checkOutTime) {
@@ -253,7 +253,7 @@ export class TimesheetsService {
         });
         console.log(dailyMap);
 
-        // Fetch OT Requests for this employee in this month
+        // Lấy danh sách chi tiết các đơn tăng ca (OT) đã được phê duyệt trong tháng
         const otDetailRepo = AppDataSource.getRepository(
           OvertimeRequestDetailEntity,
         );
@@ -275,7 +275,7 @@ export class TimesheetsService {
           .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
           .getMany();
 
-        // Fetch EXCUSE Requests
+        // Lấy các đơn giải trình đi muộn/về sớm hoặc sửa công được phê duyệt trong tháng
         const requestRepo = AppDataSource.getRepository(RequestEntity);
         const excuseRequests = await requestRepo.find({
           where: {
@@ -289,7 +289,7 @@ export class TimesheetsService {
           relations: ['requestGroup'],
         });
 
-        // Calculate totals with break deduction & half-day support
+        // Tính toán tổng ngày công và giờ công thực tế (khấu trừ giờ nghỉ trưa, bù giờ đơn giải trình)
         let totalWorkingDays = 0;
         let totalWorkingHours = 0;
         let overtimeHours = otDetails.reduce((sum, item) => sum + parseFloat(item.totalHours || 0), 0);
@@ -320,7 +320,7 @@ export class TimesheetsService {
           );
         }
 
-        // Upsert: check for existing timesheet
+        // Thêm mới hoặc cập nhật bản ghi chấm công tháng (Upsert)
         const existing =
           await this.timesheetsRepository.findByEmployeeAndPeriod(
             employee.id,
@@ -356,7 +356,7 @@ export class TimesheetsService {
           generatedCount++;
         }
 
-        // Trigger granular summary update (calculates standardDays, officialDays, etc.)
+        // Kích hoạt tính toán chi tiết ngày công đi làm, ngày nghỉ phép, ngày lễ, phạt muộn,...
         await this.summarizeTimesheet(employee.id, month, year, userContext);
 
         results.push(timesheet);
@@ -683,8 +683,8 @@ export class TimesheetsService {
     }
     if (search) {
       qb.andWhere(
-        '(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)',
-        { search: `%${search}%` },
+        '(LOWER(emp.fullName) LIKE BINARY :search OR emp.employeeCode LIKE :search)',
+        { search: `%${search.toLowerCase()}%` },
       );
     }
 
@@ -1467,9 +1467,9 @@ export class TimesheetsService {
       }
       if (search) {
         qb.andWhere(
-          '(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)',
+          '(LOWER(emp.fullName) LIKE BINARY :search OR emp.employeeCode LIKE :search)',
           {
-            search: `%${search}%`,
+            search: `%${search.toLowerCase()}%`,
           },
         );
       }
@@ -2932,8 +2932,8 @@ export class TimesheetsService {
     }
     if (search) {
       qb.andWhere(
-        '(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)',
-        { search: `%${search}%` },
+        '(LOWER(emp.fullName) LIKE BINARY :search OR emp.employeeCode LIKE :search)',
+        { search: `%${search.toLowerCase()}%` },
       );
     }
 
@@ -3159,9 +3159,9 @@ export class TimesheetsService {
     }
     if (search) {
       empSub.andWhere(
-        '(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)',
+        '(LOWER(emp.fullName) LIKE BINARY :search OR emp.employeeCode LIKE :search)',
         {
-          search: `%${search}%`,
+          search: `%${search.toLowerCase()}%`,
         },
       );
     }
@@ -3225,9 +3225,9 @@ export class TimesheetsService {
     }
     if (search) {
       empSub.andWhere(
-        '(emp.fullName LIKE :search OR emp.employeeCode LIKE :search)',
+        '(LOWER(emp.fullName) LIKE BINARY :search OR emp.employeeCode LIKE :search)',
         {
-          search: `%${search}%`,
+          search: `%${search.toLowerCase()}%`,
         },
       );
     }
@@ -3320,6 +3320,7 @@ export class TimesheetsService {
    * Summarizes all processed attendance and OT data for an employee into the timesheets table.
    * This ensures the summary table is always the source of truth for Payroll.
    */
+  // Hàm tổng hợp toàn bộ dữ liệu ngày công thực tế, nghỉ phép, tăng ca,... từ các bảng chi tiết vào TimeSheetEntity để làm nguồn dữ liệu chốt lương
   async summarizeTimesheet(employeeId, month, year, userContext) {
     const timesheetRepo = AppDataSource.getRepository(TimeSheetEntity);
     let timesheet = await this.timesheetsRepository.findByEmployeeAndPeriod(
@@ -3345,7 +3346,7 @@ export class TimesheetsService {
     });
     if (!employee) return null;
 
-    // 1. Get Holidays for standardDays
+    // 1. Lấy danh sách ngày lễ trong tháng để tính số ngày công chuẩn của tháng
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
     const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
@@ -3383,7 +3384,7 @@ export class TimesheetsService {
     });
     const standardDays = this._countWorkingDays(year, month, holidayDates);
 
-    // 2. Get Processed Records
+    // 2. Lấy toàn bộ dữ liệu ngày công đã xử lý (Processed records) trong tháng
     const processedRepo = AppDataSource.getRepository(
       ProcessedAttendanceRecordEntity,
     );
@@ -3399,7 +3400,7 @@ export class TimesheetsService {
       .andWhere('par.employeeId = :employeeId', { employeeId })
       .getMany();
 
-    // 3. Get OT Details — Lấy trực tiếp từ bảng requests (nguồn dữ liệu chính xác)
+    // 3. Lấy chi tiết giờ tăng ca từ các đơn tăng ca đã phê duyệt (OT Requests)
     const otRequests = await AppDataSource.getRepository(RequestEntity)
       .createQueryBuilder('req')
       .innerJoinAndSelect('req.requestGroup', 'rg')
@@ -3434,7 +3435,7 @@ export class TimesheetsService {
     );
     const ruleDepts = await ruleDeptRepo.find({ where: { isDeleted: false } });
 
-    // 4. Aggregate
+    // 4. Phân loại và tổng hợp ngày công (phép năm, nghỉ ốm, đi muộn, về sớm...)
     const summary = this._aggregateEmployeeAttendanceSummary(
       employee,
       records,
@@ -3444,7 +3445,7 @@ export class TimesheetsService {
       standardDays,
     );
 
-    // 5. Update TimeSheetEntity
+    // 5. Cập nhật các trường tổng hợp vào TimeSheetEntity và lưu lại DB
     Object.assign(timesheet, {
       standardDays,
       totalWorkingDays: summary.totalMonthlyDays,

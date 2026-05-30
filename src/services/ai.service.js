@@ -242,8 +242,14 @@ export class AiService {
   }
 
   // ── Main chat handler ────────────────────────────────────────────────────
-
+  // Đây là hàm xử lý hội thoại chính:
+  // - Nhận câu hỏi từ frontend/chatbox
+  // - Lấy thông tin nhân viên để phân quyền và cá nhân hóa prompt
+  // - Tạo mới hoặc tái sử dụng cuộc hội thoại cũ
+  // - Lưu các tin nhắn người dùng và trợ lý vào DB
+  // - Gọi Gemini API (với System Instruction và Tools) để sinh và chạy SQL SELECT truy vấn DB
   async handleChat(userId, roles, content, conversationId) {
+    // B1. Lấy thông tin nhân viên hiện tại để phân quyền dữ liệu và hiển thị cá nhân hóa
     const employee = await this.getEmployeeInfo(userId);
     if (!employee) {
       throw new Error('Employee not found for the given user.');
@@ -270,37 +276,37 @@ function addUsage(response, label) {
     totalTokens: usage.totalTokens,
   });
 }
-    // Resolve or create conversation
+    // B2. Nếu có conversationId thì lấy hội thoại cũ. Nếu chưa có thì tự tạo hội thoại mới
     let conversation;
     if (conversationId) {
       conversation = await AiChatConversationRepository.findByIdAndUserId(conversationId, userId);
       if (!conversation) throw new Error('Conversation not found or unauthorized.');
     } else {
-      // Auto-create a new conversation
+      // Tự động tạo cuộc hội thoại mới với tiêu đề từ câu hỏi đầu tiên
       const title = content.substring(0, 50) || 'Cuộc hội thoại mới';
       conversation = await this.createConversation(userId, title);
     }
 
-    // Save user message to DB
+    // B3. Lưu message người dùng vào DB
     await AiChatMessageRepository.saveMessage({
       conversationId: conversation.id,
       role: 'user',
       content,
     });
 
-    // Load complete history from DB (excluding the just-saved user msg for history building)
+    // B4. Lấy toàn bộ lịch sử chat từ DB để build history gửi lên cho model
     const allMessages = await AiChatMessageRepository.findByConversationId(conversation.id);
 
-    // Schema optimization — based on the current user question
+    // B5. Tối ưu hóa schema gửi lên: Chỉ lấy cấu trúc các bảng liên quan trực tiếp tới câu hỏi hiện tại
     const schemaText = this.getRelevantSchema(content);
 
-    // Find and format matching SQL examples
+    // Tìm và định dạng các ví dụ truy vấn mẫu tương tự
     const bestExamples = this.findBestExamples(content);
     let exampleText = '';
     if (bestExamples.length > 0) {
       exampleText = '\n\n--- CÁC VÍ DỤ TRUY VẤN MẪU TƯƠNG TỰ (THAM KHẢO & LÀM THEO CÚ PHÁP) ---\n';
       bestExamples.forEach((ex, idx) => {
-        // Replace placeholders in example with active employee variables
+        // Thay thế placeholder bằng ID nhân viên thực tế đang đăng nhập
         let sqlExample = ex.sql
           .replace(/:my_employee_id/g, employee.id)
           .replace(/:employee_id/g, employee.id);
@@ -308,7 +314,8 @@ function addUsage(response, label) {
       });
     }
 
-    // Tools
+    // B6. Khai báo công cụ (Tools) để model có thể gọi khi cần truy vấn dữ liệu thực tế
+    // Ở đây model được cung cấp 1 tool duy nhất là query_database
     const tools = [
       {
         functionDeclarations: [
@@ -328,6 +335,11 @@ function addUsage(response, label) {
       },
     ];
 
+    // B7. Tạo system prompt chính hướng dẫn AI luật chơi:
+    // - Đóng vai trò trợ lý thông minh
+    // - Tuân thủ quy tắc bảo mật dữ liệu và phân quyền người dùng
+    // - Chỉ được sinh câu lệnh SELECT
+    // - Không lộ câu lệnh SQL thô trong câu trả lời cuối cùng
     const systemInstruction = `# Vai trò
 Bạn là Trợ lý AI SkyBreath SmartHR. Nhiệm vụ: Nhận câu hỏi tiếng Việt -> sinh câu lệnh SQL SELECT chuẩn xác (MySQL) -> gọi tool \`query_database\` -> dùng kết quả trả về để trả lời thân thiện (KHÔNG tiết lộ câu SQL hoặc cấu trúc bảng trong câu trả lời cuối cùng).
 
@@ -360,6 +372,7 @@ ${exampleText}
 
 Hãy sinh câu lệnh SQL tối ưu nhất và trả lời kết quả thân thiện bằng tiếng Việt.`;
 
+    // B8. Nạp thêm các prompt/rule do admin cấu hình động trong DB nếu có
     const activePrompts = await AppDataSource.getRepository(AiPromptEntity).find({ where: { status: 'ACTIVE' } });
     let additionalRules = '';
     if (activePrompts && activePrompts.length > 0) {
@@ -371,33 +384,38 @@ Hãy sinh câu lệnh SQL tối ưu nhất và trả lời kết quả thân thi
 
     const finalSystemInstruction = systemInstruction + additionalRules;
 
+    // B9. Lấy AI config đang ACTIVE trong database (để đọc API key Gemini)
     const activeConfig = await AppDataSource.getRepository(AiConfigurationEntity).findOne({ where: { status: 'ACTIVE' } });
     if (!activeConfig || !activeConfig.configValue) {
       throw new Error('Cấu hình AI chưa được thiết lập, vui lòng báo quản trị viên.');
     }
 
+    // B10. Khởi tạo Gemini client bằng API key lấy được từ DB
     const genAI = new GoogleGenerativeAI(activeConfig.configValue);
     const modelToUse = activeConfig.aiModel || 'gemini-2.5-flash';
 
+    // B11. Tạo model với systemInstruction và cấu hình tools
     const model = genAI.getGenerativeModel({
       model: modelToUse,
       systemInstruction: finalSystemInstruction,
       tools: tools,
     });
 
-    // Build history for Gemini (all messages except the last user message)
+    // B12. Build history hội thoại cho Gemini (bỏ đi câu hỏi cuối cùng để làm history)
     const historyData = allMessages.slice(0, -1).map(msg => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }],
     }));
 
-    // Gemini requires history to start with 'user'
+    // Gemini yêu cầu history bắt đầu bằng vai trò 'user'
     while (historyData.length > 0 && historyData[0].role === 'model') {
       historyData.shift();
     }
 
+    // B13. Khởi tạo chat session với history cũ
     const chatSession = model.startChat({ history: historyData });
 
+    // B14. Gửi câu hỏi hiện tại lên Gemini
     let result;
     try {
       result = await chatSession.sendMessage(content);
@@ -405,20 +423,26 @@ Hãy sinh câu lệnh SQL tối ưu nhất và trả lời kết quả thân thi
       console.error('Lỗi gửi message:', err);
       throw err;
     }
-addUsage(result.response, 'initial');
+    addUsage(result.response, 'initial');
+
+    // B15. Đọc text trả lời ban đầu (Gemini có thể trả về câu trả lời trực tiếp hoặc yêu cầu gọi tool)
     let finalResponseText = result.response.text();
     let functionCalls = result.response.functionCalls();
     let functionCallName = null;
     let functionArgs = null;
     let functionResponse = null;
 
+    // B16. Nếu model yêu cầu gọi tool thì backend thực thi tool truy vấn DB thật
     if (functionCalls && functionCalls.length > 0) {
       const call = functionCalls[0];
       functionCallName = call.name;
       functionArgs = call.args;
+
+      // Backend chạy SQL raw trên cơ sở dữ liệu
       const toolResult = await this.executeTool(call);
       functionResponse = toolResult;
 
+      // Gửi kết quả chạy SQL ngược lại cho Gemini để nó biên dịch thành câu trả lời tự nhiên
       const functionResponseResult = await chatSession.sendMessage([{
         functionResponse: {
           name: call.name,
@@ -427,25 +451,25 @@ addUsage(result.response, 'initial');
           },
         }
       }]);
-addUsage(functionResponseResult.response, 'function-response');
+      addUsage(functionResponseResult.response, 'function-response');
 
       finalResponseText = functionResponseResult.response.text();
     }
-const responseTimeMs = Date.now() - startedAt;
-const estimatedCostVnd = estimateCostVnd(usageTotal.inputTokens, usageTotal.outputTokens);
+    const responseTimeMs = Date.now() - startedAt;
+    const estimatedCostVnd = estimateCostVnd(usageTotal.inputTokens, usageTotal.outputTokens);
 
-console.log('================ AI CHAT METRICS ================');
-console.log('User ID:', userId);
-console.log('Question:', content);
-console.log('Requests:', usageTotal.requestCount);
-console.log('Input tokens:', usageTotal.inputTokens);
-console.log('Output tokens:', usageTotal.outputTokens);
-console.log('Total tokens:', usageTotal.totalTokens);
-console.log('Estimated cost:', `${estimatedCostVnd} VND`);
-console.log('Time:', `${(responseTimeMs / 1000).toFixed(2)}s`);
-console.log('=================================================');
+    console.log('================ AI CHAT METRICS ================');
+    console.log('User ID:', userId);
+    console.log('Question:', content);
+    console.log('Requests:', usageTotal.requestCount);
+    console.log('Input tokens:', usageTotal.inputTokens);
+    console.log('Output tokens:', usageTotal.outputTokens);
+    console.log('Total tokens:', usageTotal.totalTokens);
+    console.log('Estimated cost:', `${estimatedCostVnd} VND`);
+    console.log('Time:', `${(responseTimeMs / 1000).toFixed(2)}s`);
+    console.log('=================================================');
 
-    // Save assistant message to DB
+    // B17. Lưu câu trả lời của trợ lý (assistant) vào DB
     await AiChatMessageRepository.saveMessage({
       conversationId: conversation.id,
       role: 'assistant',
@@ -455,9 +479,10 @@ console.log('=================================================');
       functionResponse,
     });
 
-    // Update conversation timestamp
+    // B18. Cập nhật thời gian hoạt động cuối của hội thoại
     await AiChatConversationRepository.update(conversation.id, { updatedAt: new Date() });
 
+    // B19. Trả response về frontend/chatbox
     return {
       content: finalResponseText,
       conversationId: conversation.id,
@@ -466,6 +491,7 @@ console.log('=================================================');
     };
   }
 
+  // Hàm thực thi tool do AI yêu cầu (truy vấn database SELECT raw)
   async executeTool(call) {
     const { name, args } = call;
 
@@ -473,11 +499,13 @@ console.log('=================================================');
       const sql = args.sql_query;
       console.log('[AI] Executing SQL:', sql);
 
+      // Chặn toàn bộ câu lệnh không phải SELECT để bảo vệ an toàn cho cơ sở dữ liệu
       if (!sql.trim().toUpperCase().startsWith('SELECT')) {
         return { error: 'Quyền truy cập bị từ chối: Chỉ cho phép các lệnh SELECT (Read-only).' };
       }
 
       try {
+        // Thực thi SQL raw trên database
         const rawResults = await AppDataSource.query(sql);
         return rawResults;
       } catch (error) {
@@ -486,6 +514,7 @@ console.log('=================================================');
       }
     }
 
+    // Nếu model gọi một tool không tồn tại thì trả lỗi
     return { error: 'Công cụ không tồn tại.' };
   }
 }
