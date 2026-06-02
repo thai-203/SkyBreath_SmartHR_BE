@@ -12,6 +12,13 @@ const attendanceController = new AttendanceController(attendanceService);
 
 // Admin endpoints
 router.get(
+  '/records',
+  authMiddleware,
+  permissionsMiddleware('ATTENDANCE_READ_OWN'),
+  attendanceController.getMyRecords,
+);
+
+router.get(
   '/today-context',
   authMiddleware,
   permissionsMiddleware('ATTENDANCE_READ_OWN'),

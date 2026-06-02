@@ -1,5 +1,6 @@
 import { ShiftAssignmentsRepository } from '../repositories/shift-assignments.repository.js';
 import { ShiftSchedulesRepository } from '../repositories/shift-schedules.repository.js';
+import { AttendanceRepository } from '../repositories/attendances.repository.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
 import { DepartmentEntity } from '../models/entities/department.entity.js';
 import { WorkingShiftEntity } from '../models/entities/working-shift.entity.js';
@@ -21,6 +22,7 @@ export class ShiftAssignmentsService {
   constructor() {
     this.assignRepo = new ShiftAssignmentsRepository();
     this.scheduleRepo = new ShiftSchedulesRepository();
+    this.attendanceRepo = new AttendanceRepository();
     this.notificationsService = new NotificationsService();
   }
 
@@ -123,16 +125,23 @@ export class ShiftAssignmentsService {
     );
   }
 
-  _assertStartDateNotInPast(startDate, message) {
-    if (!startDate) return;
+  _assertDateIsNotInPast(dateValue, message) {
+    if (!dateValue) return;
 
-    const normalizedStartDate = this._dateOnly(startDate);
-    if (!normalizedStartDate) {
-      throw new BadRequestException('Ngày bắt đầu không hợp lệ');
+    const normalizedDate = this._dateOnly(dateValue);
+    const today = this._todayDateOnly();
+
+    if (!normalizedDate) {
+      throw new BadRequestException('Ngày không hợp lệ');
     }
 
-    // Allow assigning shifts in the past: do not throw when the start date
-    // is earlier than today. We still validate the date format above.
+    if (normalizedDate < today) {
+      throw new BadRequestException(message);
+    }
+  }
+
+  _assertStartDateNotInPast(startDate, message) {
+    this._assertDateIsNotInPast(startDate, message);
   }
 
   _resolveRange(startDate, endDate) {
@@ -671,6 +680,12 @@ export class ShiftAssignmentsService {
       existing.shiftId ? [existing.shiftId] : [],
     );
     const currentWeekdays = this._toNumberArray(existing.weekdays);
+    const existingStartDate = this._dateOnly(existing.effectiveFrom);
+
+    this._assertDateIsNotInPast(
+      existingStartDate,
+      'Chỉ có thể sửa phân ca của các ngày trong tương lai',
+    );
 
     const nextEmployeeIds =
       data.employeeIds && data.employeeIds.length > 0
@@ -833,6 +848,11 @@ export class ShiftAssignmentsService {
       existing.employeeIds,
       existing.employeeId ? [existing.employeeId] : [],
     );
+
+    const attendanceCount = await this.attendanceRepo.countByAssignmentId(id);
+    if (attendanceCount > 0) {
+      throw new ConflictException('Không thể xóa phân ca đã phát sinh công');
+    }
 
     await this._assertEditWindowAllowed(start, end);
     await this._assertNotLockedPeriods(start, end, affectedEmployeeIds);

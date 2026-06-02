@@ -207,6 +207,27 @@ export class AttendanceService {
         })) || [],
     };
   }
+  
+  async getMyRecords(userId, query = {}) {
+    if (!userId || typeof userId !== 'number') {
+      throw new BadRequestException(AppMessages.Errors.User.NOT_FOUND);
+    }
+
+    const employee = await this.employeeRepository.findByUserId(userId);
+    if (!employee) {
+      throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
+    }
+
+    const today = new Date().toLocaleDateString('en-CA');
+    const startDate = String(query.startDate || today).slice(0, 10);
+    const endDate = String(query.endDate || today).slice(0, 10);
+
+    return this.attendanceRepo.findAllByEmployeeAndRange({
+      employeeId: employee.id,
+      startDate,
+      endDate,
+    });
+  }
 
   // ── Shared: security validate (IP + VPN + Location) ──────────────────
   async _validateSecurityChecks(location, securityConfig) {

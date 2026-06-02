@@ -11,6 +11,10 @@ export class AiController {
   // GET /ai/status
   getStatus = async (req, res, next) => {
     try {
+      // Trả về 400 nếu phát hiện có query parameter (vì đây là API GET không tham số)
+      if (req.query && Object.keys(req.query).length > 0) {
+        return ResponseUtil.sendResponse(res, 'Endpoint không chấp nhận tham số truy vấn.', null, 400);
+      }
       // Check if an ACTIVE config exists
       const repo = AppDataSource.getRepository(AiConfigurationEntity);
       const activeConfig = await repo.findOne({ where: { status: 'ACTIVE' } });
@@ -43,6 +47,10 @@ export class AiController {
   // GET /ai/conversations
   getConversations = async (req, res, next) => {
     try {
+      // Trả về 400 nếu phát hiện có query parameter (vì đây là API GET không tham số)
+      if (req.query && Object.keys(req.query).length > 0) {
+        return ResponseUtil.sendResponse(res, 'Endpoint không chấp nhận tham số truy vấn.', null, 400);
+      }
       const user = req.user;
       const conversations = await this.aiService.getConversations(user.id);
       return ResponseUtil.sendResponse(res, 'Lấy danh sách cuộc hội thoại thành công', conversations);
@@ -56,7 +64,10 @@ export class AiController {
     try {
       const user = req.user;
       const { title } = req.body;
-      const conversation = await this.aiService.createConversation(user.id, title);
+      if (!title || !title.trim()) {
+        return ResponseUtil.sendResponse(res, 'Tiêu đề cuộc hội thoại không được để trống.', null, 400);
+      }
+      const conversation = await this.aiService.createConversation(user.id, title.trim());
       return ResponseUtil.sendResponse(res, 'Tạo cuộc hội thoại mới thành công', conversation, 201);
     } catch (error) {
       next(error);
