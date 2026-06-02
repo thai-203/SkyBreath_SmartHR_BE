@@ -44,6 +44,21 @@ describe('OnboardingPlansService', () => {
     }
   };
 
+  const expectRejectWithStatusAndMessage = async (
+    promise,
+    statusCode,
+    message,
+  ) => {
+    try {
+      await promise;
+      throw new Error('Expected promise to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect(err.statusCode).toBe(statusCode);
+      expect(err.message).toBe(message);
+    }
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -299,6 +314,14 @@ describe('OnboardingPlansService', () => {
     });
 
     it('throws error when start date is missing', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById.mockResolvedValue({
+        id: 20,
+        departmentId: 2,
+        positionId: 5,
+        employmentStatus: 'ACTIVE',
+      });
+
       await expectRejectWithStatus(
         service.create(
           {
@@ -315,6 +338,14 @@ describe('OnboardingPlansService', () => {
     });
 
     it('throws error when department or position is missing', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById.mockResolvedValue({
+        id: 20,
+        departmentId: null,
+        positionId: null,
+        employmentStatus: 'ACTIVE',
+      });
+
       await expectRejectWithStatus(
         service.create(
           {
@@ -326,6 +357,168 @@ describe('OnboardingPlansService', () => {
           1,
         ),
         400,
+      );
+    });
+
+    it('throws error when employeeId is missing for non-template', async () => {
+      await expectRejectWithStatusAndMessage(
+        service.create(
+          {
+            planName: 'Plan thiếu nhân viên',
+            isTemplate: false,
+            startDate: '2026-05-15',
+            departmentId: 2,
+            positionId: 5,
+          },
+          1,
+        ),
+        400,
+        'Nhân viên là thông tin bắt buộc cho kế hoạch',
+      );
+    });
+
+    it('throws NotFoundException when employee does not exist', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById.mockResolvedValue(null);
+
+      await expectRejectWithStatus(
+        service.create(
+          {
+            planName: 'Plan employee not found',
+            isTemplate: false,
+            employeeId: 999,
+            startDate: '2026-05-15',
+            departmentId: 2,
+            positionId: 5,
+          },
+          1,
+        ),
+        404,
+      );
+    });
+
+    it('throws error when employee is inactive', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById.mockResolvedValue({
+        id: 20,
+        employmentStatus: 'INACTIVE',
+      });
+
+      await expectRejectWithStatusAndMessage(
+        service.create(
+          {
+            planName: 'Plan cho nhân viên nghỉ việc',
+            isTemplate: false,
+            employeeId: 20,
+            startDate: '2026-05-15',
+            departmentId: 2,
+            positionId: 5,
+          },
+          1,
+        ),
+        400,
+        'Không thể tạo kế hoạch onboarding cho nhân viên không còn hoạt động',
+      );
+    });
+
+    it('throws error when startDate has invalid format', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById.mockResolvedValue({
+        id: 20,
+        departmentId: 2,
+        positionId: 5,
+        employmentStatus: 'ACTIVE',
+      });
+
+      await expectRejectWithStatusAndMessage(
+        service.create(
+          {
+            planName: 'Plan ngày sai',
+            isTemplate: false,
+            employeeId: 20,
+            startDate: '2026-99-99',
+            departmentId: 2,
+            positionId: 5,
+          },
+          1,
+        ),
+        400,
+        'Ngày bắt đầu không hợp lệ',
+      );
+    });
+
+    it('autofills department and position from employee when missing and still creates plan', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById
+        .mockResolvedValueOnce({
+          id: 21,
+          fullName: 'Nguyen Van B',
+          departmentId: 2,
+          positionId: 3,
+          employmentStatus: 'ACTIVE',
+        })
+        .mockResolvedValueOnce({
+          id: 21,
+          fullName: 'Nguyen Van B',
+          userId: null,
+        });
+      plansRepo.create.mockResolvedValue({
+        id: 101,
+        planName: 'Plan auto fill',
+        employeeId: 21,
+        departmentId: 2,
+        positionId: 3,
+      });
+      progressRepo.create.mockResolvedValue({ id: 201, planId: 101 });
+      tasksRepo.findByPlanId.mockResolvedValue([
+        { id: 301, taskOrder: 1, description: 'Task A' },
+      ]);
+      assignmentsRepo.create.mockResolvedValue({ id: 401 });
+
+      const result = await service.create(
+        {
+          planName: 'Plan auto fill',
+          isTemplate: false,
+          employeeId: 21,
+          startDate: '2026-05-15',
+          durationDays: 7,
+          tasks: [
+            { taskOrder: 1, description: 'Task A', dueDate: '2026-05-17' },
+          ],
+        },
+        1,
+      );
+
+      expect(plansRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentId: 2,
+          positionId: 3,
+        }),
+      );
+      expect(result.id).toBe(101);
+    });
+
+    it('throws error when department and position are missing after employee autofill', async () => {
+      progressRepo.findByEmployeeId.mockResolvedValue(null);
+      employeesRepo.findById.mockResolvedValue({
+        id: 22,
+        departmentId: null,
+        positionId: null,
+        employmentStatus: 'ACTIVE',
+      });
+
+      await expectRejectWithStatusAndMessage(
+        service.create(
+          {
+            planName: 'Plan thiếu phòng ban/chức vụ',
+            isTemplate: false,
+            employeeId: 22,
+            startDate: '2026-05-15',
+          },
+          1,
+        ),
+        400,
+        'Phòng ban và chức vụ không được để trống',
       );
     });
 
@@ -445,6 +638,24 @@ describe('OnboardingPlansService', () => {
       );
 
       expect(plansRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('throws error when template status is invalid', async () => {
+      await expectRejectWithStatusAndMessage(
+        service.create(
+          {
+            planName: 'Template invalid status',
+            isTemplate: true,
+            departmentId: 2,
+            positionId: 3,
+            durationDays: 14,
+            status: 'COMPLETED',
+          },
+          1,
+        ),
+        400,
+        'Trạng thái không hợp lệ',
+      );
     });
   });
 });

@@ -18,7 +18,7 @@ jest.mock('../../database/data-source.js', () => ({
   },
 }));
 
-describe('ContractsService - Create Contract (Unit Tests)', () => {
+describe('ContractsService - Contract Test ', () => {
   let service;
   let contractsRepo;
   let employeesRepo;
@@ -64,6 +64,7 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
       findByContractNumber: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      terminate: jest.fn(),
     };
 
     employeesRepo = {
@@ -141,7 +142,7 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     expect(contractsRepo.create).not.toHaveBeenCalled();
   });
 
-  it.skip('Không cho tạo nếu contractNumber đã tồn tại trong database', async () => {
+  it('Không cho tạo nếu contractNumber đã tồn tại trong database', async () => {
     const input = { ...SAMPLE };
     // Input: SAMPLE
     // Mock: nhân viên tồn tại; không có hợp đồng active
@@ -294,7 +295,22 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     );
   });
 
-  it.skip('Báo lỗi khi performanceSalary vượt quá 50% lương cơ bản', async () => {
+  it('Báo lỗi khi contractNumber không đúng định dạng', async () => {
+    const input = { ...SAMPLE, contractNumber: '00007' };
+
+    employeesRepo.findById.mockResolvedValue({
+      id: input.employeeId,
+      employeeCode: input.employeeCode,
+    });
+
+    await expectRejectWith(
+      service.create(input),
+      400,
+      'Mã hợp đồng không đúng định dạng. Mã hợp đồng phải là HDLD/2026/EMP005',
+    );
+  });
+
+  it('Báo lỗi khi performanceSalary vượt quá 50% lương cơ bản', async () => {
     const input = { ...SAMPLE, baseSalary: 1000000, performanceSalary: 600000 };
     // Note: Service create() không validate performanceSalary, chỉ validate baseSalary range
     // Test này skip vì validation chưa được implement
@@ -315,7 +331,7 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     expect(contractsRepo.create).not.toHaveBeenCalled();
   });
 
-  it.skip('Báo lỗi khi lunchAllowance vượt định mức', async () => {
+  it('Báo lỗi khi lunchAllowance vượt định mức', async () => {
     const input = { ...SAMPLE, lunchAllowance: 1000001 };
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
@@ -336,7 +352,7 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     expect(contractsRepo.create).not.toHaveBeenCalled();
   });
 
-  it.skip('Báo lỗi khi fuelAllowance vượt định mức', async () => {
+  it('Báo lỗi khi fuelAllowance vượt định mức', async () => {
     const input = { ...SAMPLE, fuelAllowance: 2000001 };
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
@@ -357,7 +373,7 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     expect(contractsRepo.create).not.toHaveBeenCalled();
   });
 
-  it.skip('Báo lỗi khi phoneAllowance vượt định mức', async () => {
+  it('Báo lỗi khi phoneAllowance vượt định mức', async () => {
     const input = { ...SAMPLE, phoneAllowance: 1000001 };
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
@@ -378,7 +394,7 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
     expect(contractsRepo.create).not.toHaveBeenCalled();
   });
 
-  it.skip('Báo lỗi khi otherAllowance vượt định mức', async () => {
+  it('Báo lỗi khi otherAllowance vượt định mức', async () => {
     const input = { ...SAMPLE, otherAllowance: 5000001 };
     // Note: Service create() không validate allowances
     // Test này skip vì validation chưa được implement
@@ -471,4 +487,104 @@ describe('ContractsService - Create Contract (Unit Tests)', () => {
       expect(result.message).toBe('Tạo hợp đồng thành công');
     }
   });
+
+  it('Cập nhật hợp đồng thành công khi dữ liệu hợp lệ', async () => {
+    const currentContract = {
+      id: 300,
+      employeeId: SAMPLE.employeeId,
+      contractNumber: SAMPLE.contractNumber,
+      contractStatus: 'DRAFT',
+      startDate: SAMPLE.startDate,
+      jobGradeId: SAMPLE.jobGradeId,
+    };
+    const updateDto = { note: 'Đã cập nhật thông tin hợp đồng' };
+
+    contractsRepo.findById.mockResolvedValue(currentContract);
+    contractsRepo.update.mockResolvedValue({
+      ...currentContract,
+      ...updateDto,
+    });
+
+    const result = await service.update(currentContract.id, updateDto);
+
+    expect(contractsRepo.update).toHaveBeenCalledWith(
+      currentContract.id,
+      expect.objectContaining(updateDto),
+    );
+    expect(result).toEqual({ ...currentContract, ...updateDto });
+  });
+
+  it('Không được phép thay đổi nhân viên của hợp đồng', async () => {});
+
+  it('Không được phép thay đổi mã hợp đồng', async () => {});
+
+  it('Phòng ban không tồn tại khi cập nhật', async () => {});
+
+  it('Vị trí không tồn tại khi cập nhật', async () => {});
+
+  it('Ngạch lương không tồn tại khi cập nhật', async () => {});
+
+  it('Lương cơ bản vượt khung ngạch khi cập nhật', async () => {});
+
+  it('Ngày kết thúc phải sau ngày bắt đầu khi cập nhật', async () => {});
+
+  it('Ngày ký hợp đồng không thể sau ngày bắt đầu khi cập nhật', async () => {});
+
+  it('Trạng thái hợp đồng không hợp lệ khi cập nhật', async () => {});
+
+  it('Không được cập nhật hợp đồng ở trạng thái khóa', async () => {});
+
+  it('Chấm dứt hợp đồng thành công khi dữ liệu hợp lệ', async () => {
+    const currentContract = {
+      id: 400,
+      employeeId: SAMPLE.employeeId,
+      contractNumber: SAMPLE.contractNumber,
+      contractStatus: 'ACTIVE',
+      startDate: '2026-03-01',
+    };
+    const terminationData = {
+      terminationDate: '2026-03-15',
+      terminationReason: 'resignation',
+      terminationCompensation: 5000000,
+      terminationNote: 'Hoàn tất bàn giao',
+    };
+
+    contractsRepo.findById.mockResolvedValue(currentContract);
+    contractsRepo.terminate.mockResolvedValue({
+      ...currentContract,
+      ...terminationData,
+      contractStatus: 'TERMINATED',
+    });
+
+    const result = await service.terminate(currentContract.id, terminationData);
+
+    expect(contractsRepo.terminate).toHaveBeenCalledWith(
+      currentContract.id,
+      expect.objectContaining(terminationData),
+      undefined,
+    );
+    expect(result).toEqual({
+      ...currentContract,
+      ...terminationData,
+      contractStatus: 'TERMINATED',
+    });
+  });
+
+  it('Không được chấm dứt hợp đồng đã terminated', async () => {});
+
+  it('Không được chấm dứt hợp đồng ở trạng thái không hợp lệ', async () => {});
+
+  it('Thiếu ngày chấm dứt hợp đồng', async () => {});
+
+  it('Thiếu lý do chấm dứt', async () => {});
+
+  it('Ngày chấm dứt không được trước ngày bắt đầu hợp đồng', async () => {});
+
+  it('Ngày chấm dứt không hợp lệ', async () => {});
+
+  it('Bồi thường không được âm', async () => {});
+
+  it('Mức bồi thường không được vượt quá 50000000', async () => {});
+
+  it('Không được thao tác chấm dứt hợp đồng của chính mình', async () => {});
 });

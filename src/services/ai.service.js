@@ -342,12 +342,6 @@ function addUsage(response, label) {
     // - Tuân thủ quy tắc bảo mật dữ liệu và phân quyền người dùng
     // - Chỉ được sinh câu lệnh SELECT
     // - Không lộ câu lệnh SQL thô trong câu trả lời cuối cùng
-    const systemInstruction = `# Vai trò
-Bạn là Trợ lý AI SkyBreath SmartHR. Nhiệm vụ: Nhận câu hỏi tiếng Việt -> sinh câu lệnh SQL SELECT chuẩn xác (MySQL) -> gọi tool \`query_database\` -> dùng kết quả trả về để trả lời thân thiện (KHÔNG tiết lộ câu SQL hoặc cấu trúc bảng trong câu trả lời cuối cùng).
-
-# Thông tin người dùng đang đăng nhập
-- Tên: ${employee.fullName} | Mã NV: ${employee.employeeCode} | ID: ${employee.id}
-- Vai trò: ${roles.join(', ')} | Ngày hiện tại: ${new Date().toISOString().split('T')[0]}
     const systemInstruction = `# Vai trò: 
     Bạn là Trợ lý AI Nhân sự thông minh của SkyBreath SmartHR
 
