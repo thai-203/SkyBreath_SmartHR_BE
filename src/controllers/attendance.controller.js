@@ -25,6 +25,23 @@ export class AttendanceController {
     }
   };
 
+  getMyRecords = async (req, res, next) => {
+    try {
+      const userId = req.user.id;
+      const result = await this.attendanceService.getMyRecords(
+        userId,
+        req.query,
+      );
+      ResponseUtil.sendResponse(
+        res,
+        'Attendance records retrieved successfully',
+        result,
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
   checkIn = async (req, res, next) => {
     const userId = req.user.id;
     const employee = await this.employeeRepository.findByUserId(userId);

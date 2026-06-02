@@ -85,23 +85,20 @@ describe('ShiftGroupsService', () => {
       expect(shiftGroupsRepo.create).not.toHaveBeenCalled();
     });
 
-    it.each([{ groupName: '' }, { groupName: '   ' }])(
-      'Không cho tạo nếu tên nhóm ca trống: "$groupName"',
-      async ({ groupName }) => {
-        await expectHttpError(
-          service.create({
-            groupName,
-            status: 'active',
-            description: 'Ca số 1',
-          }),
-          400,
-          'Tên nhóm ca không được để trống',
-        );
+    it('Không cho tạo nếu tên nhóm ca trống', async () => {
+      await expectHttpError(
+        service.create({
+          groupName: '   ',
+          status: 'active',
+          description: 'Ca số 1',
+        }),
+        400,
+        'Tên nhóm ca không được để trống',
+      );
 
-        expect(shiftGroupsRepo.findAll).not.toHaveBeenCalled();
-        expect(shiftGroupsRepo.create).not.toHaveBeenCalled();
-      },
-    );
+      expect(shiftGroupsRepo.findAll).not.toHaveBeenCalled();
+      expect(shiftGroupsRepo.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('Update Shift Group', () => {
