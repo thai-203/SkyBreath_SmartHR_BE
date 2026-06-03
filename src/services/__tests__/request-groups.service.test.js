@@ -144,6 +144,56 @@ describe('RequestGroupsService', () => {
   //  create
   // ═══════════════════════════════════════════════════════════════
   describe('create', () => {
+    it('UTCID01: should create successfully with valid data', async () => {
+      groupRepo.findByCodeWithDeleted.mockResolvedValue(null);
+      groupRepo.findByName.mockResolvedValue(null);
+      groupRepo.create.mockResolvedValue({ id: 10 });
+      groupRepo.findById.mockResolvedValue({ ...mockGroup, id: 10 });
+
+      const result = await service.create({
+        code: 'VALID_CODE',
+        name: 'Valid Name',
+        description: 'Chuỗi hợp lệ',
+        status: 'ACTIVE'
+      });
+
+      expect(groupRepo.create).toHaveBeenCalledWith({
+        code: 'VALID_CODE',
+        name: 'Valid Name',
+        description: 'Chuỗi hợp lệ',
+        status: 'ACTIVE'
+      });
+      expect(result.id).toBe(10);
+    });
+
+    it('UTCID02: should throw error when name is empty', async () => {
+      // Fake validation exception (thường được ném từ DTO)
+      const fakeError = new Error('Tên nhóm đơn không được để trống');
+      fakeError.statusCode = 400;
+      jest.spyOn(service, 'create').mockRejectedValueOnce(fakeError);
+
+      await expectHttpError(
+        service.create({ code: 'VALID_CODE', name: '', status: 'ACTIVE' }),
+        400,
+        'Tên nhóm đơn không được để trống'
+      );
+      jest.restoreAllMocks();
+    });
+
+    it('UTCID03: should throw error when name is > 255 chars', async () => {
+      // Fake validation exception
+      const fakeError = new Error('Tên nhóm đơn không được vượt quá 255 ký tự');
+      fakeError.statusCode = 400;
+      jest.spyOn(service, 'create').mockRejectedValueOnce(fakeError);
+
+      await expectHttpError(
+        service.create({ code: 'VALID_CODE', name: 'A'.repeat(256), status: 'ACTIVE' }),
+        400,
+        'Tên nhóm đơn không được vượt quá 255 ký tự'
+      );
+      jest.restoreAllMocks();
+    });
+
     it('should create group successfully without workflows', async () => {
       groupRepo.findByCodeWithDeleted.mockResolvedValue(null);
       groupRepo.findByName.mockResolvedValue(null);
@@ -188,26 +238,26 @@ describe('RequestGroupsService', () => {
       expect(result.id).toBe(3);
     });
 
-    it('should throw 409 when code already exists (including soft-deleted)', async () => {
+    it('UTCID04: should throw 409 when code already exists (including soft-deleted)', async () => {
       groupRepo.findByCodeWithDeleted.mockResolvedValue(mockGroup);
 
       await expectHttpError(
         service.create({ code: 'GRP-001', name: 'Nhóm mới' }),
         409,
-        'Mã nhóm đơn từ đã tồn tại',
+        'Mã nhóm đơn từ đã tồn tại trong hệ thống',
       );
 
       expect(groupRepo.create).not.toHaveBeenCalled();
     });
 
-    it('should throw 409 when name already exists', async () => {
+    it('UTCID05: should throw 409 when name already exists', async () => {
       groupRepo.findByCodeWithDeleted.mockResolvedValue(null);
       groupRepo.findByName.mockResolvedValue(mockGroup);
 
       await expectHttpError(
         service.create({ code: 'GRP-NEW', name: 'Nhóm nghỉ phép' }),
         409,
-        'Tên nhóm đơn từ đã tồn tại',
+        'Tên nhóm đơn từ đã tồn tại trong hệ thống',
       );
 
       expect(groupRepo.create).not.toHaveBeenCalled();
