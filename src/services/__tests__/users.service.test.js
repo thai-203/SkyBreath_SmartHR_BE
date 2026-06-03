@@ -84,83 +84,78 @@ describe('UsersService - create', () => {
   };
 
   describe('Manual Validation', () => {
-    it('should throw BadRequestException if email is missing', async () => {
-      await expect(usersService.create({ ...validDto, email: '' })).rejects.toThrow(
-        BadRequestException,
-      );
+    it('should throw "Email không được để trống" if email is missing', async () => {
+      await expect(usersService.create({ ...validDto, email: '' })).rejects.toThrow('Email không được để trống');
     });
 
-    it('should throw BadRequestException if email is invalid', async () => {
+    it('should throw "Email không hợp lệ" if email is invalid', async () => {
       await expect(
         usersService.create({ ...validDto, email: 'invalid' }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Email không hợp lệ');
     });
 
-    it('should throw BadRequestException if username is missing', async () => {
+    it('should throw "Tên đăng nhập không được để trống" if username is missing', async () => {
       await expect(
         usersService.create({ ...validDto, username: '' }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Tên đăng nhập không được để trống');
     });
 
-    it('should throw BadRequestException if username is too long', async () => {
+    it('should throw "Tên đăng nhập không được vượt quá 50 ký tự" if username is too long', async () => {
       await expect(
         usersService.create({ ...validDto, username: 'a'.repeat(51) }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Tên đăng nhập không được vượt quá 50 ký tự');
     });
 
-    it('should throw BadRequestException if password is missing', async () => {
+    it('should throw "Mật khẩu không được để trống" if password is missing', async () => {
       await expect(
         usersService.create({ ...validDto, password: '' }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu không được để trống');
     });
 
-    it('should throw BadRequestException if password is weak', async () => {
+    it('should throw "Mật khẩu phải chứa ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt" if password is weak', async () => {
       await expect(
         usersService.create({ ...validDto, password: 'simplepassword' }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu phải chứa ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt');
     });
 
-    it('should throw BadRequestException if roleIds is not an array', async () => {
+    it('should throw "Danh sách vai trò không hợp lệ" if roleIds is not an array', async () => {
       await expect(
         usersService.create({ ...validDto, roleIds: 'not-an-array' }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Danh sách vai trò không hợp lệ');
     });
 
-    it('should throw BadRequestException if status is too long', async () => {
+    it('should throw "Trạng thái không hợp lệ" if status is too long', async () => {
       await expect(
         usersService.create({ ...validDto, status: 'a'.repeat(21) }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Trạng thái không hợp lệ');
     });
   });
 
   describe('Business Logic', () => {
-    it('should throw ConflictException if email already exists', async () => {
+    it('should throw "Email đã tồn tại" if email already exists', async () => {
       mockUsersRepo.findByEmail.mockResolvedValue({ id: 1 });
 
-      await expect(usersService.create(validDto)).rejects.toThrow(ConflictException);
+      await expect(usersService.create(validDto)).rejects.toThrow('Email đã tồn tại');
     });
 
-    it('should throw ConflictException if username already exists', async () => {
+    it('should throw "Tên đăng nhập đã tồn tại" if username already exists', async () => {
       mockUsersRepo.findByEmail.mockResolvedValue(null);
       mockUsersRepo.findOne.mockResolvedValue({ id: 1 });
-
-      await expect(usersService.create(validDto)).rejects.toThrow(ConflictException);
+      await expect(usersService.create(validDto)).rejects.toThrow('Tên đăng nhập đã tồn tại');
     });
 
-    it('should throw ForbiddenException if trying to assign ADMIN role', async () => {
+    it('should throw "Không thể gán vai trò admin" if trying to assign ADMIN role', async () => {
       mockUsersRepo.findByEmail.mockResolvedValue(null);
       mockUsersRepo.findOne.mockResolvedValue(null);
       mockRolesRepo.findByIds.mockResolvedValue([{ id: 1, roleName: 'ADMIN' }]);
-
-      await expect(usersService.create(validDto)).rejects.toThrow(ForbiddenException);
+      await expect(usersService.create(validDto)).rejects.toThrow('Không thể gán vai trò admin');
     });
 
-    it('should throw NotFoundException if some roles are not found', async () => {
+    it('should throw "Không tìm thấy người dùng" if some roles are not found', async () => {
       mockUsersRepo.findByEmail.mockResolvedValue(null);
       mockUsersRepo.findOne.mockResolvedValue(null);
       mockRolesRepo.findByIds.mockResolvedValue([{ id: 1, roleName: 'USER' }]); // Only 1 found but 2 requested
-
-      await expect(usersService.create(validDto)).rejects.toThrow(NotFoundException);
+      await expect(usersService.create(validDto)).rejects.toThrow('Không tìm thấy người dùng');
     });
 
     it('should create user and assign roles on success', async () => {

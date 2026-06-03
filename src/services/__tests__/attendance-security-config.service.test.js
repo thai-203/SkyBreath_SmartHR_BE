@@ -45,7 +45,7 @@ describe('AttendanceSecurityConfigService', () => {
 
   describe('updateConfig', () => {
     // ── Boolean Validations ───────────────────────────────────────────────
-    it('should throw error if requireIpCheck is not boolean', async () => {
+    it('should throw "Kiểm tra IP phải là kiểu boolean" if requireIpCheck is not boolean', async () => {
       try {
         await service.updateConfig({ requireIpCheck: 'yes' });
         fail('Should have thrown an error');
@@ -54,7 +54,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if requireLocationCheck is not boolean', async () => {
+    it('should throw "Kiểm tra vị trí phải là kiểu boolean" if requireLocationCheck is not boolean', async () => {
       try {
         await service.updateConfig({ requireLocationCheck: 1 });
         fail('Should have thrown an error');
@@ -63,7 +63,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if blockVpn is not boolean', async () => {
+    it('should throw "Chặn VPN phải là kiểu boolean" if blockVpn is not boolean', async () => {
       try {
         await service.updateConfig({ blockVpn: 'true' });
         fail('Should have thrown an error');
@@ -73,7 +73,7 @@ describe('AttendanceSecurityConfigService', () => {
     });
 
     // ── Location Validations (when requireLocationCheck is true) ───────────
-    it('should throw error if officeLatitude is missing when location check is enabled', async () => {
+    it('should throw "Vĩ độ văn phòng không được để trống" if officeLatitude is missing when location check is enabled', async () => {
       try {
         await service.updateConfig({ requireLocationCheck: true });
         fail('Should have thrown an error');
@@ -82,7 +82,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if officeLatitude is invalid', async () => {
+    it('should throw "Vĩ độ phải nằm trong khoảng -90 đến 90" if officeLatitude is invalid', async () => {
       try {
         await service.updateConfig({ requireLocationCheck: true, officeLatitude: 100 });
         fail('Should have thrown an error');
@@ -91,7 +91,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if officeLongitude is missing when location check is enabled', async () => {
+    it('should throw "Kinh độ văn phòng không được để trống" if officeLongitude is missing when location check is enabled', async () => {
       try {
         await service.updateConfig({ requireLocationCheck: true, officeLatitude: 10 });
         fail('Should have thrown an error');
@@ -100,7 +100,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if officeLongitude is invalid', async () => {
+    it('should throw "Kinh độ phải nằm trong khoảng -180 đến 180" if officeLongitude is invalid', async () => {
       try {
         await service.updateConfig({ requireLocationCheck: true, officeLatitude: 10, officeLongitude: 200 });
         fail('Should have thrown an error');
@@ -109,7 +109,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if locationRadiusMeters is missing when location check is enabled', async () => {
+    it('should throw "Bán kính cho phép không được để trống" if locationRadiusMeters is missing when location check is enabled', async () => {
       try {
         await service.updateConfig({ requireLocationCheck: true, officeLatitude: 10, officeLongitude: 20 });
         fail('Should have thrown an error');
@@ -118,7 +118,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if locationRadiusMeters is negative', async () => {
+    it('should throw "Bán kính phải lớn hơn hoặc bằng 0" if locationRadiusMeters is negative', async () => {
       try {
         await service.updateConfig({ requireLocationCheck: true, officeLatitude: 10, officeLongitude: 20, locationRadiusMeters: -5 });
         fail('Should have thrown an error');
@@ -128,7 +128,7 @@ describe('AttendanceSecurityConfigService', () => {
     });
 
     // ── Scope & Target Validations ────────────────────────────────────────
-    it('should throw error if applyTo is invalid', async () => {
+    it('should throw "Phạm vi áp dụng không hợp lệ" if applyTo is invalid', async () => {
       try {
         await service.updateConfig({ applyTo: 'DEPARTMENT' });
         fail('Should have thrown an error');
@@ -137,7 +137,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if targetIds is not an array', async () => {
+    it('should throw "Danh sách ID áp dụng phải là một mảng" if targetIds is not an array', async () => {
       try {
         await service.updateConfig({ targetIds: '1,2,3' });
         fail('Should have thrown an error');
@@ -146,7 +146,7 @@ describe('AttendanceSecurityConfigService', () => {
       }
     });
 
-    it('should throw error if targetIds contains non-numbers', async () => {
+    it('should throw "ID nhân viên phải là kiểu số" if targetIds contains non-numbers', async () => {
       try {
         await service.updateConfig({ targetIds: [1, 'abc'] });
         fail('Should have thrown an error');

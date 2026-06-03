@@ -14,7 +14,8 @@
     "test": "jest",
     "seed": "babel-node src/database/seeds/initial-seed.js",
     "seed:permissions": "babel-node src/database/seeds/permissions-seed.js",
-    "seed:attendance": "babel-node src/database/seeds/attendance-seed.js"
+    "seed:attendance": "babel-node src/database/seeds/attendance-seed.js",
+    "seed:performance-reviews": "babel-node src/database/seeds/performance-reviews-seed.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

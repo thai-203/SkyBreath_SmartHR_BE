@@ -19,37 +19,37 @@ describe('AttendanceBlockingConfigService', () => {
   });
 
   describe('create', () => {
-    it('should throw BadRequestException if errorType is invalid', async () => {
+    it('should throw "Loại vi phạm không hợp lệ" if errorType is invalid', async () => {
       const data = { errorType: 'INVALID', ruleName: 'Test Rule' };
       await expect(service.create(data)).rejects.toThrow(BadRequestException);
       await expect(service.create(data)).rejects.toThrow('Loại vi phạm không hợp lệ');
     });
 
-    it('should throw BadRequestException if ruleName is empty', async () => {
+    it('should throw "Tên quy tắc không được để trống" if ruleName is empty', async () => {
       const data = { errorType: 'FACE', ruleName: '   ' };
       await expect(service.create(data)).rejects.toThrow(BadRequestException);
       await expect(service.create(data)).rejects.toThrow('Tên quy tắc không được để trống');
     });
 
-    it('should throw BadRequestException if applyTo is invalid', async () => {
+    it('should throw "Phạm vi áp dụng không hợp lệ" if applyTo is invalid', async () => {
       const data = { errorType: 'FACE', ruleName: 'Test Rule', applyTo: 'INVALID_SCOPE' };
       await expect(service.create(data)).rejects.toThrow(BadRequestException);
       await expect(service.create(data)).rejects.toThrow('Phạm vi áp dụng không hợp lệ');
     });
 
-    it('should throw BadRequestException if targetIds is not an array', async () => {
+    it('should throw "Danh sách ID áp dụng phải là một mảng" if targetIds is not an array', async () => {
       const data = { errorType: 'FACE', ruleName: 'Test Rule', applyTo: 'EMPLOYEE', targetIds: 'not-array' };
       await expect(service.create(data)).rejects.toThrow(BadRequestException);
       await expect(service.create(data)).rejects.toThrow('Danh sách ID áp dụng phải là một mảng');
     });
 
-    it('should throw BadRequestException if targetIds contains non-number', async () => {
+    it('should throw "ID nhân viên phải là kiểu số" if targetIds contains non-number', async () => {
       const data = { errorType: 'FACE', ruleName: 'Test Rule', applyTo: 'EMPLOYEE', targetIds: [1, 'abc'] };
       await expect(service.create(data)).rejects.toThrow(BadRequestException);
       await expect(service.create(data)).rejects.toThrow('ID nhân viên phải là kiểu số');
     });
 
-    it('should throw BadRequestException if rule already exists for errorType', async () => {
+    it('should throw "BLOCKING_RULE_ALREADY_EXISTS" if rule already exists for errorType', async () => {
       const data = { errorType: 'FACE', ruleName: 'Test Rule' };
       mockRepo.findByErrorType.mockResolvedValue({ id: 1, errorType: 'FACE' });
 
@@ -89,19 +89,19 @@ describe('AttendanceBlockingConfigService', () => {
   });
 
   describe('update', () => {
-    it('should throw BadRequestException if errorType is invalid', async () => {
+    it('should throw "Loại vi phạm không hợp lệ" if errorType is invalid (update)', async () => {
       const data = { errorType: 'INVALID', ruleName: 'Test Rule' };
       await expect(service.update(1, data)).rejects.toThrow(BadRequestException);
       await expect(service.update(1, data)).rejects.toThrow('Loại vi phạm không hợp lệ');
     });
 
-    it('should throw BadRequestException if ruleName is empty', async () => {
+    it('should throw "Tên quy tắc không được để trống" if ruleName is empty (update)', async () => {
       const data = { errorType: 'FACE', ruleName: '   ' };
       await expect(service.update(1, data)).rejects.toThrow(BadRequestException);
       await expect(service.update(1, data)).rejects.toThrow('Tên quy tắc không được để trống');
     });
 
-    it('should throw BadRequestException if rule not found', async () => {
+    it('should throw "BLOCKING_RULE_NOT_FOUND" if rule not found', async () => {
       const data = { errorType: 'FACE', ruleName: 'Updated Rule' };
       mockRepo.findById.mockResolvedValue(null);
 

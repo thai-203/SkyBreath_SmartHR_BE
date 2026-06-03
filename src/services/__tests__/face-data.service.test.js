@@ -39,14 +39,14 @@ describe('FaceDataService - registerFaces', () => {
   };
   const mockFiles = [{ filename: 'img1.jpg' }, { filename: 'img2.jpg' }];
 
-  it('1. Quăng lỗi NotFound nếu không tìm thấy employee', async () => {
+  it('1. Quăng lỗi "Không tìm thấy nhân viên" nếu không tìm thấy employee', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(null);
 
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(NotFoundException);
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow('Không tìm thấy nhân viên');
   });
 
-  it('2. Quăng lỗi BadRequest nếu nhân viên đã đăng ký khuôn mặt', async () => {
+  it('2. Quăng lỗi "Nhân viên đã đăng ký khuôn mặt" nếu nhân viên đã đăng ký khuôn mặt', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(mockEmployee);
     mockFaceDataRepo.findByEmployeeIdWithEmpInfo.mockResolvedValue({ id: 1 }); // Đã tồn tại
 
@@ -54,7 +54,7 @@ describe('FaceDataService - registerFaces', () => {
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow('Nhân viên đã đăng ký khuôn mặt');
   });
 
-  it('3. Quăng lỗi BadRequest nếu thiếu files', async () => {
+  it('3. Quăng lỗi "Vui lòng cung cấp ít nhất một ảnh để đăng ký khuôn mặt." nếu thiếu files', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(mockEmployee);
     mockFaceDataRepo.findByEmployeeIdWithEmpInfo.mockResolvedValue(null);
 

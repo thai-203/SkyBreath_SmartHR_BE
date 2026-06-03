@@ -20,7 +20,7 @@ describe('AttendanceAllowedIpService', () => {
   });
 
   describe('createAllowedIp', () => {
-    it('should throw error if ipRange is missing', async () => {
+    it('should throw "IP Range không hợp lệ hoặc bị trống" if ipRange is missing', async () => {
       try {
         await service.createAllowedIp({});
         fail('Should have thrown an error');
@@ -29,7 +29,7 @@ describe('AttendanceAllowedIpService', () => {
       }
     });
 
-    it('should throw error if ipRange is not a string', async () => {
+    it('should throw "IP Range không hợp lệ hoặc bị trống" if ipRange is not a string', async () => {
       try {
         await service.createAllowedIp({ ipRange: 12345 });
         fail('Should have thrown an error');
@@ -38,7 +38,7 @@ describe('AttendanceAllowedIpService', () => {
       }
     });
 
-    it('should throw error if ipRange is empty string', async () => {
+    it('should throw "IP Range không hợp lệ hoặc bị trống" if ipRange is empty string', async () => {
       try {
         await service.createAllowedIp({ ipRange: '   ' });
         fail('Should have thrown an error');
@@ -47,7 +47,7 @@ describe('AttendanceAllowedIpService', () => {
       }
     });
 
-    it('should throw error if IP already exists', async () => {
+    it('should throw "ALLOWED_IP_ALREADY_EXISTS" if IP already exists', async () => {
       const mockConfig = { id: 'config-1' };
       mockConfigService.getConfig.mockResolvedValue(mockConfig);
       mockRepo.findByIpAndConfig.mockResolvedValue({ id: 'existing-ip' });

@@ -13,6 +13,7 @@ import {
 } from '../../common/utils/index.js';
 import { setRequestContextValue } from '../../common/context/request-context.js';
 import * as jwt from 'jsonwebtoken';
+import { config } from '../../config/env.config.js';
 import crypto from 'crypto';
 import { v4 } from 'uuid';
 
@@ -68,6 +69,12 @@ jest.mock('../../config/env.config.js', () => ({
       pass: 'test',
       from: 'test@example.com',
     },
+    jwt: {
+      secret: 'secret',
+      expiresIn: '15m',
+      refreshSecret: 'refresh-secret',
+      refreshExpiresIn: '7d',
+    },
   },
 }));
 
@@ -105,41 +112,43 @@ describe('AuthService', () => {
 
   describe('login', () => {
     describe('_validateUser (via login)', () => {
-      it('should throw BadRequestException if email is missing', async () => {
+      it('should throw "Email không được để trống" if email is missing', async () => {
         await expect(authService.login(null, 'password')).rejects.toThrow(
-          BadRequestException,
+          'Email không được để trống',
         );
       });
 
-      it('should throw BadRequestException if password is missing', async () => {
+      it('should throw "Mật khẩu không được để trống" if password is missing', async () => {
         await expect(
           authService.login('test@example.com', null),
-        ).rejects.toThrow(BadRequestException);
+        ).rejects.toThrow('Mật khẩu không được để trống');
       });
 
-      it('should throw BadRequestException if email is invalid', async () => {
+      it('should throw "Email không hợp lệ" if email is invalid', async () => {
         await expect(
           authService.login('invalid-email', 'Password123!'),
-        ).rejects.toThrow(BadRequestException);
+        ).rejects.toThrow('Email không hợp lệ');
       });
 
-      it('should throw BadRequestException if password format is invalid', async () => {
+      it('should throw "Mật khẩu phải chứa ít nhất 8 ký tự..." if password format is invalid', async () => {
         await expect(
           authService.login('test@example.com', 'weak'),
-        ).rejects.toThrow(BadRequestException);
+        ).rejects.toThrow(
+          'Mật khẩu phải chứa ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt',
+        );
       });
 
-      it('should throw UnauthorizedException if user is not found', async () => {
+      it('should throw "Email hoặc mật khẩu không chính xác" if user is not found', async () => {
         mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue(
           null,
         );
 
         await expect(
           authService.login('test@example.com', 'Password123!'),
-        ).rejects.toThrow(UnauthorizedException);
+        ).rejects.toThrow('Email hoặc mật khẩu không chính xác');
       });
 
-      it('should throw UnauthorizedException if password does not match', async () => {
+      it('should throw "Email hoặc mật khẩu không chính xác" if password does not match', async () => {
         mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
           password: 'hashed-password',
         });
@@ -147,10 +156,10 @@ describe('AuthService', () => {
 
         await expect(
           authService.login('test@example.com', 'Password123!'),
-        ).rejects.toThrow(UnauthorizedException);
+        ).rejects.toThrow('Email hoặc mật khẩu không chính xác');
       });
 
-      it('should throw UnauthorizedException if account is LOCKED', async () => {
+      it('should throw "Tài khoản của bạn đã bị khóa" if account is LOCKED', async () => {
         mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
           password: 'hashed-password',
           status: 'LOCKED',
@@ -159,10 +168,10 @@ describe('AuthService', () => {
 
         await expect(
           authService.login('test@example.com', 'Password123!'),
-        ).rejects.toThrow(UnauthorizedException);
+        ).rejects.toThrow('Tài khoản của bạn đã bị khóa');
       });
 
-      it('should throw UnauthorizedException if account is INACTIVE', async () => {
+      it('should throw "Tài khoản chưa được kích hoạt" if account is INACTIVE', async () => {
         mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
           password: 'hashed-password',
           status: 'INACTIVE',
@@ -171,10 +180,10 @@ describe('AuthService', () => {
 
         await expect(
           authService.login('test@example.com', 'Password123!'),
-        ).rejects.toThrow(UnauthorizedException);
+        ).rejects.toThrow('Tài khoản chưa được kích hoạt');
       });
 
-      it('should throw UnauthorizedException if password change is required', async () => {
+      it('should throw "Bạn cần đổi mật khẩu trước khi tiếp tục" if password change is required', async () => {
         mockUsersRepository.findByEmailWithPasswordBuilder.mockResolvedValue({
           password: 'hashed-password',
           status: 'ACTIVE',
@@ -184,7 +193,7 @@ describe('AuthService', () => {
 
         await expect(
           authService.login('test@example.com', 'Password123!'),
-        ).rejects.toThrow(UnauthorizedException);
+        ).rejects.toThrow('Bạn cần đổi mật khẩu trước khi tiếp tục');
       });
     });
 
@@ -286,18 +295,18 @@ describe('AuthService', () => {
         );
         comparePassword.mockResolvedValue(true);
 
-        const originalSecret = process.env.JWT_SECRET;
-        const originalRefreshSecret = process.env.JWT_REFRESH_SECRET;
-        delete process.env.JWT_SECRET;
-        delete process.env.JWT_REFRESH_SECRET;
+        const originalSecret = config.jwt.secret;
+        const originalRefreshSecret = config.jwt.refreshSecret;
+        config.jwt.secret = undefined;
+        config.jwt.refreshSecret = undefined;
 
         try {
           await expect(
             authService.login('test@example.com', 'Password123!'),
           ).rejects.toThrow('Lỗi hệ thống, vui lòng thử lại sau');
         } finally {
-          process.env.JWT_SECRET = originalSecret;
-          process.env.JWT_REFRESH_SECRET = originalRefreshSecret;
+          config.jwt.secret = originalSecret;
+          config.jwt.refreshSecret = originalRefreshSecret;
         }
       });
     });
@@ -312,15 +321,15 @@ describe('AuthService', () => {
       mustChangePassword: false,
     };
 
-    it('should throw NotFoundException if user is not found', async () => {
+    it('should throw "Không tìm thấy tài khoản" if user is not found', async () => {
       mockUsersRepository.findById.mockResolvedValue(null);
 
       await expect(
         authService.refreshTokens(1, 'some-token'),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow('Không tìm thấy tài khoản');
     });
 
-    it('should throw UnauthorizedException if refresh token is missing in DB', async () => {
+    it('should throw "Phiên đăng nhập không hợp lệ" if refresh token is missing in DB', async () => {
       mockUsersRepository.findById.mockResolvedValue({
         ...mockUser,
         refreshToken: null,
@@ -328,19 +337,19 @@ describe('AuthService', () => {
 
       await expect(
         authService.refreshTokens(1, 'some-token'),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Phiên đăng nhập không hợp lệ');
     });
 
-    it('should throw UnauthorizedException if refresh token mismatch', async () => {
+    it('should throw "Phiên đăng nhập không hợp lệ" if refresh token mismatch', async () => {
       mockUsersRepository.findById.mockResolvedValue(mockUser);
       compareRefreshToken.mockReturnValue(false);
 
       await expect(
         authService.refreshTokens(1, 'invalid-token'),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Phiên đăng nhập không hợp lệ');
     });
 
-    it('should throw UnauthorizedException if account is LOCKED', async () => {
+    it('should throw "Tài khoản của bạn đã bị khóa" if account is LOCKED', async () => {
       mockUsersRepository.findById.mockResolvedValue({
         ...mockUser,
         status: 'LOCKED',
@@ -349,10 +358,10 @@ describe('AuthService', () => {
 
       await expect(
         authService.refreshTokens(1, 'valid-refresh-token'),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Tài khoản của bạn đã bị khóa');
     });
 
-    it('should throw UnauthorizedException if account is INACTIVE', async () => {
+    it('should throw "Tài khoản chưa được kích hoạt" if account is INACTIVE', async () => {
       mockUsersRepository.findById.mockResolvedValue({
         ...mockUser,
         status: 'INACTIVE',
@@ -361,10 +370,10 @@ describe('AuthService', () => {
 
       await expect(
         authService.refreshTokens(1, 'valid-refresh-token'),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Tài khoản chưa được kích hoạt');
     });
 
-    it('should throw UnauthorizedException if password change is required', async () => {
+    it('should throw "Bạn cần đổi mật khẩu trước khi tiếp tục" if password change is required', async () => {
       mockUsersRepository.findById.mockResolvedValue({
         ...mockUser,
         mustChangePassword: true,
@@ -373,7 +382,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.refreshTokens(1, 'valid-refresh-token'),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Bạn cần đổi mật khẩu trước khi tiếp tục');
     });
 
     it('should return new tokens on successful refresh', async () => {
@@ -421,16 +430,16 @@ describe('AuthService', () => {
       mustChangePassword: false,
     };
 
-    it('should throw BadRequestException if email is missing', async () => {
+    it('should throw "Email không được để trống" if email is missing', async () => {
       await expect(authService.forgotPassword(null)).rejects.toThrow(
-        BadRequestException,
+        'Email không được để trống',
       );
     });
 
-    it('should throw BadRequestException if email is invalid', async () => {
+    it('should throw "Email không hợp lệ" if email is invalid', async () => {
       await expect(
         authService.forgotPassword('invalid-email'),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Email không hợp lệ');
     });
 
     it('should return security message if user is not found', async () => {
@@ -443,33 +452,33 @@ describe('AuthService', () => {
       });
     });
 
-    it('should throw UnauthorizedException if account is LOCKED', async () => {
+    it('should throw "Tài khoản của bạn đã bị khóa" if account is LOCKED', async () => {
       mockUsersRepository.findByEmail.mockResolvedValue({
         ...mockUser,
         status: 'LOCKED',
       });
       await expect(authService.forgotPassword(email)).rejects.toThrow(
-        UnauthorizedException,
+        'Tài khoản của bạn đã bị khóa',
       );
     });
 
-    it('should throw UnauthorizedException if account is INACTIVE', async () => {
+    it('should throw "Tài khoản chưa được kích hoạt" if account is INACTIVE', async () => {
       mockUsersRepository.findByEmail.mockResolvedValue({
         ...mockUser,
         status: 'INACTIVE',
       });
       await expect(authService.forgotPassword(email)).rejects.toThrow(
-        UnauthorizedException,
+        'Tài khoản chưa được kích hoạt',
       );
     });
 
-    it('should throw UnauthorizedException if password change is required', async () => {
+    it('should throw "Bạn cần đổi mật khẩu trước khi tiếp tục" if password change is required', async () => {
       mockUsersRepository.findByEmail.mockResolvedValue({
         ...mockUser,
         mustChangePassword: true,
       });
       await expect(authService.forgotPassword(email)).rejects.toThrow(
-        UnauthorizedException,
+        'Bạn cần đổi mật khẩu trước khi tiếp tục',
       );
     });
 
@@ -516,45 +525,47 @@ describe('AuthService', () => {
       otpExpiresAt: new Date(Date.now() + 10000),
     };
 
-    it('should throw BadRequestException if otpRequestId is missing', async () => {
+    it('should throw "OTP không hợp lệ hoặc đã hết hạn" if otpRequestId is missing', async () => {
       await expect(
         authService.resetPasswordWithOtp(null, otp, newPassword),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('OTP không hợp lệ hoặc đã hết hạn');
     });
 
-    it('should throw BadRequestException if otp is missing', async () => {
+    it('should throw "OTP không hợp lệ hoặc đã hết hạn" if otp is missing', async () => {
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, null, newPassword),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('OTP không hợp lệ hoặc đã hết hạn');
     });
 
-    it('should throw BadRequestException if otp is not 6 digits', async () => {
+    it('should throw "OTP không hợp lệ hoặc đã hết hạn" if otp is not 6 digits', async () => {
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, '123', newPassword),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('OTP không hợp lệ hoặc đã hết hạn');
     });
 
-    it('should throw BadRequestException if newPassword is missing', async () => {
+    it('should throw "Mật khẩu không được để trống" if newPassword is missing', async () => {
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, null),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu không được để trống');
     });
 
-    it('should throw BadRequestException if newPassword format is invalid', async () => {
+    it('should throw "Mật khẩu phải chứa ít nhất 8 ký tự..." if newPassword format is invalid', async () => {
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, 'weak'),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(
+        'Mật khẩu phải chứa ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt',
+      );
     });
 
-    it('should throw BadRequestException if user is not found', async () => {
+    it('should throw "Không tìm thấy tài khoản" if user is not found', async () => {
       mockUsersRepository.findOne.mockResolvedValue(null);
 
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Không tìm thấy tài khoản');
     });
 
-    it('should throw UnauthorizedException if account is LOCKED', async () => {
+    it('should throw "Tài khoản của bạn đã bị khóa" if account is LOCKED', async () => {
       mockUsersRepository.findOne.mockResolvedValue({
         ...mockUser,
         status: 'LOCKED',
@@ -562,10 +573,10 @@ describe('AuthService', () => {
 
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Tài khoản của bạn đã bị khóa');
     });
 
-    it('should throw UnauthorizedException if account is INACTIVE', async () => {
+    it('should throw "Tài khoản chưa được kích hoạt" if account is INACTIVE', async () => {
       mockUsersRepository.findOne.mockResolvedValue({
         ...mockUser,
         status: 'INACTIVE',
@@ -573,10 +584,10 @@ describe('AuthService', () => {
 
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Tài khoản chưa được kích hoạt');
     });
 
-    it('should throw UnauthorizedException if password change is required', async () => {
+    it('should throw "Bạn cần đổi mật khẩu trước khi tiếp tục" if password change is required', async () => {
       mockUsersRepository.findOne.mockResolvedValue({
         ...mockUser,
         mustChangePassword: true,
@@ -584,10 +595,10 @@ describe('AuthService', () => {
 
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Bạn cần đổi mật khẩu trước khi tiếp tục');
     });
 
-    it('should throw BadRequestException if OTP is missing in DB', async () => {
+    it('should throw "OTP không hợp lệ hoặc đã hết hạn" if OTP is missing in DB', async () => {
       mockUsersRepository.findOne.mockResolvedValue({
         ...mockUser,
         otp: null,
@@ -595,10 +606,10 @@ describe('AuthService', () => {
 
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('OTP không hợp lệ hoặc đã hết hạn');
     });
 
-    it('should throw BadRequestException if OTP is expired', async () => {
+    it('should throw "OTP không hợp lệ hoặc đã hết hạn" if OTP is expired', async () => {
       mockUsersRepository.findOne.mockResolvedValue({
         ...mockUser,
         otpExpiresAt: new Date(Date.now() - 10000),
@@ -606,16 +617,16 @@ describe('AuthService', () => {
 
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('OTP không hợp lệ hoặc đã hết hạn');
     });
 
-    it('should throw BadRequestException if OTP is incorrect', async () => {
+    it('should throw "OTP không hợp lệ hoặc đã hết hạn" if OTP is incorrect', async () => {
       mockUsersRepository.findOne.mockResolvedValue(mockUser);
       hashResetPasswordToken.mockReturnValue('different-hash');
 
       await expect(
         authService.resetPasswordWithOtp(otpRequestId, otp, newPassword),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('OTP không hợp lệ hoặc đã hết hạn');
     });
 
     it('should reset password on success', async () => {

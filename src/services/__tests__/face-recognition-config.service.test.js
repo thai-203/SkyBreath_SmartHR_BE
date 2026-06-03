@@ -18,7 +18,7 @@ describe('FaceRecognitionConfigService', () => {
 
   describe('updateConfig', () => {
     // ── Recognition Threshold Validation ──────────────────────────────────
-    it('should throw error if recognitionThreshold is less than 0.3', async () => {
+    it('should throw "Ngưỡng nhận diện phải là số từ 0.3 đến 0.9" if recognitionThreshold is less than 0.3', async () => {
       try {
         await service.updateConfig({ recognitionThreshold: 0.2 });
         fail('Should have thrown an error');
@@ -27,7 +27,7 @@ describe('FaceRecognitionConfigService', () => {
       }
     });
 
-    it('should throw error if recognitionThreshold is greater than 0.9', async () => {
+    it('should throw "Ngưỡng nhận diện phải là số từ 0.3 đến 0.9" if recognitionThreshold is greater than 0.9', async () => {
       try {
         await service.updateConfig({ recognitionThreshold: 0.95 });
         fail('Should have thrown an error');
@@ -36,7 +36,7 @@ describe('FaceRecognitionConfigService', () => {
       }
     });
 
-    it('should throw error if recognitionThreshold is not a number', async () => {
+    it('should throw "Ngưỡng nhận diện phải là số từ 0.3 đến 0.9" if recognitionThreshold is not a number', async () => {
       try {
         await service.updateConfig({ recognitionThreshold: 'not-a-number' });
         fail('Should have thrown an error');
@@ -46,7 +46,7 @@ describe('FaceRecognitionConfigService', () => {
     });
 
     // ── Spoof Threshold Validation ────────────────────────────────────────
-    it('should throw error if spoofThreshold is less than 0', async () => {
+    it('should throw "Ngưỡng chống giả mạo phải là số từ 0 đến 0.95" if spoofThreshold is less than 0', async () => {
       try {
         await service.updateConfig({ spoofThreshold: -0.1 });
         fail('Should have thrown an error');
@@ -55,7 +55,7 @@ describe('FaceRecognitionConfigService', () => {
       }
     });
 
-    it('should throw error if spoofThreshold is greater than 0.95', async () => {
+    it('should throw "Ngưỡng chống giả mạo phải là số từ 0 đến 0.95" if spoofThreshold is greater than 0.95', async () => {
       try {
         await service.updateConfig({ spoofThreshold: 0.96 });
         fail('Should have thrown an error');
@@ -64,7 +64,7 @@ describe('FaceRecognitionConfigService', () => {
       }
     });
 
-    it('should throw error if spoofThreshold is not a number', async () => {
+    it('should throw "Ngưỡng chống giả mạo phải là số từ 0 đến 0.95" if spoofThreshold is not a number', async () => {
       try {
         await service.updateConfig({ spoofThreshold: 'invalid' });
         fail('Should have thrown an error');
