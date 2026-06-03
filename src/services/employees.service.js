@@ -199,16 +199,24 @@ export class EmployeesService {
     if (!employee) {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
     }
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+    const bankAccount = await bankRepo.findOne({
+      where: { employeeId: id, status: 'ACTIVE' },
+    });
+    employee.bankAccount = bankAccount;
     return employee;
   }
 
   async update(id, updateDto) {
     const employee = await this.findById(id);
 
-    if (updateDto.personalEmail) {
+    const { accountNumber, bankName, accountHolderName, ...employeeData } = updateDto;
+
+    if (employeeData.personalEmail) {
       const existing = await this.employeesRepository.findByField(
         'personalEmail',
-        updateDto.personalEmail,
+        employeeData.personalEmail,
         id,
       );
       if (existing) {
@@ -218,9 +226,9 @@ export class EmployeesService {
       }
     }
     // Kiểm tra đủ 18 tuổi nếu cập nhật ngày sinh
-    if (updateDto.dateOfBirth) {
+    if (employeeData.dateOfBirth) {
       const today = new Date();
-      const dob = new Date(updateDto.dateOfBirth);
+      const dob = new Date(employeeData.dateOfBirth);
       let age = today.getFullYear() - dob.getFullYear();
       const m = today.getMonth() - dob.getMonth();
       if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
@@ -229,10 +237,10 @@ export class EmployeesService {
         throw new BadRequestException('Nhân viên phải đủ 18 tuổi.');
       }
     }
-    if (updateDto.phoneNumber) {
+    if (employeeData.phoneNumber) {
       const existing = await this.employeesRepository.findByField(
         'phoneNumber',
-        updateDto.phoneNumber,
+        employeeData.phoneNumber,
         id,
       );
       if (existing) {
@@ -242,10 +250,10 @@ export class EmployeesService {
       }
     }
 
-    if (updateDto.nationalId) {
+    if (employeeData.nationalId) {
       const existing = await this.employeesRepository.findByField(
         'nationalId',
-        updateDto.nationalId,
+        employeeData.nationalId,
         id,
       );
       if (existing) {
@@ -257,8 +265,8 @@ export class EmployeesService {
 
     // Status transition validation (BR-33)
     if (
-      updateDto.employmentStatus &&
-      updateDto.employmentStatus !== employee.employmentStatus
+      employeeData.employmentStatus &&
+      employeeData.employmentStatus !== employee.employmentStatus
     ) {
       const allowedTransitions = {
         PROBATION: ['ACTIVE', 'TERMINATED'],
@@ -268,20 +276,20 @@ export class EmployeesService {
       };
 
       const allowed = allowedTransitions[employee.employmentStatus] || [];
-      if (!allowed.includes(updateDto.employmentStatus)) {
+      if (!allowed.includes(employeeData.employmentStatus)) {
         throw new BadRequestException(
-          `Không thể chuyển trạng thái từ "${employee.employmentStatus}" sang "${updateDto.employmentStatus}". Trạng thái phải tuân theo vòng đời quy định.`,
+          `Không thể chuyển trạng thái từ "${employee.employmentStatus}" sang "${employeeData.employmentStatus}". Trạng thái phải tuân theo vòng đời quy định.`,
         );
       }
 
       // Sync associated User account status
-      if (updateDto.employmentStatus === 'TERMINATED' && employee.userId) {
+      if (employeeData.employmentStatus === 'TERMINATED' && employee.userId) {
         const userRepo = AppDataSource.getRepository(UserEntity);
         await userRepo.update(employee.userId, { status: 'LOCKED' });
       } else if (
         employee.employmentStatus === 'TERMINATED' &&
         ['ACTIVE', 'PROBATION', 'ON_LEAVE'].includes(
-          updateDto.employmentStatus,
+          employeeData.employmentStatus,
         ) &&
         employee.userId
       ) {
@@ -290,7 +298,34 @@ export class EmployeesService {
       }
     }
 
-    return this.employeesRepository.update(employee.id, updateDto);
+    // Update or create bank account if bank details are provided
+    if (accountNumber !== undefined || bankName !== undefined || accountHolderName !== undefined) {
+      const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+      const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+
+      let bankAccount = await bankRepo.findOne({
+        where: { employeeId: employee.id, status: 'ACTIVE' },
+      });
+
+      if (bankAccount) {
+        if (accountNumber !== undefined) bankAccount.accountNumber = accountNumber;
+        if (bankName !== undefined) bankAccount.bankName = bankName;
+        if (accountHolderName !== undefined) bankAccount.accountHolderName = accountHolderName;
+        await bankRepo.save(bankAccount);
+      } else {
+        bankAccount = bankRepo.create({
+          employeeId: employee.id,
+          accountNumber: accountNumber || '',
+          bankName: bankName || '',
+          accountHolderName: accountHolderName || employee.fullName,
+          status: 'ACTIVE',
+        });
+        await bankRepo.save(bankAccount);
+      }
+    }
+
+    await this.employeesRepository.update(employee.id, employeeData);
+    return this.findById(employee.id);
   }
 
   async delete(id) {

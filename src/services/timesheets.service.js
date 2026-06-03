@@ -1317,6 +1317,18 @@ export class TimesheetsService {
         AppMessages.Errors.Timesheet.ALREADY_LOCKED,
       );
     }
+
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+    const bankAccount = await bankRepo.findOne({
+      where: { employeeId: timesheet.employeeId, status: 'ACTIVE' },
+    });
+    if (!bankAccount || typeof bankAccount.accountNumber !== 'string' || !bankAccount.accountNumber.trim() || typeof bankAccount.bankName !== 'string' || !bankAccount.bankName.trim() || typeof bankAccount.accountHolderName !== 'string' || !bankAccount.accountHolderName.trim()) {
+      throw new BadRequestException(
+        `Nhân viên ${timesheet.employee?.fullName || ''} chưa được cấu hình tài khoản ngân hàng nhận lương. Vui lòng cập nhật thông tin ngân hàng trước khi chốt công.`,
+      );
+    }
+
     const result = await this.timesheetsRepository.update(id, {
       isLocked: true,
     });
@@ -1351,6 +1363,33 @@ export class TimesheetsService {
 
     if (items.length === 0) {
       return { locked: 0 };
+    }
+
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+
+    // Get all employee IDs in the timesheets list
+    const employeeIds = items.map(ts => ts.employeeId);
+
+    // Query active bank accounts for all these employees
+    const bankAccounts = await bankRepo.find({
+      where: {
+        employeeId: In(employeeIds),
+        status: 'ACTIVE',
+      },
+    });
+
+    const bankAccountMap = new Map(bankAccounts.map(ba => [ba.employeeId, ba]));
+
+    // Check each timesheet
+    for (const timesheet of items) {
+      if (timesheet.isLocked) continue;
+      const bankAccount = bankAccountMap.get(timesheet.employeeId);
+      if (!bankAccount || typeof bankAccount.accountNumber !== 'string' || !bankAccount.accountNumber.trim() || typeof bankAccount.bankName !== 'string' || !bankAccount.bankName.trim() || typeof bankAccount.accountHolderName !== 'string' || !bankAccount.accountHolderName.trim()) {
+        throw new BadRequestException(
+          `Nhân viên ${timesheet.employee?.fullName || ''} chưa được cấu hình tài khoản ngân hàng nhận lương. Vui lòng cập nhật thông tin ngân hàng trước khi chốt công.`,
+        );
+      }
     }
 
     let lockedCount = 0;

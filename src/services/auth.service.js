@@ -230,6 +230,24 @@ export class AuthService {
       ],
     });
 
+    let bankAccount = null;
+    if (employee) {
+      const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+      const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+      const activeBankAccount = await bankRepo.findOne({
+        where: { employeeId: employee.id, status: 'ACTIVE' },
+      });
+      if (activeBankAccount) {
+        bankAccount = {
+          id: activeBankAccount.id,
+          accountNumber: activeBankAccount.accountNumber,
+          accountHolderName: activeBankAccount.accountHolderName,
+          bankName: activeBankAccount.bankName,
+          bankBranch: activeBankAccount.bankBranch,
+        };
+      }
+    }
+
     return {
       // User account info
       id: user.id,
@@ -289,6 +307,7 @@ export class AuthService {
       hrMentor: employee?.hrMentor?.fullName || null,
       employmentStatus: employee?.employmentStatus || null,
       joinDate: employee?.joinDate || null,
+      bankAccount: bankAccount,
 
       // System info
       employeeId: employee?.id || null,

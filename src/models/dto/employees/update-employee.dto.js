@@ -163,4 +163,19 @@ export class UpdateEmployeeDto {
     @IsString()
     @IsOptional()
     avatar;
+
+    @Expose()
+    @IsString({ message: 'Số tài khoản ngân hàng phải là chuỗi ký tự' })
+    @IsOptional()
+    accountNumber;
+
+    @Expose()
+    @IsString({ message: 'Tên ngân hàng phải là chuỗi ký tự' })
+    @IsOptional()
+    bankName;
+
+    @Expose()
+    @IsString({ message: 'Tên chủ tài khoản phải là chuỗi ký tự' })
+    @IsOptional()
+    accountHolderName;
 }

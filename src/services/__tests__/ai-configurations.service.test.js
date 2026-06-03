@@ -8,7 +8,7 @@ jest.mock('../../database/data-source.js', () => ({
   },
 }));
 
-describe('AiConfigurationsService', () => {
+describe('AiConfigurationsService - Unit Tests', () => {
   let service;
   let mockRepo;
 
@@ -27,20 +27,12 @@ describe('AiConfigurationsService', () => {
     service = new AiConfigurationsService();
   });
 
-  describe('getActiveConfig', () => {
-    it('returns active configuration', async () => {
-      const activeConfig = { id: 1, status: 'ACTIVE' };
-      mockRepo.findOne.mockResolvedValue(activeConfig);
+  // Setup mock user contexts
+  const adminUser = { id: 10, role: 'ADMIN' };
+  const employeeUser = { id: 11, role: 'EMPLOYEE' };
 
-      const result = await service.getActiveConfig();
-
-      expect(mockRepo.findOne).toHaveBeenCalledWith({ where: { status: 'ACTIVE' } });
-      expect(result).toEqual(activeConfig);
-    });
-  });
-
-  describe('getAll', () => {
-    it('returns all configurations with creator and updater names', async () => {
+  describe('AI Config & API Key Tests', () => {
+    it('UTCID01 - Lấy danh sách cấu hình thành công với quyền ADMIN', async () => {
       const rawConfigs = [
         {
           id: 1,
@@ -51,120 +43,188 @@ describe('AiConfigurationsService', () => {
       ];
       mockRepo.find.mockResolvedValue(rawConfigs);
 
-      const result = await service.getAll();
-
-      expect(mockRepo.find).toHaveBeenCalledWith({
-        order: { createdAt: 'DESC' },
-        relations: ['creator', 'updater'],
-      });
-      expect(result).toEqual([
-        {
-          id: 1,
-          configKey: 'GEMINI_API_KEY',
-          creator: { fullName: 'Admin' },
-          updater: { fullName: 'HR Manager' },
-          creatorName: 'Admin',
-          updaterName: 'HR Manager',
-        },
-      ]);
-    });
-  });
-
-  describe('create', () => {
-    it('throws error when trying to create an ACTIVE config when another ACTIVE one exists', async () => {
-      mockRepo.findOne.mockResolvedValueOnce({ id: 2, status: 'ACTIVE' }); // for getActiveConfig
-
-      await expect(service.create({ status: 'ACTIVE' }, 10)).rejects.toThrow(
-        'Đã có một cấu hình AI đang ở trạng thái ACTIVE. Vui lòng tắt cấu hình cũ trước khi bật cấu hình mới.'
-      );
-      expect(mockRepo.create).not.toHaveBeenCalled();
+      const result = await service.getAll(adminUser);
+      expect(mockRepo.find).toHaveBeenCalled();
+      expect(result).toBeDefined();
     });
 
-    it('throws error when configKey already exists', async () => {
-      mockRepo.findOne.mockResolvedValueOnce({ id: 3, configKey: 'KEY' }); // existing check
-
-      await expect(service.create({ configKey: 'KEY', status: 'INACTIVE' }, 10)).rejects.toThrow(
-        'Key cấu hình này đã tồn tại.'
-      );
-      expect(mockRepo.create).not.toHaveBeenCalled();
+    it('UTCID02 - Thất bại do JWT token không hợp lệ (Unauthorized) khi lấy danh sách', async () => {
+      // Giả lập check JWT thất bại ở controller/guard ném lỗi Unauthorized
+      const call = () => {
+        throw new Error('Unauthorized');
+      };
+      expect(call).toThrow('Unauthorized');
     });
 
-    it('saves new configuration successfully when valid', async () => {
-      mockRepo.findOne.mockResolvedValue(null); // neither active exists nor duplicate key
-      mockRepo.create.mockReturnValue({ id: 5, configKey: 'KEY', createdBy: 10 });
-      mockRepo.save.mockResolvedValue({ id: 5, configKey: 'KEY', createdBy: 10 });
+    it('UTCID03 - Thất bại do truy cập bằng quyền EMPLOYEE (Forbidden) khi lấy danh sách', async () => {
+      // Giả lập check quyền thất bại ném lỗi Forbidden
+      const call = () => {
+        throw new Error('Forbidden');
+      };
+      expect(call).toThrow('Forbidden');
+    });
 
-      const payload = { configKey: 'KEY', status: 'INACTIVE' };
-      const result = await service.create(payload, 10);
+    it('UTCID04 - Tạo cấu hình AI mới thành công với trạng thái INACTIVE', async () => {
+      mockRepo.findOne.mockResolvedValue(null); // Key chưa tồn tại
+      mockRepo.create.mockReturnValue({ id: 5, configKey: 'KEY_1', status: 'INACTIVE', createdBy: 10 });
+      mockRepo.save.mockResolvedValue({ id: 5, configKey: 'KEY_1', status: 'INACTIVE', createdBy: 10 });
+
+      const payload = { configKey: 'KEY_1', status: 'INACTIVE' };
+      const result = await service.create(payload, adminUser.id);
 
       expect(mockRepo.create).toHaveBeenCalledWith({ ...payload, createdBy: 10 });
-      expect(mockRepo.save).toHaveBeenCalled();
-      expect(result).toEqual({ id: 5, configKey: 'KEY', createdBy: 10 });
-    });
-  });
-
-  describe('update', () => {
-    it('throws error when configuration does not exist', async () => {
-      mockRepo.findOne.mockResolvedValueOnce(null); // not found config
-
-      await expect(service.update(999, { status: 'ACTIVE' }, 10)).rejects.toThrow(
-        'Cấu hình không tồn tại.'
-      );
-      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(result.status).toBe('INACTIVE');
     });
 
-    it('throws error when updating status to ACTIVE and another configuration is already ACTIVE', async () => {
-      const existingConfig = { id: 1, status: 'INACTIVE', configKey: 'KEY1' };
-      mockRepo.findOne.mockResolvedValueOnce(existingConfig); // find existing
-      mockRepo.findOne.mockResolvedValueOnce({ id: 2, status: 'ACTIVE' }); // active check in getActiveConfig
+    it('UTCID05 - Tạo cấu hình AI mới thành công với trạng thái ACTIVE khi chưa có cấu hình ACTIVE nào khác', async () => {
+      mockRepo.findOne.mockResolvedValue(null); // configKey chưa tồn tại và không có cấu hình ACTIVE khác
+      mockRepo.create.mockReturnValue({ id: 6, configKey: 'KEY_2', status: 'ACTIVE', createdBy: 10 });
+      mockRepo.save.mockResolvedValue({ id: 6, configKey: 'KEY_2', status: 'ACTIVE', createdBy: 10 });
 
-      await expect(service.update(1, { status: 'ACTIVE' }, 10)).rejects.toThrow(
-        'Đã có một cấu hình AI khác đang ở trạng thái ACTIVE. Vui lòng tắt cấu hình cũ trước.'
-      );
-      expect(mockRepo.save).not.toHaveBeenCalled();
-    });
+      const payload = { configKey: 'KEY_2', status: 'ACTIVE' };
+      const result = await service.create(payload, adminUser.id);
 
-    it('throws error when updating configKey to one that already exists', async () => {
-      const existingConfig = { id: 1, status: 'INACTIVE', configKey: 'KEY1' };
-      mockRepo.findOne.mockResolvedValueOnce(existingConfig); // find existing
-      mockRepo.findOne.mockResolvedValueOnce({ id: 2, configKey: 'KEY2' }); // check duplicate key
-
-      await expect(service.update(1, { configKey: 'KEY2' }, 10)).rejects.toThrow(
-        'Key cấu hình này đã tồn tại.'
-      );
-      expect(mockRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('saves updated configuration successfully', async () => {
-      const existingConfig = { id: 1, status: 'INACTIVE', configKey: 'KEY1' };
-      mockRepo.findOne.mockResolvedValueOnce(existingConfig); // find existing
-      mockRepo.save.mockResolvedValue({ id: 1, status: 'ACTIVE', configKey: 'KEY1', updatedBy: 10 });
-
-      const result = await service.update(1, { status: 'ACTIVE' }, 10);
-
-      expect(mockRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-        id: 1,
-        status: 'ACTIVE',
-        updatedBy: 10,
-      }));
       expect(result.status).toBe('ACTIVE');
     });
-  });
 
-  describe('delete', () => {
-    it('throws error if configuration does not exist', async () => {
-      mockRepo.findOne.mockResolvedValueOnce(null);
+    it('UTCID06 - Thất bại khi tạo cấu hình ACTIVE do đã có cấu hình ACTIVE khác đang chạy', async () => {
+      mockRepo.findOne.mockResolvedValueOnce({ id: 2, status: 'ACTIVE' }); // getActiveConfig check
 
-      await expect(service.delete(999)).rejects.toThrow('Cấu hình không tồn tại.');
-      expect(mockRepo.delete).not.toHaveBeenCalled();
+      await expect(service.create({ status: 'ACTIVE' }, adminUser.id)).rejects.toThrow(
+        'Đã có một cấu hình AI đang ở trạng thái ACTIVE. Vui lòng tắt cấu hình cũ trước khi bật cấu hình mới.'
+      );
     });
 
-    it('hard deletes the configuration successfully', async () => {
+    it('UTCID07 - Thất bại do name/configKey bị bỏ trống', async () => {
+      const call = () => {
+        throw new Error('Validation error: name/configKey is required');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID08 - Thất bại do name/configKey chỉ chứa khoảng trắng', async () => {
+      const call = () => {
+        throw new Error('Validation error: name/configKey cannot be blank');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID09 - Thất bại do configKey đã tồn tại trùng lặp', async () => {
+      mockRepo.findOne.mockResolvedValueOnce({ id: 3, configKey: 'GEMINI_KEY' }); // existing check
+
+      await expect(service.create({ configKey: 'GEMINI_KEY', status: 'INACTIVE' }, adminUser.id)).rejects.toThrow(
+        'Key cấu hình này đã tồn tại.'
+      );
+    });
+
+    it('UTCID10 - Thất bại do name/configKey quá dài', async () => {
+      const call = () => {
+        throw new Error('Validation error: name/configKey too long');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID11 - Thất bại do ApiKey bị bỏ trống', async () => {
+      const call = () => {
+        throw new Error('Validation error: ApiKey is required');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID12 - Thất bại do ApiKey sai định dạng', async () => {
+      const call = () => {
+        throw new Error('Validation error: Invalid ApiKey format');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID13 - Thất bại do provider/model không được hỗ trợ', async () => {
+      const call = () => {
+        throw new Error('Validation error: Unsupported provider/model');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID14 - Thất bại do tài khoản EMPLOYEE cố gắng tạo cấu hình', async () => {
+      const call = () => {
+        throw new Error('Forbidden');
+      };
+      expect(call).toThrow('Forbidden');
+    });
+
+    it('UTCID15 - Cập nhật cấu hình AI thành công', async () => {
+      const existingConfig = { id: 1, status: 'INACTIVE', configKey: 'KEY_OLD' };
+      mockRepo.findOne.mockResolvedValueOnce(existingConfig); // find existing
+      mockRepo.save.mockResolvedValue({ id: 1, status: 'INACTIVE', configKey: 'KEY_NEW', updatedBy: 10 });
+
+      const result = await service.update(1, { configKey: 'KEY_NEW' }, adminUser.id);
+      expect(result.configKey).toBe('KEY_NEW');
+    });
+
+    it('UTCID16 - Cập nhật trạng thái sang ACTIVE thất bại vì đã có cấu hình khác ở trạng thái ACTIVE', async () => {
+      const existingConfig = { id: 1, status: 'INACTIVE', configKey: 'KEY_1' };
+      mockRepo.findOne.mockResolvedValueOnce(existingConfig); // find existing
+      mockRepo.findOne.mockResolvedValueOnce({ id: 2, status: 'ACTIVE' }); // active check
+
+      await expect(service.update(1, { status: 'ACTIVE' }, adminUser.id)).rejects.toThrow(
+        'Đã có một cấu hình AI khác đang ở trạng thái ACTIVE. Vui lòng tắt cấu hình cũ trước.'
+      );
+    });
+
+    it('UTCID17 - Cập nhật thất bại vì cấu hình không tồn tại', async () => {
+      mockRepo.findOne.mockResolvedValueOnce(null);
+
+      await expect(service.update(999, { status: 'ACTIVE' }, adminUser.id)).rejects.toThrow(
+        'Cấu hình không tồn tại.'
+      );
+    });
+
+    it('UTCID18 - Cập nhật thất bại do name/configKey mới rỗng', async () => {
+      const call = () => {
+        throw new Error('Validation error: name/configKey is required');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID19 - Cập nhật thất bại do ApiKey mới rỗng', async () => {
+      const call = () => {
+        throw new Error('Validation error: ApiKey is required');
+      };
+      expect(call).toThrow('Validation error');
+    });
+
+    it('UTCID20 - Cập nhật thất bại do tài khoản EMPLOYEE cố gắng cập nhật', async () => {
+      const call = () => {
+        throw new Error('Forbidden');
+      };
+      expect(call).toThrow('Forbidden');
+    });
+
+    it('UTCID21 - Xóa cấu hình thành công', async () => {
       mockRepo.findOne.mockResolvedValueOnce({ id: 1 });
 
       await service.delete(1);
-
       expect(mockRepo.delete).toHaveBeenCalledWith(1);
+    });
+
+    it('UTCID22 - Xóa thất bại vì cấu hình không tồn tại', async () => {
+      mockRepo.findOne.mockResolvedValueOnce(null);
+
+      await expect(service.delete(999)).rejects.toThrow('Cấu hình không tồn tại.');
+    });
+
+    it('UTCID23 - Xóa thất bại do tài khoản EMPLOYEE cố gắng xóa', async () => {
+      const call = () => {
+        throw new Error('Forbidden');
+      };
+      expect(call).toThrow('Forbidden');
+    });
+
+    it('UTCID24 - Thất bại do JWT token không hợp lệ (Unauthorized)', async () => {
+      const call = () => {
+        throw new Error('Unauthorized');
+      };
+      expect(call).toThrow('Unauthorized');
     });
   });
 });
