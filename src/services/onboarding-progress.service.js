@@ -9,6 +9,7 @@ import {
 import { AppMessages } from '../common/constants/index.js';
 import { PaginatedResponseDto } from '../common/dto/index.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
+import { NotificationsService } from './notifications.service.js';
 
 export class OnboardingProgressService {
   constructor() {
@@ -16,6 +17,7 @@ export class OnboardingProgressService {
     this.plansRepository = new OnboardingPlansRepository();
     this.taskAssignmentsRepository = new TaskAssignmentsRepository();
     this.employeesRepository = new EmployeesRepository();
+    this.notificationsService = new NotificationsService();
   }
 
   toDateOnly(dateInput) {
@@ -162,7 +164,7 @@ export class OnboardingProgressService {
     const expectedEndDate = new Date(startDate);
     expectedEndDate.setDate(expectedEndDate.getDate() + plan.durationDays);
 
-    return this.progressRepository.create({
+    const createdProgress = await this.progressRepository.create({
       employeeId,
       planId,
       overallStatus: 'IN_PROGRESS',
@@ -173,6 +175,26 @@ export class OnboardingProgressService {
       completedTasksCount: 0,
       totalTasksCount: plan.tasks?.length || 0,
     });
+
+    try {
+      const recipientUserId = Number(emp?.userId);
+      if (Number.isFinite(recipientUserId) && recipientUserId > 0) {
+        await this.notificationsService.createAndNotify({
+          title: 'Bạn có onboarding mới',
+          message: `Lộ trình onboarding ${plan.planName || ''} đã được gán cho bạn. Vui lòng vào màn hình onboarding để theo dõi tiến độ.`,
+          notificationType: 'WORKFLOW',
+          link: '/onboardings/employee',
+          recipientUserIds: [recipientUserId],
+        });
+      }
+    } catch (notificationError) {
+      console.error(
+        '[OnboardingProgressService] Failed to send onboarding notification:',
+        notificationError,
+      );
+    }
+
+    return createdProgress;
   }
 
   async update(progressId, data) {

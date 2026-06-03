@@ -57,13 +57,6 @@ router.get(
   permissionsMiddleware('EMPLOYEE_READ'),
   employeesController.getValidationData,
 );
-router.get(
-  '/:id',
-  authMiddleware,
-  permissionsMiddleware('EMPLOYEE_READ'),
-  employeesController.findOne,
-);
-
 // Export permission
 router.get(
   '/export',
@@ -71,6 +64,14 @@ router.get(
   permissionsMiddleware('EMPLOYEE_EXPORT'),
   employeesController.export,
 );
+
+router.get(
+  '/:id',
+  authMiddleware,
+  permissionsMiddleware('EMPLOYEE_READ'),
+  employeesController.findOne,
+);
+
 
 // Create permission
 router.post(

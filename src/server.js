@@ -9,7 +9,6 @@ import swaggerUi from 'swagger-ui-express';
 import { errorMiddleware } from './common/middleware/error.middleware.js';
 import { requestContextMiddleware } from './common/middleware/request-context.middleware.js';
 import { config } from './config/env.config.js';
-import redis from './config/redis.config.js';
 import { initializeSocket } from './config/socket.js';
 import { swaggerSpec } from './config/swagger.config.js';
 import { AppDataSource } from './database/data-source.js';
@@ -57,12 +56,6 @@ import { timesheetsRoutes } from './routes/timesheets.routes.js';
 import { uploadRoutes } from './routes/upload.routes.js';
 import { usersRoutes } from './routes/users.routes.js';
 import { ContractsService } from './services/contracts.service.js';
-
-process.on('SIGINT', async () => {
-  console.log('Shutting down...');
-  await redis.quit();
-  process.exit(0);
-});
 
 const app = express();
 const PORT = config.port;

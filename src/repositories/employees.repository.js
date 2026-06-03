@@ -1,10 +1,19 @@
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
-import { IsNull, Between, In } from 'typeorm';
+import { Between, In } from 'typeorm';
 
 export class EmployeesRepository {
   constructor() {
     this.repository = AppDataSource.getRepository(EmployeeEntity);
+  }
+
+  _excludeInactiveEmployees(query, alias = 'employee') {
+    query.andWhere(
+      `COALESCE(UPPER(${alias}.employmentStatus), '') != :inactiveStatus`,
+      {
+        inactiveStatus: 'INACTIVE',
+      },
+    );
   }
 
   async create(data) {
@@ -20,6 +29,7 @@ export class EmployeesRepository {
       departmentId,
       positionId,
       employmentStatus,
+      excludeInactive = false,
     } = options;
 
     const take = limit;
@@ -35,8 +45,8 @@ export class EmployeesRepository {
 
     if (search) {
       query.andWhere(
-        '(employee.fullName LIKE :search OR employee.employeeCode LIKE :search OR employee.companyEmail LIKE :search)',
-        { search: `%${search}%` },
+        '(LOWER(employee.fullName) LIKE BINARY :search OR employee.employeeCode LIKE :search OR employee.companyEmail LIKE :search)',
+        { search: `%${search.toLowerCase()}%` },
       );
     }
 
@@ -54,9 +64,14 @@ export class EmployeesRepository {
       });
     }
 
+    if (excludeInactive) {
+      this._excludeInactiveEmployees(query);
+    }
+
     const [items, total] = await query
       .orderBy('employee.fullName', 'ASC')
       .skip(skip)
+      .take(take)
       .getManyAndCount();
 
     return { items, total };
@@ -68,7 +83,9 @@ export class EmployeesRepository {
    * @param {boolean=} excludeWithContract when true excludes employees having
    *        an active, non‑deleted contract
    */
-  async findDropdownList(roleName, excludeWithContract = false) {
+  async findDropdownList(roleName, excludeWithContract = false, options = {}) {
+    const { excludeInactive = false } = options;
+
     const query = this.repository
       .createQueryBuilder('employee')
       .leftJoin('employee.user', 'user')
@@ -93,7 +110,12 @@ export class EmployeesRepository {
       query.andWhere('contract.id IS NULL');
     }
 
+    if (excludeInactive) {
+      this._excludeInactiveEmployees(query);
+    }
+
     return query
+      .distinct(true)
       .select([
         'employee.id',
         'employee.fullName',
@@ -175,21 +197,25 @@ export class EmployeesRepository {
     });
   }
 
-  async getEmployeeNoPlanId() {
-    return this.repository.find({
-      where: {
-        isDeleted: false,
-        planId: IsNull(),
-      },
-      relations: [
-        'user',
-        'department',
-        'position',
-        'jobGrade',
-        'directManager',
-        'hrMentor',
-      ],
-    });
+  async getEmployeeNoPlanId(options = {}) {
+    const { excludeInactive = false } = options;
+
+    const query = this.repository
+      .createQueryBuilder('employee')
+      .leftJoinAndSelect('employee.user', 'user')
+      .leftJoinAndSelect('employee.department', 'department')
+      .leftJoinAndSelect('employee.position', 'position')
+      .leftJoinAndSelect('employee.jobGrade', 'jobGrade')
+      .leftJoinAndSelect('employee.directManager', 'directManager')
+      .leftJoinAndSelect('employee.hrMentor', 'hrMentor')
+      .where('employee.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('employee.planId IS NULL');
+
+    if (excludeInactive) {
+      this._excludeInactiveEmployees(query);
+    }
+
+    return query.getMany();
   }
 
   async getByUserId(userId) {
@@ -224,9 +250,8 @@ export class EmployeesRepository {
 
   async findByRoleNames(roleNames) {
     if (!roleNames || roleNames.length === 0) return [];
-
-    // Normalize to lower case for comparison if needed, but here we assume exact match or case-insensitive
-    const normalizedRoles = roleNames.map((r) => r.toUpperCase());
+    // Use lowercase comparison to avoid case issues and avoid duplicate employees
+    const normalizedRoles = roleNames.map((r) => r.toLowerCase());
 
     return this.repository
       .createQueryBuilder('employee')
@@ -234,8 +259,11 @@ export class EmployeesRepository {
       .leftJoinAndSelect('user.userRoles', 'userRole')
       .leftJoinAndSelect('userRole.role', 'role')
       .leftJoinAndSelect('employee.department', 'department')
-      .where('role.roleName IN (:...roleNames)', { roleNames: normalizedRoles })
+      .where('LOWER(role.roleName) IN (:...roleNames)', {
+        roleNames: normalizedRoles,
+      })
       .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false })
+      .distinct(true)
       .getMany();
   }
 }

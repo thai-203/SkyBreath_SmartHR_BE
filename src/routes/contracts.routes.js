@@ -248,6 +248,8 @@ router.get(
   contractsController.findByEmployee,
 );
 
+router.get('/my', authMiddleware, contractsController.findMine);
+
 /**
  * @swagger
  * /contracts/{id}:

@@ -79,12 +79,35 @@ describe('EmployeesService', () => {
 
     EmployeesRepository.mockImplementation(() => employeesRepo);
     DepartmentsRepository.mockImplementation(() => departmentsRepo);
+
+    const mockQueryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+
+    const mockUserRepo = {
+      update: jest.fn().mockResolvedValue({}),
+    };
+
+    const mockEmployeeRepoForEntity = {
+      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+
     AppDataSource.getRepository.mockImplementation((entity) => {
       if (entity?.name === 'PositionEntity') {
         return positionRepo;
       }
       if (entity?.name === 'JobGradeEntity') {
         return jobGradeRepo;
+      }
+      if (entity?.name === 'EmployeeEntity') {
+        return mockEmployeeRepoForEntity;
+      }
+      if (entity?.name === 'UserEntity') {
+        return mockUserRepo;
       }
       return {};
     });
@@ -172,12 +195,14 @@ describe('EmployeesService', () => {
   });
 
   it('soft deletes an employee after validation', async () => {
-    employeesRepo.findById.mockResolvedValue({ id: 7 });
-    employeesRepo.softDelete.mockResolvedValue({ affected: 1 });
+    employeesRepo.findById.mockResolvedValue({ id: 7, fullName: 'Test', userId: 15 });
+    employeesRepo.update.mockResolvedValue({ id: 7, employmentStatus: 'TERMINATED' });
 
     const result = await service.delete(7);
 
-    expect(employeesRepo.softDelete).toHaveBeenCalledWith(7);
+    expect(employeesRepo.update).toHaveBeenCalledWith(7, {
+      employmentStatus: 'TERMINATED'
+    });
     expect(result).toEqual({ affected: 1 });
   });
 

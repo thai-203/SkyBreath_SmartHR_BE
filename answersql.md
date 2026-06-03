@@ -1,25 +1,3 @@
-# SmartHR - SQL Queries Database Answers
-
-Tài liệu này cung cấp các câu lệnh SQL để trả lời các câu hỏi về chấm công, nghỉ phép, lương, thông tin cá nhân và KPI dựa trên cấu trúc cơ sở dữ liệu từ file `databaseschema.txt`.
-
-## Giả định hệ thống (Assumptions)
-- Các câu lệnh SQL sử dụng cú pháp **MySQL** tương thích với schema đã cung cấp.
-- **`:my_employee_id`** hoặc **`:employee_id`**: Đại diện cho ID của nhân viên đang đăng nhập ("Tôi").
-- **`:employee_code_A`** / **`:employee_code_B`**: Đại diện cho mã nhân viên A / nhân viên B được tìm kiếm.
-- Hệ thống sử dụng các hàm thời gian chuẩn của MySQL như `CURDATE()`, `MONTH()`, `YEAR()`, `DATE_SUB()`.
-
----
-
-## Mục lục
-1. [Nghỉ phép & Đơn nghỉ](#1-nghỉ-phép--đơn-nghỉ) (1-19, 41-55, 105-106, 110, 114, 118-120, 124, 129)
-2. [Chấm công & Đi muộn/Về sớm/OT](#2-chấm-công--đi-muộnvề-sớm-ot) (20-31, 36-40, 102, 108-109, 112, 115, 117, 128, 135)
-3. [Chỉ số quản trị, Đi trễ, Hôm nay](#3-chỉ-số-quản-trị-đi-trễ-hôm-nay) (32-35, 126-127, 132-133)
-4. [Lương, Thưởng, Khấu trừ & Phụ cấp](#4-lương-thưởng-khấu-trừ--phụ-cấp) (56-70, 101, 107, 113, 116, 121-123, 125, 134)
-5. [Quy trình phê duyệt & Đơn từ](#5-quy-trình-phê-duyệt--đơn-từ) (71-80, 103)
-6. [Thông tin nhân viên & Sơ đồ tổ chức](#6-thông-tin-nhân-viên--sơ-đồ-tổ-chức) (81-95, 104, 111)
-7. [KPI & Hiệu suất](#7-kpi--hiệu-suất) (96-100, 130)
-
----
 
 ## 1. Nghỉ phép & Đơn nghỉ
 
@@ -57,6 +35,7 @@ WHERE employee_id = :my_employee_id
   AND MONTH(start_date) = MONTH(CURDATE())
   AND YEAR(start_date) = YEAR(CURDATE());
 ```
+
 
 ### Q4. Nghỉ hôm nay có hợp lệ không?
 Kiểm tra xem hôm nay có bất kỳ đơn nghỉ phép nào của tôi được phê duyệt bao phủ ngày hôm nay không.
