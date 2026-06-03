@@ -15,12 +15,14 @@ export class EmployeesRepository {
   async findAll(options = {}) {
     const {
       skip = 0,
-      take = 10,
+      limit = 10,
       search = '',
       departmentId,
       positionId,
       employmentStatus,
     } = options;
+
+    const take = limit;
     const query = this.repository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
@@ -55,7 +57,6 @@ export class EmployeesRepository {
     const [items, total] = await query
       .orderBy('employee.fullName', 'ASC')
       .skip(skip)
-      .take(take)
       .getManyAndCount();
 
     return { items, total };
@@ -93,7 +94,13 @@ export class EmployeesRepository {
     }
 
     return query
-      .select(['employee.id', 'employee.fullName', 'employee.avatar'])
+      .select([
+        'employee.id',
+        'employee.fullName',
+        'employee.avatar',
+        'employee.departmentId',
+        'employee.employeeCode',
+      ])
       .orderBy('employee.fullName', 'ASC')
       .getMany();
   }

@@ -508,4 +508,136 @@ describe('TimesheetsService - Milestone 1', () => {
       });
     });
   });
+
+  describe('Milestone 3: Matrix, Reports & Lock Workflows', () => {
+    describe('lock & bulkLock', () => {
+      it('should lock a single timesheet', async () => {
+        const mockTimesheet = { id: 1, isLocked: false, employeeId: 5, month: 5, year: 2024 };
+        mockTimesheetsRepository.findById.mockResolvedValue(mockTimesheet);
+        mockTimesheetsRepository.update.mockResolvedValue({ ...mockTimesheet, isLocked: true });
+
+        const result = await timesheetsService.lock(1, { id: 10, role: 'ADMIN' });
+        
+        expect(result.isLocked).toBe(true);
+        expect(mockTimesheetsRepository.update).toHaveBeenCalledWith(1, { isLocked: true });
+        expect(mockActionLogsService.log).toHaveBeenCalled();
+      });
+
+      it('should throw BadRequestException if timesheet is already locked', async () => {
+        mockTimesheetsRepository.findById.mockResolvedValue({ id: 1, isLocked: true });
+        await expect(timesheetsService.lock(1, {})).rejects.toThrow(BadRequestException);
+      });
+
+      it('should bulk lock timesheets for given period', async () => {
+        mockTimesheetsRepository.findAll.mockResolvedValue({ items: [{ id: 101, isLocked: false }, { id: 102, isLocked: true }] });
+        jest.spyOn(timesheetsService, 'lock').mockResolvedValue();
+
+        const result = await timesheetsService.bulkLock(5, 2024, null, { id: 10, role: 'ADMIN' });
+        
+        expect(result.success).toBe(1); // only the unlocked one is processed
+        expect(timesheetsService.lock).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('getMatrix & getProcessedMatrix', () => {
+      it('should get matrix with attendance details', async () => {
+        mockTimesheetsRepository.findAll.mockResolvedValue({ items: [{ id: 1, employee: { employeeCode: 'E1' } }], total: 1 });
+        jest.spyOn(timesheetsService, 'getAttendanceDetails').mockResolvedValue({ dailyDetails: [] });
+
+        const result = await timesheetsService.getMatrix({ month: 5, year: 2024, page: 1, limit: 10 }, { id: 10, role: 'ADMIN' });
+        
+        expect(result.items.length).toBe(1);
+        expect(result.items[0].employeeCode).toBe('E1');
+        expect(timesheetsService.getAttendanceDetails).toHaveBeenCalledWith(1, { id: 10, role: 'ADMIN' });
+      });
+
+      it('should get processed matrix', async () => {
+        const mockEmployees = [{ id: 1, employeeCode: 'E1' }];
+        const mockEmployeeRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            innerJoin: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            skip: jest.fn().mockReturnThis(),
+            take: jest.fn().mockReturnThis(),
+            getManyAndCount: jest.fn().mockResolvedValue([mockEmployees, 1]),
+          })
+        };
+        const mockProcessedRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue([{ id: 101, employeeId: 1, attendanceDate: '2024-05-01' }]),
+          })
+        };
+
+        AppDataSource.getRepository.mockImplementation((entity) => {
+          if (entity.name === 'EmployeeEntity') return mockEmployeeRepo;
+          if (entity.name === 'ProcessedAttendanceRecordEntity') return mockProcessedRepo;
+        });
+
+        const result = await timesheetsService.getProcessedMatrix({ month: 5, year: 2024, page: 1, limit: 10 }, { id: 10, role: 'ADMIN' });
+        
+        expect(result.items.length).toBe(1);
+        expect(result.items[0].dailyDetails.length).toBe(1);
+        expect(result.total).toBe(1);
+      });
+    });
+
+    describe('finalizeProcessedMatrix', () => {
+      it('should finalize processed records and trigger recalculate', async () => {
+        const mockProcessedRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            update: jest.fn().mockReturnThis(),
+            set: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            execute: jest.fn().mockResolvedValue({ affected: 5 }),
+          })
+        };
+        AppDataSource.getRepository.mockReturnValue(mockProcessedRepo);
+        
+        jest.spyOn(timesheetsService, 'bulkRecalculate').mockResolvedValue({});
+
+        const result = await timesheetsService.finalizeProcessedMatrix({ month: 5, year: 2024 }, { id: 10, role: 'ADMIN' });
+        
+        expect(result.affected).toBe(5);
+        expect(timesheetsService.bulkRecalculate).toHaveBeenCalledWith(5, 2024, undefined, { id: 10, role: 'ADMIN' });
+      });
+    });
+
+    describe('updateProcessedRecord', () => {
+      it('should throw error if record not found', async () => {
+        const mockProcessedRepo = { findOne: jest.fn().mockResolvedValue(null) };
+        AppDataSource.getRepository.mockReturnValue(mockProcessedRepo);
+
+        await expect(timesheetsService.updateProcessedRecord(1, 1, 'note', {})).rejects.toThrow(NotFoundException);
+      });
+
+      it('should update processed record and trigger recalculate', async () => {
+        const mockRecord = { id: 1, employeeId: 5, attendanceDate: new Date('2024-05-15'), isFinalized: false };
+        const mockProcessedRepo = { 
+          findOne: jest.fn().mockResolvedValue(mockRecord),
+          save: jest.fn().mockResolvedValue({ ...mockRecord, workValue: 1, note: 'override' })
+        };
+        const mockTimesheetRepo = {
+          findOne: jest.fn().mockResolvedValue({ id: 101, isLocked: false })
+        };
+
+        AppDataSource.getRepository.mockImplementation((entity) => {
+          if (entity.name === 'ProcessedAttendanceRecordEntity') return mockProcessedRepo;
+          if (entity.name === 'TimeSheetEntity') return mockTimesheetRepo;
+        });
+
+        jest.spyOn(timesheetsService, 'recalculate').mockResolvedValue();
+
+        const result = await timesheetsService.updateProcessedRecord(1, 1, 'note', { id: 10, role: 'ADMIN' });
+        
+        expect(result.workValue).toBe(1);
+        expect(mockProcessedRepo.save).toHaveBeenCalled();
+        expect(timesheetsService.recalculate).toHaveBeenCalledWith(101, { id: 10, role: 'ADMIN' });
+      });
+    });
+  });
 });

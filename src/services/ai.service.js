@@ -13,40 +13,39 @@ import path from 'path';
 // KEYWORD → TABLE RELEVANCE MAP
 // ============================================================================
 const KEYWORD_TABLE_MAP = [
-  // Lương, phụ cấp
-  { keywords: ['lương', 'salary', 'thu nhập', 'luong', 'phụ cấp', 'allowance', 'lương cơ bản', 'kiếm', 'bảng lương cơ bản'], tables: ['employee_salaries', 'job_grades', 'employees'] },
-  // Payroll tổng hợp
-  { keywords: ['payroll', 'bảng lương', 'quyết toán lương', 'bảng tính lương', 'net salary'], tables: ['payrolls', 'payroll_details', 'employee_salaries'] },
+  // Lương cơ bản, bậc lương, phụ cấp
+  { keywords: ['lương cơ bản', 'bậc lương', 'grade', 'job grade', 'phụ cấp', 'allowance', 'ăn trưa', 'xăng xe', 'điện thoại'], tables: ['employee_salaries', 'job_grades', 'employees'] },
+  // Payroll tổng hợp và chi tiết tháng
+  { keywords: ['payroll', 'bảng lương', 'bảng tính lương', 'thu nhập', 'thực nhận', 'thực lĩnh', 'lương gộp', 'gross', 'net', 'khấu trừ', 'đóng bảo hiểm', 'bhxh', 'bhyt', 'bhtn', 'thuế', 'tncn', 'thuế thu nhập', 'phụ thuộc', 'người phụ thuộc', 'giảm trừ', 'công đoàn', 'phí công đoàn'], tables: ['payrolls', 'payroll_details', 'employee_salaries', 'employee_dependents'] },
   // Phép, nghỉ phép
-  { keywords: ['phép', 'nghỉ phép', 'leave', 'ngày phép', 'phép còn', 'nghỉ', 'còn bao nhiêu ngày'], tables: ['leave_balances', 'leave_types', 'leave_policies', 'employees'] },
+  { keywords: ['phép', 'nghỉ phép', 'leave', 'ngày phép', 'phép còn', 'còn bao nhiêu ngày', 'nghỉ ốm', 'không lương'], tables: ['leave_balances', 'leave_types', 'leave_policies', 'employees'] },
   // Đơn từ
-  { keywords: ['đơn', 'đơn từ', 'yêu cầu', 'request', 'đơn nghỉ', 'nộp đơn', 'phê duyệt', 'đơn chờ'], tables: ['requests', 'request_types', 'request_groups'] },
-  // Chấm công - truy vấn tổng quát
-  { keywords: ['chấm công', 'điểm danh', 'check in', 'check out', 'muộn', 'trễ', 'về sớm', 'vắng', 'có mặt', 'buổi', 'attendance', 'bảng cấm công'], tables: ['processed_attendance_records', 'attendance_records', 'employees'] },
-  // Liệt kê ngày cụ thể - "những ngày nào", "các ngày"
-  { keywords: ['những ngày nào', 'ngày nào', 'các ngày', 'ngày làm việc', 'danh sách ngày', 'liệt kê ngày', 'danh sách công', 'công'], tables: ['processed_attendance_records', 'attending_records', 'employees'] },
-  // Tổng công tháng (timesheet)
-  { keywords: ['tổng công', 'ngày công', 'timesheet', 'time sheet', 'tháng này', 'cả tháng', 'chấm bao nhiêu', 'bảng cấm công'], tables: ['time_sheets', 'processed_attendance_records', 'employees'] },
+  { keywords: ['đơn', 'yêu cầu', 'request', 'đơn nghỉ', 'nộp đơn', 'phê duyệt', 'đơn chờ', 'duyệt chưa', 'trạng thái đơn'], tables: ['requests', 'request_types', 'request_groups'] },
+  // Chấm công, bảng công
+  { keywords: ['chấm công', 'điểm danh', 'check in', 'check-in', 'check out', 'check-out', 'muộn', 'trễ', 'về sớm', 'vắng', 'có mặt', 'buổi công', 'attendance', 'ngày làm việc', 'thực tế làm', 'timesheet', 'tổng công', 'ngày công', 'chốt công', 'khóa công'], tables: ['processed_attendance_records', 'attendance_records', 'time_sheets', 'employees'] },
   // Tăng ca, OT
-  { keywords: ['ot', 'tăng ca', 'overtime', 'làm thêm', 'ngoài giờ'], tables: ['overtime_request_details', 'overtime_rules', 'overtime_types', 'requests'] },
+  { keywords: ['ot', 'tăng ca', 'overtime', 'làm thêm', 'ngoài giờ', 'làm bù'], tables: ['overtime_request_details', 'overtime_rules', 'overtime_types', 'requests', 'employees'] },
   // Hợp đồng
-  { keywords: ['hợp đồng', 'contract', 'loại hợp đồng', 'kƹ hợp đồng'], tables: ['contracts', 'employees'] },
+  { keywords: ['hợp đồng', 'contract', 'loại hợp đồng', 'ký hợp đồng', 'số giờ làm'], tables: ['contracts', 'employees'] },
   // Ngân hàng
-  { keywords: ['ngân hàng', 'bank', 'tài khoản', 'stk'], tables: ['employee_bank_accounts', 'employees'] },
+  { keywords: ['ngân hàng', 'bank', 'tài khoản', 'stk', 'số tài khoản'], tables: ['employee_bank_accounts', 'employees'] },
   // Phạt, vi phạm
-  { keywords: ['đi muộn', 'về sớm', 'phạt', 'vi phạm', 'penalty', 'trừ công', 'bị trừ', 'tiếng công'], tables: ['penalties'] },
+  { keywords: ['đi muộn', 'đi trễ', 'về sớm', 'phạt', 'vi phạm', 'penalty', 'trừ công', 'bị trừ', 'tiếng công'], tables: ['penalties', 'employees'] },
   // Ngày lễ
   { keywords: ['nghỉ lễ', 'lịch lễ', 'holiday', 'lễ', 'ngày lễ', 'ngày tết', 'tết'], tables: ['holiday_list', 'holiday_groups'] },
   // Ca làm việc, lịch ca
-  { keywords: ['ca làm', 'ca làm việc', 'shift', 'ca trực', 'lịch ca', 'giờ vào', 'giờ ra', 'giờ làm', 'phân ca'], tables: ['working_shifts', 'shift_assignments', 'shift_schedules', 'shift_groups', 'employees'] },
+  { keywords: ['ca làm', 'ca làm việc', 'shift', 'ca trực', 'lịch ca', 'giờ vào', 'giờ ra', 'phân ca', 'giao ca'], tables: ['working_shifts', 'shift_assignments', 'shift_schedules', 'shift_groups', 'employees'] },
   // Nhân viên / phòng ban
-  { keywords: ['nhân viên', 'nhân sự', 'employee', 'staff', 'người', 'ai', 'họ tên', 'phòng ban', 'department', 'chức danh', 'vị trí'], tables: ['employees', 'departments', 'positions', 'job_grades'] },
+  { keywords: ['nhân viên', 'nhân sự', 'employee', 'staff', 'phòng ban', 'department', 'chức danh', 'vị trí', 'chức vụ', 'quản lý', 'trưởng phòng'], tables: ['employees', 'departments', 'positions', 'job_grades'] },
 ];
 
 const BASE_TABLES = ['employees', 'departments'];
 
 // ============================================================================
 // SCHEMA PARSER
+// ============================================================================
+// ============================================================================
+// SCHEMA & EXAMPLE PARSER
 // ============================================================================
 function parseSchemaFile() {
   const schemaFilePath = path.resolve(__dirname, '../../databsedescription.txt');
@@ -67,42 +66,70 @@ function parseSchemaFile() {
     if (!tableMatch) continue;
     const tableName = tableMatch[1];
 
-    // Capture -- comment lines before CREATE TABLE (description block)
-    const commentLines = [];
-    const lines = segment.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('CREATE TABLE')) break;
-      if (trimmed.startsWith('--')) commentLines.push(trimmed);
-    }
-
     // Capture column definitions with inline comments
     const columnLines = [];
+    const lines = segment.split('\n');
     let insideCreate = false;
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed.startsWith('CREATE TABLE')) { insideCreate = true; continue; }
       if (!insideCreate) continue;
-      if (trimmed.startsWith('PRIMARY') || trimmed.startsWith('KEY') || trimmed.startsWith('CONSTRAINT') || trimmed.startsWith('UNIQUE') || trimmed.startsWith(') ENGINE')) break;
+      if (trimmed.startsWith('PRIMARY') || trimmed.startsWith('KEY') || trimmed.startsWith('CONSTRAINT') || trimmed.startsWith('UNIQUE') || trimmed.startsWith(') ENGINE') || trimmed.startsWith(');')) break;
       if (!trimmed.startsWith('`')) continue;
       const colMatch = trimmed.match(/`([^`]+)`\s+(\w+(?:\([\d,]+\))?)/);
       if (!colMatch) continue;
       const colName = colMatch[1];
-      const colType = colMatch[2];
+      let colType = colMatch[2].toLowerCase()
+        .replace('datetime(6)', 'datetime')
+        .replace('varchar(255)', 'varchar')
+        .replace('decimal(15,2)', 'decimal');
       // Extract inline comment
       const commentMatch = trimmed.match(/--\s*(.+)$/);
-      const colComment = commentMatch ? ` -- ${commentMatch[1]}` : '';
+      const colComment = commentMatch ? ` -- ${commentMatch[1].trim()}` : '';
       columnLines.push(`  ${colName} (${colType})${colComment}`);
     }
 
     if (columnLines.length > 0) {
-      const commentBlock = commentLines.length > 0 ? commentLines.join('\n') + '\n' : '';
-      tableDict[tableName] = `${commentBlock}Bảng \`${tableName}\`:\n${columnLines.join('\n')}`;
+      tableDict[tableName] = `Bảng \`${tableName}\`:\n${columnLines.join('\n')}`;
     }
   }
 
   console.log(`[AiService] Schema parsed: ${Object.keys(tableDict).length} tables loaded from databsedescription.txt`);
   return tableDict;
+}
+
+function parseAnswersqlFile() {
+  const filePath = path.resolve(__dirname, '../../answersql.md');
+  if (!fs.existsSync(filePath)) {
+    console.warn('[AiService] answersql.md not found, falling back to empty examples.');
+    return [];
+  }
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const examples = [];
+  
+  // Split content by Q sections
+  const sections = content.split(/### Q\d+\./g);
+  for (let i = 1; i < sections.length; i++) {
+    const section = sections[i];
+    const firstLineEnd = section.indexOf('\n');
+    if (firstLineEnd === -1) continue;
+    const header = section.substring(0, firstLineEnd).trim();
+    
+    // Split header by "/" to get multiple phrasings of the question
+    const questions = header.split('/')
+      .map(q => q.replace(/Q\d+\.?/i, '').trim())
+      .filter(q => q.length > 0);
+
+    const sqlMatch = section.match(/```sql([\s\S]*?)```/);
+    if (!sqlMatch) continue;
+    const sql = sqlMatch[1].trim();
+
+    examples.push({ questions, sql });
+  }
+
+  console.log(`[AiService] Examples parsed: ${examples.length} SQL templates loaded from answersql.md`);
+  return examples;
 }
 
 function getRelevantTables(question) {
@@ -124,6 +151,7 @@ function getRelevantTables(question) {
 export class AiService {
   constructor() {
     this.schemaDict = parseSchemaFile();
+    this.sqlExamples = parseAnswersqlFile();
   }
 
   async getEmployeeInfo(userId) {
@@ -132,6 +160,30 @@ export class AiService {
       where: { userId, isDeleted: false },
       relations: ['department'],
     });
+  }
+
+  findBestExamples(userQuestion, maxCount = 2) {
+    const queryWords = userQuestion.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+    if (queryWords.length === 0) return [];
+    
+    const scored = this.sqlExamples.map(ex => {
+      let score = 0;
+      for (const exQ of ex.questions) {
+        const exQWords = exQ.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+        const intersection = queryWords.filter(w => exQWords.includes(w));
+        const currentScore = intersection.length / Math.max(queryWords.length, exQWords.length);
+        if (currentScore > score) {
+          score = currentScore;
+        }
+      }
+      return { example: ex, score };
+    });
+
+    return scored
+      .filter(s => s.score > 0.05)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxCount)
+      .map(s => s.example);
   }
 
   getRelevantSchema(question) {
@@ -207,6 +259,20 @@ export class AiService {
     // Schema optimization — based on the current user question
     const schemaText = this.getRelevantSchema(content);
 
+    // Find and format matching SQL examples
+    const bestExamples = this.findBestExamples(content);
+    let exampleText = '';
+    if (bestExamples.length > 0) {
+      exampleText = '\n\n--- CÁC VÍ DỤ TRUY VẤN MẪU TƯƠNG TỰ (THAM KHẢO & LÀM THEO CÚ PHÁP) ---\n';
+      bestExamples.forEach((ex, idx) => {
+        // Replace placeholders in example with active employee variables
+        let sqlExample = ex.sql
+          .replace(/:my_employee_id/g, employee.id)
+          .replace(/:employee_id/g, employee.id);
+        exampleText += `Ví dụ ${idx + 1} (Câu hỏi tương đồng: "${ex.questions[0]}"):\n\`\`\`sql\n${sqlExample}\n\`\`\`\n`;
+      });
+    }
+
     // Tools
     const tools = [
       {
@@ -227,45 +293,37 @@ export class AiService {
       },
     ];
 
-    const systemInstruction = `Bạn là Trợ lý AI Nhân sự thông minh của SkyBreath SmartHR. Nhiệm vụ: nhận câu hỏi tiếng Việt → tự sinh câu SQL → query vào database → trả lời bằng tiếng Việt thân thiện.
+    const systemInstruction = `# Vai trò
+Bạn là Trợ lý AI SkyBreath SmartHR. Nhiệm vụ: Nhận câu hỏi tiếng Việt -> sinh câu lệnh SQL SELECT chuẩn xác (MySQL) -> gọi tool \`query_database\` -> dùng kết quả trả về để trả lời thân thiện (KHÔNG tiết lộ câu SQL hoặc cấu trúc bảng trong câu trả lời cuối cùng).
 
-THÔNG TIN NGƯỜI DÙNG:
-- Tên: ${employee.fullName}
-- Mã NV: ${employee.employeeCode}
-- employee_id: ${employee.id}
-- Vai trò: ${roles.join(', ')}
-- Ngày hiện tại: ${new Date().toISOString().split('T')[0]}
+# Thông tin người dùng đang đăng nhập
+- Tên: ${employee.fullName} | Mã NV: ${employee.employeeCode} | ID: ${employee.id}
+- Vai trò: ${roles.join(', ')} | Ngày hiện tại: ${new Date().toISOString().split('T')[0]}
 
-CÁC BẢNG SCHEMA LIÊN QUAN ĐẾN CÂU HỎI NÀY:
+# Các bảng cơ sở dữ liệu liên quan (Schema)
 ${schemaText}
+${exampleText}
 
---- QUY TẮC SQL BẮT BUỘC ---
-1. LUÔN thêm \`is_deleted = 0\` vào mọi bảng query.
-2. Tìm kiếm nhân viên theo tên: dùng \`e.full_name LIKE '%Tên%'\` (tìm gần đúng).
-3. Lương hiện tại: JOIN employee_salaries với \`salary_status = 'ACTIVE'\`.
-4. Ngày phép còn lại = lp.days_per_year - lb.used_days (JOIN leave_balances → leave_types → leave_policies).
-5. Bảng \`leave_balances\` KHÔNG có cột \`total_days\`. Lấy tổng phép từ \`leave_policies.days_per_year\`.
-6. Bảng \`requests\` dùng cột \`status\` (DRAFT/SUBMITTED/APPROVED/REJECTED/CANCELLED).
-7. Tổng công tháng: \`processed_attendance_records\` (SUM(work_value)) hoặc \`time_sheets\` (total_working_days).
-8. Ca làm việc của nhân viên: JOIN shift_assignments (employee_id) => working_shifts.
-9. Phạt đi muộn: Bảng \`penalties\` - tìm theo \`violation_type='LATE'\`, \`from_minute <= X AND to_minute >= X\`, \`status='ACTIVE'\`.
-10. Dùng MONTH() và YEAR() để lọc theo tháng/năm. Tháng này: MONTH(CURDATE()), YEAR(CURDATE()).
-11. Bảo mật: TUYỆT ĐỐI KHÔNG query bảng \`ai_configurations\`, \`users\` (cột password/refresh_token).
-12. Chỉ dùng SELECT, KHÔNG dùng INSERT/UPDATE/DELETE.
+# Quy tắc sinh SQL bắt buộc
+1. **Lọc xóa mềm**: Bắt buộc thêm \`is_deleted = 0\` cho MỌI bảng được JOIN hoặc truy vấn.
+2. **Tìm kiếm theo tên**: Luôn sử dụng \`LIKE '%Tên%'\` (không phân biệt hoa thường) để tìm kiếm tên nhân viên.
+3. **Phân quyền và bảo mật (RBAC)**:
+   - Nếu vai trò chỉ có **EMPLOYEE**: Bắt buộc lọc theo ID của chính họ (\`e.id = ${employee.id}\` hoặc \`employee_id = ${employee.id}\`) trên mọi bảng để họ không thể xem thông tin của người khác.
+   - Nếu có vai trò **HR** hoặc **ADMIN**: Được quyền xem toàn bộ hệ thống, trừ khi họ trực tiếp hỏi về bản thân.
+4. **Chỉ dùng SELECT**: Tuyệt đối không dùng INSERT/UPDATE/DELETE/DROP. Cấm truy vấn \`ai_configurations\` và các cột nhạy cảm của \`users\` (password, token).
 
---- PHÂN QUYỀN ---
-- EMPLOYEE: CHỈ được xem dữ liệu của chính họ (thêm \`AND e.id = ${employee.id}\` hoặc \`employee_id = ${employee.id}\`).
-- HR/ADMIN: Xem toàn bộ, JOIN bất kỳ bảng nào cần thiết.
+# Công thức tính nghiệp vụ chuẩn xác
+- **Lương hiện tại**: JOIN \`employee_salaries\` với \`salary_status = 'ACTIVE'\`.
+- **Chi tiết lương tháng (Payroll)**: JOIN \`payroll_details pd\` và \`payrolls p\` qua \`payroll_id\`. Bộ lọc thời gian dùng \`p.payroll_month = X\` và \`p.payroll_year = Y\`.
+  - Thực lĩnh (Net Salary): pd.net_salary
+  - Tổng thu nhập gộp (Gross Salary): pd.total_gross_income
+  - Khấu trừ bảo hiểm/thuế/công đoàn: pd.total_deduction
+- **Số ngày phép năm còn lại**: \`lp.days_per_year - lb.used_days\` (JOIN \`leave_balances lb\` -> \`leave_types lt (id=1)\` -> \`leave_policies lp\`). Lọc theo \`lb.year = YEAR(CURDATE())\`.
+- **Tổng công tháng**: SUM(work_value) từ \`processed_attendance_records\` hoặc \`total_working_days\` từ \`time_sheets\`.
+- **Tăng ca/OT**: JOIN \`overtime_request_details\` hoặc dùng cột \`total_ot_hours\`, \`overtime_pay\` từ \`payroll_details\` tùy câu hỏi.
+- **Lịch ca làm việc**: JOIN \`shift_assignments sa\` và \`working_shifts ws\`. Lọc \`(sa.effective_to IS NULL OR sa.effective_to >= CURDATE())\`.
 
---- MẪU JOIN PHỔ BIẾN ---
-Lương: FROM employees e JOIN employee_salaries es ON es.employee_id = e.id AND es.salary_status='ACTIVE' AND es.is_deleted=0
-Phép còn: FROM employees e JOIN leave_balances lb ON lb.employee_id=e.id AND lb.year=YEAR(CURDATE()) AND lb.is_deleted=0 JOIN leave_types lt ON lt.id=lb.leave_type_id AND lt.is_deleted=0 JOIN leave_policies lp ON lp.leave_type_id=lt.id AND lp.is_deleted=0
-Công tháng: FROM employees e JOIN processed_attendance_records par ON par.employee_id=e.id AND par.is_deleted=0 WHERE MONTH(par.work_date)=M AND YEAR(par.work_date)=Y
-Phòng ban: FROM employees e JOIN departments d ON d.id=e.department_id AND d.is_deleted=0 JOIN positions p ON p.id=e.position_id AND p.is_deleted=0
-Ca làm việc: FROM employees e JOIN shift_assignments sa ON sa.employee_id=e.id AND sa.is_deleted=0 AND (sa.effective_to IS NULL OR sa.effective_to>=CURDATE()) JOIN working_shifts ws ON ws.id=sa.shift_id AND ws.is_deleted=0
-Phạt muộn: FROM penalties WHERE violation_type='LATE' AND status='ACTIVE' AND is_deleted=0 AND from_minute<=X AND to_minute>=X AND effective_from<=CURDATE() AND (effective_to IS NULL OR effective_to>=CURDATE())
-
-Sau khi nhận kết quả SQL, trình bày ngắn gọn, dễ hiểu bằng tiếng Việt. Không lộ câu SQL gốc.`;
+Hãy sinh câu lệnh SQL tối ưu nhất và trả lời kết quả thân thiện bằng tiếng Việt.`;
 
     const activePrompts = await AppDataSource.getRepository(AiPromptEntity).find({ where: { status: 'ACTIVE' } });
     let additionalRules = '';

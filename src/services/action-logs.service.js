@@ -55,6 +55,20 @@ export class ActionLogsService {
     const from = parseAndValidateDate(fromDate, 'fromDate');
     const to = parseAndValidateDate(toDate, 'toDate');
 
+    if (from) {
+      const y = from.getFullYear();
+      const m = String(from.getMonth() + 1).padStart(2, '0');
+      const d = String(from.getDate()).padStart(2, '0');
+      dto.fromDate = `${y}-${m}-${d}`;
+    }
+
+    if (to) {
+      const y = to.getFullYear();
+      const m = String(to.getMonth() + 1).padStart(2, '0');
+      const d = String(to.getDate()).padStart(2, '0');
+      dto.toDate = `${y}-${m}-${d}`;
+    }
+
     if (from && to && isAfter(from, to)) {
       throw new BadRequestException(
         'Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc',

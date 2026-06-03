@@ -1,683 +1,364 @@
 -- =============================================================================
--- SMARTHR DATABASE DESCRIPTION
--- Mô tả chi tiết các bảng trong hệ thống Quản lý Nhân sự SkyBreath SmartHR.
--- Dùng để hỗ trợ AI sinh câu lệnh SQL chính xác khi nhận câu hỏi từ người dùng.
--- LƯU Ý CHUNG:
---   - Hầu hết các bảng đều có: is_deleted=0 (chưa xóa), is_deleted=1 (đã xóa mềm).
---   - LUÔN thêm điều kiện is_deleted = 0 khi truy vấn để tránh lấy dữ liệu đã xóa.
---   - Cột is_active (tinyint 0/1): 0=tắt, 1=bật/đang hoạt động.
+-- HỆ THỐNG CƠ SỞ DỮ LIỆU SKYBREATH SMARTHR
+-- File mô tả cấu trúc bảng (Data Dictionary) được tối ưu hóa cho Trợ lý AI.
+-- Chỉ chứa các cột nghiệp vụ chính và mô tả tiếng Việt để tối ưu token tối đa.
 -- =============================================================================
 
-
--- =============================================================================
--- BẢNG: employees
--- MÔ TẢ: Bảng trung tâm - lưu thông tin toàn bộ nhân viên.
--- DÙNG CHO CÂU HỎI: thông tin nhân viên, tên, phòng ban, chức vụ, ngày vào làm.
--- CÁC PHÉP JOIN PHỔ BIẾN:
---   - JOIN departments d ON e.department_id = d.id → lấy tên phòng ban
---   - JOIN positions p ON e.position_id = p.id → lấy chức danh
---   - JOIN job_grades jg ON e.job_grade_id = jg.id → lấy bậc lương
---   - JOIN employees mgr ON e.direct_manager_id = mgr.id → lấy tên quản lý trực tiếp
--- VÍ DỤ HỎI: "Nhân viên A đang làm ở phòng ban nào?"
---   → SELECT e.full_name, d.department_name FROM employees e JOIN departments d ON e.department_id = d.id WHERE e.full_name LIKE '%A%' AND e.is_deleted = 0
--- =============================================================================
 CREATE TABLE `employees` (
-  `id` int NOT NULL AUTO_INCREMENT,                          -- Khóa chính, ID nhân viên
-  `employee_code` varchar(20) DEFAULT NULL,                  -- Mã nhân viên (VD: NV001)
-  `user_id` int DEFAULT NULL,                                -- FK → users.id (tài khoản đăng nhập)
-  `full_name` varchar(255) NOT NULL,                         -- Họ tên đầy đủ (dùng để tìm kiếm theo tên)
-  `date_of_birth` date DEFAULT NULL,                         -- Ngày sinh
-  `gender` varchar(255) DEFAULT NULL,                        -- Giới tính (MALE/FEMALE/OTHER)
-  `marital_status` varchar(255) DEFAULT NULL,                -- Tình trạng hôn nhân
-  `national_id` varchar(255) DEFAULT NULL,                   -- Số CCCD/CMND
-  `tax_code` varchar(255) DEFAULT NULL,                      -- Mã số thuế cá nhân
-  `personal_email` varchar(255) DEFAULT NULL,                -- Email cá nhân
-  `company_email` varchar(255) DEFAULT NULL,                 -- Email công ty
-  `phone_number` varchar(255) DEFAULT NULL,                  -- Số điện thoại
-  `department_id` int DEFAULT NULL,                          -- FK → departments.id (phòng ban hiện tại)
-  `position_id` int DEFAULT NULL,                            -- FK → positions.id (chức danh hiện tại)
-  `job_grade_id` int DEFAULT NULL,                           -- FK → job_grades.id (bậc lương)
-  `direct_manager_id` int DEFAULT NULL,                      -- FK → employees.id (quản lý trực tiếp)
-  `hr_mentor_id` int DEFAULT NULL,                           -- FK → employees.id (HR mentor kèm cặp)
-  `join_date` date DEFAULT NULL,                             -- Ngày vào làm việc thực tế
-  `official_start_date` date DEFAULT NULL,                   -- Ngày chính thức (sau thử việc)
-  `employment_status` varchar(255) DEFAULT NULL,             -- Trạng thái (WORKING, RESIGNED, PROBATION…)
-  `plan_id` int DEFAULT NULL,                                -- FK → onboarding_plans.id (kế hoạch onboarding)
-  `is_deleted` tinyint NOT NULL DEFAULT '0',                 -- Xóa mềm (0=tồn tại, 1=đã xóa)
-  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-  PRIMARY KEY (`id`),
-  CONSTRAINT `FK_678a3540f843823784b0fe4a4f2` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`),
-  CONSTRAINT `FK_8b14204e8af5e371e36b8c11e1b` FOREIGN KEY (`position_id`) REFERENCES `positions` (`id`),
-  CONSTRAINT `FK_b4f73f38d40465a2dc06466b9cd` FOREIGN KEY (`job_grade_id`) REFERENCES `job_grades` (`id`),
-  CONSTRAINT `FK_ef99e9967917b947ce02019fbc5` FOREIGN KEY (`direct_manager_id`) REFERENCES `employees` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `id` int, -- Khóa chính, ID nhân viên
+  `employee_code` varchar, -- Mã số nhân viên (VD: NV001)
+  `user_id` int, -- FK -> users.id (Tài khoản hệ thống)
+  `full_name` varchar, -- Họ tên đầy đủ nhân viên (dùng để tìm kiếm)
+  `date_of_birth` date, -- Ngày sinh nhân viên
+  `gender` varchar, -- Giới tính (MALE/FEMALE/OTHER)
+  `marital_status` varchar, -- Tình trạng hôn nhân (SINGLE/MARRIED...)
+  `national_id` varchar, -- Số CCCD/CMND
+  `tax_code` varchar, -- Mã số thuế cá nhân
+  `personal_email` varchar, -- Email cá nhân
+  `company_email` varchar, -- Email công ty
+  `phone_number` varchar, -- Số điện thoại
+  `department_id` int, -- FK -> departments.id (Mã phòng ban hiện tại)
+  `position_id` int, -- FK -> positions.id (Mã chức vụ/chức danh)
+  `job_grade_id` int, -- FK -> job_grades.id (Mã bậc lương)
+  `direct_manager_id` int, -- FK -> employees.id (ID quản lý trực tiếp)
+  `hr_mentor_id` int, -- FK -> employees.id (ID người hướng dẫn HR)
+  `join_date` date, -- Ngày vào làm việc
+  `official_start_date` date, -- Ngày ký hợp đồng chính thức
+  `employment_status` varchar, -- Trạng thái (WORKING/RESIGNED/PROBATION)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
+  PRIMARY KEY (`id`)
+);
 
-
--- =============================================================================
--- BẢNG: departments
--- MÔ TẢ: Cơ cấu phòng ban của công ty (có thể lồng cấp cha-con).
--- DÙNG CHO CÂU HỎI: nhân viên thuộc phòng nào, phòng ban nào có bao nhiêu người.
--- CÁC PHÉP JOIN PHỔ BIẾN:
---   - JOIN employees e ON e.department_id = d.id → danh sách NV thuộc phòng
---   - JOIN employees mgr ON d.manager_employee_id = mgr.id → lấy tên trưởng phòng
---   - LEFT JOIN departments parent ON d.parent_department_id = parent.id → phòng ban cấp cha
--- =============================================================================
 CREATE TABLE `departments` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `department_name` varchar(255) NOT NULL,                   -- Tên phòng ban
-  `parent_department_id` int DEFAULT NULL,                   -- FK → departments.id (phòng ban cha, nếu có)
-  `manager_employee_id` int DEFAULT NULL,                    -- FK → employees.id (trưởng phòng)
-  `holiday_group_id` int DEFAULT NULL,                       -- FK → holiday_groups.id (nhóm lịch nghỉ lễ)
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `id` int, -- Khóa chính, ID phòng ban
+  `department_name` varchar, -- Tên phòng ban (VD: Software Development)
+  `parent_department_id` int, -- FK -> departments.id (Phòng ban cha nếu lồng nhau)
+  `manager_employee_id` int, -- FK -> employees.id (ID Trưởng phòng)
+  `holiday_group_id` int, -- FK -> holiday_groups.id (Nhóm lịch nghỉ lễ áp dụng)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: positions
--- MÔ TẢ: Danh mục các chức danh công việc (Kỹ sư phần mềm, HR, Kế toán…).
--- DÙNG CHO CÂU HỎI: nhân viên giữ chức danh gì, danh sách chức danh.
--- JOIN: employees e JOIN positions p ON e.position_id = p.id
--- =============================================================================
 CREATE TABLE `positions` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `position_name` varchar(255) NOT NULL,                     -- Tên chức danh (VD: "Kỹ sư Backend")
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID chức danh/chức vụ
+  `position_name` varchar, -- Tên chức danh công việc (VD: Kỹ sư Backend)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: job_grades
--- MÔ TẢ: Bậc lương / cấp bậc (G1-G5 tương ứng khoảng lương min-max).
--- DÙNG CHO CÂU HỎI: nhân viên thuộc cấp bậc lương nào, khoảng lương của bậc đó.
--- JOIN: employees e JOIN job_grades jg ON e.job_grade_id = jg.id
--- =============================================================================
 CREATE TABLE `job_grades` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `grade_name` varchar(255) NOT NULL,                        -- Tên bậc dùng chung cho tất cả phòng ban (VD: G1, G2, Senior)
-  `min_salary` decimal(15,2) NOT NULL,                       -- Lương tối thiểu của bậc
-  `max_salary` decimal(15,2) NOT NULL,                       -- Lương tối đa của bậc
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID bậc lương
+  `grade_name` varchar, -- Tên bậc lương (VD: Intern, Junior, Middle, Senior, Lead)
+  `min_salary` decimal, -- Lương tối thiểu của bậc này
+  `max_salary` decimal, -- Lương tối đa của bậc này
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: employee_salaries
--- MÔ TẢ: Bảng lương cơ bản và phụ cấp của từng nhân viên theo từng giai đoạn.
--- ĐẶC BIỆT QUAN TRỌNG: Một nhân viên có thể có nhiều dòng lương (lịch sử tăng lương).
---   Để lấy mức lương HIỆN TẠI: lọc salary_status = 'ACTIVE' HOẶC theo effective_from/effective_to.
--- DÙNG CHO CÂU HỎI: lương cơ bản của A là bao nhiêu, tổng thu nhập, phụ cấp.
--- PHÉP JOIN ĐỂ LẤY LƯƠNG HIỆN TẠI:
---   SELECT e.full_name, es.base_salary, es.performance_salary, ...
---   FROM employees e JOIN employee_salaries es ON es.employee_id = e.id AND es.salary_status = 'ACTIVE' AND es.is_deleted = 0
---   WHERE e.full_name LIKE '%Tên%' AND e.is_deleted = 0
--- =============================================================================
 CREATE TABLE `employee_salaries` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,                                -- FK → employees.id
-  `job_grade_id` int DEFAULT NULL,                           -- FK → job_grades.id
-  `base_salary` decimal(15,2) NOT NULL,                      -- Lương cơ bản (tiền thuần)
-  `performance_salary` decimal(15,2) NOT NULL DEFAULT '0',   -- Lương hiệu suất / KPI
-  `lunch_allowance` decimal(15,2) NOT NULL DEFAULT '0',      -- Phụ cấp ăn trưa
-  `fuel_allowance` decimal(15,2) NOT NULL DEFAULT '0',       -- Phụ cấp xăng xe
-  `phone_allowance` decimal(15,2) NOT NULL DEFAULT '0',      -- Phụ cấp điện thoại
-  `other_allowance` decimal(15,2) NOT NULL DEFAULT '0',      -- Phụ cấp khác
-  `salary_type` int NOT NULL DEFAULT '1',                    -- Loại lương (1=tháng, 2=giờ)
-  `effective_from` date DEFAULT NULL,                        -- Ngày bắt đầu áp dụng mức lương này
-  `effective_to` date DEFAULT NULL,                          -- Ngày kết thúc (NULL = hiện tại)
-  `salary_status` varchar(255) NOT NULL DEFAULT 'ACTIVE',    -- Trạng thái: ACTIVE=đang áp dụng, INACTIVE=đã thay thế
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`),
-  CONSTRAINT `FK_5cee264c9d34d5836769435cb0c` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
--- TỔNG LƯƠNG GỘP = base_salary + performance_salary + lunch_allowance + fuel_allowance + phone_allowance + other_allowance
+  `id` int, -- Khóa chính
+  `employee_id` int, -- FK -> employees.id (ID nhân viên)
+  `job_grade_id` int, -- FK -> job_grades.id (ID bậc lương áp dụng)
+  `base_salary` decimal, -- Lương cơ bản thuần (tiền đồng)
+  `performance_salary` decimal, -- Lương hiệu suất / KPI
+  `lunch_allowance` decimal, -- Phụ cấp ăn trưa
+  `fuel_allowance` decimal, -- Phụ cấp xăng xe
+  `phone_allowance` decimal, -- Phụ cấp điện thoại
+  `other_allowance` decimal, -- Phụ cấp khác
+  `salary_type` int, -- Loại lương (1 = Lương tháng, 2 = Lương giờ)
+  `effective_from` date, -- Ngày bắt đầu áp dụng mức lương này
+  `effective_to` date, -- Ngày kết thúc (NULL = hiện tại đang áp dụng)
+  `salary_status` varchar, -- Trạng thái lương (ACTIVE = hiện tại, INACTIVE = lịch sử)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
+  PRIMARY KEY (`id`)
+);
 
+CREATE TABLE `payrolls` (
+  `id` int, -- Khóa chính, ID bảng tính lương tổng hợp
+  `payroll_month` int, -- Tháng tính lương (1-12)
+  `payroll_year` int, -- Năm tính lương (VD: 2026)
+  `payroll_status` varchar, -- Trạng thái (DRAFT/SUBMITTED/APPROVED)
+  `payment_date` datetime, -- Ngày thực hiện thanh toán lương
+  `submitted_by` int, -- FK -> employees.id (Người gửi phê duyệt)
+  `approved_by` int, -- FK -> employees.id (Người duyệt bảng lương)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
+  PRIMARY KEY (`id`)
+);
 
--- =============================================================================
--- BẢNG: contracts
--- MÔ TẢ: Hợp đồng lao động của nhân viên.
--- DÙNG CHO CÂU HỎI: loại hợp đồng, ngày ký, trạng thái hợp đồng.
--- JOIN: employees e JOIN contracts c ON c.employee_id = e.id AND c.is_deleted = 0
--- =============================================================================
+CREATE TABLE `payroll_details` (
+  `id` int, -- Khóa chính, ID chi tiết lương từng nhân viên
+  `payroll_id` int, -- FK -> payrolls.id (ID bảng lương tháng tổng hợp)
+  `employee_id` int, -- FK -> employees.id (ID nhân viên nhận lương)
+  `working_days` decimal, -- Số ngày công thực tế làm việc trong tháng
+  `standard_days` decimal, -- Số ngày công tiêu chuẩn trong tháng (ngày công chuẩn)
+  `base_salary` decimal, -- Lương cơ bản thực tế tính theo số công
+  `performance_salary` decimal, -- Lương hiệu suất / KPI thực tế
+  `overtime_pay` decimal, -- Tổng số tiền làm tăng ca/OT nhận được
+  `bonus` decimal, -- Tiền thưởng thêm (thưởng dự án, thưởng nóng...)
+  `allowance_amount` decimal, -- Tổng các khoản phụ cấp cộng vào lương
+  `union_fee` decimal, -- Lệ phí công đoàn khấu trừ
+  `social_insurance` decimal, -- Tiền bảo hiểm xã hội cá nhân đóng (BHXH)
+  `health_insurance` decimal, -- Tiền bảo hiểm y tế cá nhân đóng (BHYT)
+  `unemployment_insurance` decimal, -- Tiền bảo hiểm thất nghiệp cá nhân đóng (BHTN)
+  `dependent_count` int, -- Số người phụ thuộc để giảm trừ gia cảnh thuế
+  `family_deduction` decimal, -- Số tiền giảm trừ gia cảnh thuế TNCN
+  `tax_deduction` decimal, -- Tiền thuế thu nhập cá nhân bị khấu trừ (Thuế TNCN)
+  `insurance_deduction` decimal, -- Tổng tiền khấu trừ bảo hiểm cá nhân đóng
+  `total_deduction` decimal, -- Tổng các khoản khấu trừ giảm lương (BHXH + BHYT + Thuế + Công đoàn)
+  `total_gross_income` decimal, -- Tổng thu nhập gộp (Lương gộp trước thuế/bảo hiểm)
+  `net_salary` decimal, -- Lương thực nhận (Thực lĩnh của nhân viên = Gross - Khấu trừ)
+  `total_hr_cost` decimal, -- Tổng chi phí nhân sự thực tế công ty phải trả cho nhân viên này
+  `official_days` decimal, -- Ngày công chính thức
+  `probation_days` decimal, -- Ngày công thử việc
+  `annual_leave_days` decimal, -- Số ngày nghỉ phép năm hưởng lương thực tế
+  `unpaid_leave_days` decimal, -- Số ngày nghỉ không lương thực tế
+  `total_ot_hours` decimal, -- Tổng số giờ tăng ca/OT thực tế trong tháng
+  `ot_weekday` decimal, -- Giờ OT ngày thường
+  `ot_weekend` decimal, -- Giờ OT cuối tuần
+  `ot_holiday` decimal, -- Giờ OT ngày lễ
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
+  PRIMARY KEY (`id`)
+);
+
 CREATE TABLE `contracts` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,                                -- FK → employees.id
-  `contract_number` varchar(255) NOT NULL,                   -- Số hợp đồng
-  `contract_type` varchar(255) DEFAULT NULL,                 -- Loại hợp đồng (FULL_TIME, PART_TIME, PROBATION…)
-  `start_date` date DEFAULT NULL,                            -- Ngày bắt đầu hợp đồng
-  `end_date` date DEFAULT NULL,                              -- Ngày kết thúc (NULL = vô thời hạn)
-  `working_hours` decimal(5,2) DEFAULT NULL,                 -- Số giờ làm việc/tuần
-  `contract_status` varchar(255) DEFAULT NULL,               -- Trạng thái (ACTIVE, EXPIRED, TERMINATED)
-  `signed_date` date DEFAULT NULL,                           -- Ngày ký hợp đồng
-  `termination_date` date DEFAULT NULL,                      -- Ngày chấm dứt (nếu bị chấm dứt)
-  `termination_reason` varchar(255) DEFAULT NULL,            -- Lý do chấm dứt
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID hợp đồng
+  `employee_id` int, -- FK -> employees.id (ID nhân viên ký hợp đồng)
+  `contract_number` varchar, -- Số hợp đồng lao động
+  `contract_type` varchar, -- Loại hợp đồng (permanent=Vô thời hạn, temporary=Có thời hạn, probation=Thử việc)
+  `start_date` date, -- Ngày bắt đầu hợp đồng hiệu lực
+  `end_date` date, -- Ngày hết hạn hợp đồng (NULL = không thời hạn)
+  `working_hours` decimal, -- Số giờ làm việc quy định trên tuần (VD: 40.00)
+  `contract_status` varchar, -- Trạng thái (ACTIVE=Đang hiệu lực, EXPIRED=Hết hạn)
+  `signed_date` date, -- Ngày ký kết hợp đồng
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: attendance_records
--- MÔ TẢ: Dữ liệu chấm công thô từ thiết bị (face/GPS/QR/thủ công).
--- DÙNG CHO CÂU HỎI: giờ check-in/out, đi muộn bao nhiêu phút, trạng thái chấm công.
--- LƯU Ý: Đây là dữ liệu gốc chưa xử lý. Để tính tổng công tháng, ưu tiên dùng processed_attendance_records.
--- JOIN: employees e JOIN attendance_records ar ON ar.employee_id = e.id AND ar.is_deleted = 0
---       JOIN shift_schedules ss ON ar.shift_schedule_id = ss.id
--- =============================================================================
 CREATE TABLE `attendance_records` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,                                -- FK → employees.id
-  `work_date` date DEFAULT NULL,                             -- Ngày làm việc
-  `shift_schedule_id` int DEFAULT NULL,                      -- FK → shift_schedules.id (ca cụ thể trong ngày)
-  `check_in_time` datetime DEFAULT NULL,                     -- Thời điểm check-in
-  `check_out_time` datetime DEFAULT NULL,                    -- Thời điểm check-out
-  `attendance_status` enum('present','late','early_leave','absent','half_day') DEFAULT NULL,  -- Trạng thái: present=có mặt, late=muộn, early_leave=về sớm, absent=vắng, half_day=nửa ngày
-  `attendance_type` enum('face','gps','qr','manual') NOT NULL DEFAULT 'face',  -- Hình thức chấm (khuôn mặt/GPS/QR/thủ công)
-  `late_minutes` int DEFAULT NULL,                           -- Số phút đi muộn
-  `early_leave_minutes` int DEFAULT NULL,                    -- Số phút về sớm
-  `overtime_minutes` int DEFAULT NULL,                       -- Số phút tăng ca
-  `total_work_minutes` int DEFAULT NULL,                     -- Tổng phút làm việc thực tế
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID bản ghi chấm công thô gốc từ máy/GPS
+  `employee_id` int, -- FK -> employees.id (ID nhân viên chấm công)
+  `work_date` date, -- Ngày chấm công cụ thể
+  `check_in_time` datetime, -- Giờ check-in thực tế
+  `check_out_time` datetime, -- Giờ check-out thực tế
+  `attendance_status` varchar, -- Trạng thái (present=có mặt, late=đi muộn, early_leave=về sớm, absent=vắng)
+  `attendance_type` varchar, -- Hình thức chấm (face=khuôn mặt, gps=vị trí, qr=mã QR, manual=thủ công)
+  `late_minutes` int, -- Số phút đi muộn (nếu có)
+  `early_leave_minutes` int, -- Số phút về sớm (nếu có)
+  `overtime_minutes` int, -- Số phút tăng ca trong ngày chấm công
+  `total_work_minutes` int, -- Tổng số phút làm việc thực tế trong ngày
+  `working_shift_id` int, -- FK -> working_shifts.id (Mã ca làm việc được phân)
+  `assignment_id` int, -- FK -> shift_assignments.id (Mã phân ca tương ứng)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: processed_attendance_records
--- MÔ TẢ: Dữ liệu chấm công đã xử lý/tính toán (sau khi HR đồng bộ/chốt công).
--- ĐÂY LÀ BẢNG ƯU TIÊN khi hỏi về số công tháng, tổng công.
--- DÙNG CHO CÂU HỎI: tháng X chấm được bao nhiêu buổi/ngày công, tổng công tháng.
--- PHÉP JOIN:
---   SELECT e.full_name, par.work_value, par.work_date
---   FROM employees e JOIN processed_attendance_records par ON par.employee_id = e.id
---   WHERE e.full_name LIKE '%Tên%' AND MONTH(par.work_date) = X AND YEAR(par.work_date) = Y AND par.is_deleted = 0
--- =============================================================================
 CREATE TABLE `processed_attendance_records` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,                                -- FK → employees.id
-  `work_date` date NOT NULL,                                 -- Ngày làm việc cụ thể
-  `work_value` decimal(5,2) DEFAULT NULL,                    -- Giá trị công (1.0=cả ngày, 0.5=nửa ngày, 0=vắng)
-  `attendance_status` varchar(50) DEFAULT NULL,              -- Trạng thái đã xử lý
-  `shift_schedule_id` int DEFAULT NULL,                      -- FK → shift_schedules.id
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `id` int, -- Khóa chính, ID bản ghi công đã xử lý (HR ĐÃ CHỐT CÔNG)
+  `employee_id` int, -- FK -> employees.id (ID nhân viên)
+  `work_date` date, -- Ngày tính công cụ thể
+  `work_value` decimal, -- Giá trị công ghi nhận (1.0 = Cả ngày công, 0.5 = Nửa ngày công, 0.0 = Nghỉ/Vắng)
+  `attendance_status` varchar, -- Trạng thái công đã xử lý
+  `shift_schedule_id` int, -- FK -> shift_schedules.id (Mã lịch ca trong ngày)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
--- ĐẾM SỐ BUỔI CHẤM CÔNG: COUNT(*) WHERE work_value > 0 AND MONTH(work_date)=X
--- TỔNG CÔNG: SUM(work_value) WHERE MONTH(work_date)=X
+);
 
-
--- =============================================================================
--- BẢNG: time_sheets
--- MÔ TẢ: Bảng tổng hợp công theo tháng của mỗi nhân viên (đã được HR tạo/chốt).
--- DÙNG CHO CÂU HỎI: tổng ngày công tháng X của nhân viên A, tổng giờ OT.
--- LƯU Ý: is_locked=1 nghĩa là đã chốt công, không thể sửa.
--- JOIN: employees e JOIN time_sheets ts ON ts.employee_id = e.id AND ts.is_deleted = 0
--- =============================================================================
 CREATE TABLE `time_sheets` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,                                -- FK → employees.id
-  `month` int NOT NULL,                                      -- Tháng (1-12)
-  `year` int NOT NULL,                                       -- Năm (VD: 2026)
-  `total_working_days` decimal(5,2) DEFAULT NULL,            -- Tổng ngày công trong tháng
-  `total_working_hours` decimal(10,2) DEFAULT NULL,          -- Tổng giờ làm việc
-  `overtime_hours` decimal(10,2) DEFAULT NULL,               -- Tổng giờ tăng ca
-  `is_locked` tinyint NOT NULL DEFAULT '0',                  -- 0=chưa chốt, 1=đã chốt/khóa
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID bảng tổng hợp công theo tháng của nhân viên
+  `employee_id` int, -- FK -> employees.id (ID nhân viên)
+  `month` int, -- Tháng chốt công (1-12)
+  `year` int, -- Năm chốt công (VD: 2026)
+  `total_working_days` decimal, -- Tổng số ngày công tích lũy trong tháng (công thực tế)
+  `total_working_hours` decimal, -- Tổng số giờ công làm việc trong tháng
+  `overtime_hours` decimal, -- Tổng số giờ làm tăng ca (OT) tích lũy trong tháng
+  `is_locked` tinyint, -- Khóa dữ liệu (0 = Chưa chốt, 1 = Đã chốt khóa công)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: leave_types
--- MÔ TẢ: Danh mục các loại nghỉ phép (Phép năm, Phép bệnh, Phép không lương…).
--- DÙNG CHO CÂU HỎI: các loại phép, phép có lương hay không.
--- =============================================================================
 CREATE TABLE `leave_types` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `leave_type_name` varchar(255) NOT NULL,                   -- Tên loại phép (VD: "Phép năm có lương")
-  `is_paid` tinyint NOT NULL DEFAULT '0',                    -- 0=không lương, 1=có lương
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID loại nghỉ phép
+  `leave_type_name` varchar, -- Tên loại phép (VD: Annual Leave=Phép năm, Sick Leave=Phép ốm, Unpaid Leave=Nghỉ không lương)
+  `is_paid` tinyint, -- Có hưởng lương hay không (1 = Có lương, 0 = Không lương)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: leave_policies
--- MÔ TẢ: Chính sách phép năm (số ngày phép tối đa/năm) theo từng loại phép.
--- DÙNG CHO CÂU HỎI: tổng số ngày phép được cấp là bao nhiêu.
--- JOIN: leave_types lt JOIN leave_policies lp ON lp.leave_type_id = lt.id AND lp.is_deleted = 0
--- =============================================================================
 CREATE TABLE `leave_policies` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `leave_type_id` int NOT NULL,                              -- FK → leave_types.id
-  `policy_name` varchar(255) NOT NULL,                       -- Tên chính sách
-  `days_per_year` int NOT NULL,                              -- Số ngày phép được cấp mỗi năm
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính
+  `leave_type_id` int, -- FK -> leave_types.id (Mã loại nghỉ phép)
+  `policy_name` varchar, -- Tên chính sách ngày nghỉ
+  `days_per_year` int, -- Định mức số ngày nghỉ tối đa được cấp mỗi năm
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: leave_balances
--- MÔ TẢ: Theo dõi số ngày phép đã sử dụng của từng nhân viên theo năm.
--- CÔNG THỨC NGÀY PHÉP CÒN LẠI:
---   Ngày phép còn lại = lp.days_per_year - lb.used_days
--- DÙNG CHO CÂU HỎI: nhân viên A còn bao nhiêu ngày phép có lương?
--- PHÉP JOIN ĐẦY ĐỦ:
---   SELECT e.full_name, lt.leave_type_name, lp.days_per_year, lb.used_days,
---          (lp.days_per_year - lb.used_days) AS remaining_days
---   FROM employees e
---   JOIN leave_balances lb ON lb.employee_id = e.id AND lb.is_deleted = 0
---   JOIN leave_types lt ON lt.id = lb.leave_type_id AND lt.is_deleted = 0
---   JOIN leave_policies lp ON lp.leave_type_id = lt.id AND lp.is_deleted = 0
---   WHERE e.full_name LIKE '%Tên%' AND e.is_deleted = 0 AND lb.year = YEAR(CURDATE())
--- LƯU Ý: Không có cột total_days trong bảng này. Tổng phép từ leave_policies.days_per_year.
--- =============================================================================
 CREATE TABLE `leave_balances` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,                                -- FK → employees.id
-  `leave_type_id` int NOT NULL,                              -- FK → leave_types.id
-  `year` int NOT NULL,                                       -- Năm tính phép (VD: 2026)
-  `used_days` decimal(5,2) NOT NULL DEFAULT '0',             -- Số ngày phép đã dùng
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính
+  `employee_id` int, -- FK -> employees.id (ID nhân viên)
+  `leave_type_id` int, -- FK -> leave_types.id (Mã loại nghỉ phép)
+  `year` int, -- Năm theo dõi ngày phép (VD: 2026)
+  `used_days` decimal, -- Số ngày nghỉ phép loại này đã sử dụng trong năm
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: working_shifts
--- MÔ TẢ: Danh mục các ca làm việc (Ca sáng 8h-17h, Ca tối 18h-22h…).
--- DÙNG CHO CÂU HỎI: các ca làm việc hiện có, giờ vào-ra của từng ca.
--- =============================================================================
 CREATE TABLE `working_shifts` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `shift_name` varchar(255) NOT NULL,                        -- Tên ca (VD: "Ca Sáng", "Ca Hành Chính")
-  `start_time` time DEFAULT NULL,                            -- Giờ bắt đầu ca
-  `end_time` time DEFAULT NULL,                              -- Giờ kết thúc ca
-  `break_start_time` time DEFAULT NULL,                      -- Giờ bắt đầu nghỉ giữa ca
-  `break_end_time` time DEFAULT NULL,                        -- Giờ kết thúc nghỉ giữa ca
-  `group_id` int DEFAULT NULL,                               -- FK → shift_groups.id (nhóm ca)
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID ca làm việc
+  `shift_name` varchar, -- Tên ca làm việc (VD: Ca hành chính, Ca sáng, Ca chiều, Ca tối)
+  `start_time` time, -- Giờ bắt đầu ca (VD: 08:00:00)
+  `end_time` time, -- Giờ kết thúc ca (VD: 17:00:00)
+  `break_start_time` time, -- Giờ bắt đầu nghỉ ca
+  `break_end_time` time, -- Giờ kết thúc nghỉ ca
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: shift_groups
--- MÔ TẢ: Nhóm ca (VD: Nhóm Ca Hành Chính, Nhóm Ca Luân Phiên).
--- =============================================================================
-CREATE TABLE `shift_groups` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `group_name` varchar(255) NOT NULL,                        -- Tên nhóm ca
-  `description` varchar(255) DEFAULT NULL,
-  `status` varchar(20) NOT NULL DEFAULT 'active',            -- active/inactive
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
--- =============================================================================
--- BẢNG: shift_assignments
--- MÔ TẢ: Phân ca - giao ca làm việc cho nhân viên hoặc phòng ban.
--- ĐẶC BIỆT: Có thể phân theo nhân viên (employee_id) HOẶC phòng ban (department_id).
---   Cột employee_ids và department_ids (text) dùng để lưu nhiều ID dạng JSON string.
--- DÙNG CHO CÂU HỎI: nhân viên A đang làm ca gì, được phân ca nào.
--- PHÉP JOIN ĐỂ LẤY CA CỦA NHÂN VIÊN:
---   SELECT e.full_name, ws.shift_name, ws.start_time, ws.end_time, sa.effective_from, sa.effective_to
---   FROM employees e
---   JOIN shift_assignments sa ON sa.employee_id = e.id AND sa.is_deleted = 0
---   JOIN working_shifts ws ON ws.id = sa.shift_id AND ws.is_deleted = 0
---   WHERE e.full_name LIKE '%Tên%' AND e.is_deleted = 0
---     AND (sa.effective_to IS NULL OR sa.effective_to >= CURDATE())
--- LƯU Ý: Nếu employee_id là NULL, check thêm department_id hoặc employee_ids.
--- =============================================================================
 CREATE TABLE `shift_assignments` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `assignment_name` varchar(255) DEFAULT NULL,               -- Tên bản phân ca
-  `employee_id` int DEFAULT NULL,                            -- FK → employees.id (phân cho 1 nhân viên cụ thể)
-  `department_id` int DEFAULT NULL,                          -- FK → departments.id (phân cho cả phòng ban)
-  `employee_ids` text,                                       -- Danh sách employee_id (JSON array) nếu phân nhiều người
-  `department_ids` text,                                     -- Danh sách department_id nếu phân nhiều phòng
-  `shift_id` int NOT NULL,                                   -- FK → working_shifts.id (ca được giao)
-  `shift_ids` text,                                          -- Nhiều ca (nếu có luân phiên)
-  `effective_from` date DEFAULT NULL,                        -- Ngày bắt đầu hiệu lực
-  `effective_to` date DEFAULT NULL,                          -- Ngày kết thúc (NULL = không giới hạn)
-  `weekdays` text,                                           -- Các thứ trong tuần áp dụng (JSON)
-  `repeat_type` varchar(20) DEFAULT NULL,                    -- Kiểu lặp (DAILY, WEEKLY…)
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính
+  `employee_id` int, -- FK -> employees.id (Mã nhân viên được giao ca trực tiếp)
+  `department_id` int, -- FK -> departments.id (Mã phòng ban được giao ca hàng loạt)
+  `shift_id` int, -- FK -> working_shifts.id (ID ca làm việc được giao)
+  `effective_from` date, -- Ngày bắt đầu hiệu lực phân ca
+  `effective_to` date, -- Ngày hết hiệu lực phân ca (NULL = vô hạn)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: shift_schedules
--- MÔ TẢ: Lịch ca cụ thể theo từng ngày của từng nhân viên (phát sinh từ shift_assignments).
--- DÙNG CHO CÂU HỎI: ngày X nhân viên A làm ca nào, lịch sử chấm công theo ca.
--- JOIN: employees e JOIN shift_schedules ss ON ss.employee_id = e.id AND ss.is_deleted = 0
---       JOIN working_shifts ws ON ws.id = ss.shift_id
--- =============================================================================
-CREATE TABLE `shift_schedules` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `assignment_id` int NOT NULL,                              -- FK → shift_assignments.id
-  `employee_id` int NOT NULL,                                -- FK → employees.id
-  `department_id` int DEFAULT NULL,                          -- FK → departments.id
-  `shift_id` int NOT NULL,                                   -- FK → working_shifts.id
-  `work_date` date NOT NULL,                                 -- Ngày làm việc cụ thể
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
--- =============================================================================
--- BẢNG: penalties
--- MÔ TẢ: Quy định hình phạt / trừ công khi vi phạm (đi muộn, về sớm).
--- LOGIC TÍNH PHẠT:
---   Nếu nhân viên đi muộn X phút: tìm penalty có violation_type='LATE' và from_minute<=X<=to_minute
---   Số công bị trừ = converted_hours (đơn vị: giờ công không tính)
--- DÙNG CHO CÂU HỎI: đi muộn 15 phút bị trừ bao nhiêu tiếng công?
--- =============================================================================
 CREATE TABLE `penalties` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `violation_type` varchar(255) NOT NULL,                    -- Loại vi phạm: LATE (muộn), EARLY_LEAVE (về sớm)
-  `effective_from` date NOT NULL,                            -- Quy định có hiệu lực từ ngày
-  `effective_to` date DEFAULT NULL,                          -- Hết hiệu lực (NULL = còn hiệu lực)
-  `from_minute` int NOT NULL,                                -- Từ số phút vi phạm (VD: 1)
-  `to_minute` int NOT NULL,                                  -- Đến số phút vi phạm (VD: 15)
-  `converted_hours` decimal(10,2) NOT NULL,                  -- Số giờ công bị trừ tương ứng
-  `note` text,                                               -- Ghi chú thêm
-  `status` varchar(255) NOT NULL DEFAULT 'ACTIVE',           -- ACTIVE=còn hiệu lực, INACTIVE=hết hiệu lực
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID quy định hình phạt vi phạm chấm công
+  `violation_type` varchar, -- Loại vi phạm (LATE = Đi muộn, EARLY_LEAVE = Về sớm)
+  `effective_from` date, -- Ngày bắt đầu áp dụng quy định phạt
+  `effective_to` date, -- Ngày hết hiệu lực quy định phạt (NULL = đang áp dụng)
+  `from_minute` int, -- Số phút vi phạm tối thiểu (VD: từ 1 phút)
+  `to_minute` int, -- Số phút vi phạm tối đa (VD: đến 15 phút)
+  `converted_hours` decimal, -- Số giờ công bị khấu trừ tương ứng (Giờ công bị trừ phạt)
+  `status` varchar, -- Trạng thái quy định (ACTIVE = Đang hoạt động, INACTIVE = Hết hiệu lực)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
--- VÍ DỤ QUERY đi muộn X phút bị trừ bao nhiêu:
---   SELECT violation_type, from_minute, to_minute, converted_hours, note
---   FROM penalties
---   WHERE violation_type = 'LATE' AND status = 'ACTIVE' AND is_deleted = 0
---     AND from_minute <= X AND to_minute >= X
---     AND effective_from <= CURDATE() AND (effective_to IS NULL OR effective_to >= CURDATE())
+);
 
-
--- =============================================================================
--- BẢNG: overtime_rules
--- MÔ TẢ: Quy định tăng ca (hệ số nhân lương OT, giới hạn giờ/ngày/tháng).
--- DÙNG CHO CÂU HỎI: quy định OT, hệ số tăng ca ngày lễ/tối/thường.
--- =============================================================================
 CREATE TABLE `overtime_rules` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(200) NOT NULL,                              -- Tên quy định OT
-  `overtime_type_id` int DEFAULT NULL,                       -- FK → overtime_types.id
-  `salary_multiplier` decimal(5,2) NOT NULL,                 -- Hệ số nhân lương OT (VD: 1.5, 2.0, 3.0)
-  `max_hours_per_day` int NOT NULL,                          -- Giới hạn giờ OT/ngày
-  `max_hours_per_month` int NOT NULL,                        -- Giới hạn giờ OT/tháng
-  `effective_from` date DEFAULT NULL,
-  `effective_to` date DEFAULT NULL,
-  `version_status` enum('DRAFT','ACTIVE','EXPIRED') NOT NULL DEFAULT 'DRAFT',
-  `status` varchar(20) NOT NULL DEFAULT 'ACTIVE',
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính
+  `name` varchar, -- Tên quy định tăng ca (VD: Quy định OT ngày thường, Quy định OT ngày lễ)
+  `overtime_type_id` int, -- FK -> overtime_types.id (Mã loại tăng ca)
+  `salary_multiplier` decimal, -- Hệ số nhân lương OT áp dụng (VD: 1.5, 2.0, 3.0)
+  `max_hours_per_day` int, -- Giới hạn số giờ OT tối đa được làm trên ngày
+  `max_hours_per_month` int, -- Giới hạn số giờ OT tối đa trên tháng
+  `status` varchar, -- Trạng thái quy định (ACTIVE/INACTIVE)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: overtime_types
--- MÔ TẢ: Loại tăng ca (Ngày thường, Cuối tuần, Ngày lễ…).
--- =============================================================================
 CREATE TABLE `overtime_types` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `code` varchar(50) NOT NULL,                               -- Mã loại OT (VD: OT_NORMAL, OT_WEEKEND, OT_HOLIDAY)
-  `name` varchar(100) NOT NULL,                              -- Tên loại OT
-  `description` varchar(255) DEFAULT NULL,
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính
+  `code` varchar, -- Mã loại tăng ca (OT_NORMAL = Ngày thường, OT_WEEKEND = Cuối tuần, OT_HOLIDAY = Ngày lễ)
+  `name` varchar, -- Tên loại tăng ca (VD: Ngày thường, Cuối tuần, Ngày lễ)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: overtime_request_details
--- MÔ TẢ: Chi tiết giờ OT thực tế của từng nhân viên (từ đơn OT đã duyệt).
--- DÙNG CHO CÂU HỎI: nhân viên A làm OT bao nhiêu giờ tháng X.
--- JOIN: JOIN overtime_request_details ord ON ord.request_id = r.id
--- =============================================================================
 CREATE TABLE `overtime_request_details` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `request_id` int NOT NULL,                                 -- FK → requests.id (đơn OT)
-  `overtime_type_id` int DEFAULT NULL,                       -- FK → overtime_types.id
-  `overtime_rule_id` int DEFAULT NULL,                       -- FK → overtime_rules.id
-  `work_date` date NOT NULL,                                 -- Ngày tăng ca
-  `start_time` time DEFAULT NULL,                            -- Giờ bắt đầu OT
-  `end_time` time DEFAULT NULL,                              -- Giờ kết thúc OT
-  `total_hours` decimal(5,2) NOT NULL,                       -- Tổng giờ OT
-  `rate_multiplier` decimal(5,2) DEFAULT NULL,               -- Hệ số nhân lương áp dụng
-  `overtime_amount` decimal(15,2) DEFAULT NULL,              -- Tiền OT tính được
-  `reason` text,
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính
+  `request_id` int, -- FK -> requests.id (Mã đơn xin tăng ca được duyệt)
+  `overtime_type_id` int, -- FK -> overtime_types.id (ID loại tăng ca)
+  `overtime_rule_id` int, -- FK -> overtime_rules.id (ID quy định tăng ca áp dụng)
+  `work_date` date, -- Ngày làm việc tăng ca thực tế
+  `start_time` time, -- Giờ bắt đầu tăng ca
+  `end_time` time, -- Giờ kết thúc tăng ca
+  `total_hours` decimal, -- Tổng số giờ làm việc tăng ca thực tế
+  `rate_multiplier` decimal, -- Hệ số nhân lương được áp dụng (VD: 1.50)
+  `overtime_amount` decimal, -- Số tiền tăng ca tính được thực tế
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: requests
--- MÔ TẢ: Bảng tổng hợp tất cả các đơn từ của nhân viên (nghỉ phép, OT, công tác…).
--- TRẠNG THÁI: DRAFT→SUBMITTED→APPROVED/REJECTED/CANCELLED
--- DÙNG CHO CÂU HỎI: đơn nghỉ phép đang chờ duyệt, đơn OT tháng này.
--- QUAN TRỌNG: Bảng requests dùng cột `status` (DRAFT/SUBMITTED/APPROVED/REJECTED/CANCELLED).
---             Dùng cột `quantity` để biết số ngày/giờ xin.
--- JOIN với leave_types thông qua request_types để biết loại đơn.
--- =============================================================================
 CREATE TABLE `requests` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `request_code` varchar(50) DEFAULT NULL,                   -- Mã đơn duy nhất (VD: REQ-2026-001)
-  `request_group_id` int NOT NULL,                           -- FK → request_groups.id
-  `request_type_id` int NOT NULL,                            -- FK → request_types.id (loại đơn)
-  `employee_id` int NOT NULL,                                -- FK → employees.id (người nộp đơn)
-  `start_date` date DEFAULT NULL,                            -- Ngày bắt đầu (VD: nghỉ từ ngày)
-  `end_date` date DEFAULT NULL,                              -- Ngày kết thúc
-  `quantity` decimal(10,2) DEFAULT NULL,                     -- Số lượng (ngày/giờ xin)
-  `unit` varchar(50) DEFAULT NULL,                           -- Đơn vị (day/hour)
-  `description` text,                                        -- Lý do/mô tả
-  `status` varchar(50) NOT NULL DEFAULT 'DRAFT',             -- Trạng thái: DRAFT/SUBMITTED/APPROVED/REJECTED/CANCELLED
-  `submitted_at` datetime DEFAULT NULL,
-  `approved_at` datetime DEFAULT NULL,
-  `rejected_at` datetime DEFAULT NULL,
-  `is_worked_time` tinyint NOT NULL DEFAULT '0',             -- 1=là giờ làm bù/OT, 0=không
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID đơn từ hành chính
+  `request_code` varchar, -- Mã đơn từ duy nhất (REQ-2026-xxx)
+  `request_group_id` int, -- FK -> request_groups.id (Mã nhóm đơn: 1=LEAVE nghỉ phép, 2=OVERTIME tăng ca, 3=ATTENDANCE giải trình chấm công)
+  `request_type_id` int, -- FK -> request_types.id (Mã loại đơn)
+  `employee_id` int, -- FK -> employees.id (ID nhân viên làm đơn)
+  `start_date` date, -- Ngày bắt đầu đơn hiệu lực (ngày nghỉ phép từ, ngày OT...)
+  `end_date` date, -- Ngày kết thúc đơn
+  `quantity` decimal, -- Số lượng đơn vị xin (Ví dụ: số ngày xin nghỉ 1.00; số giờ xin OT 3.00)
+  `unit` varchar, -- Đơn vị lượng xin (day = ngày, hour = giờ)
+  `status` varchar, -- Trạng thái phê duyệt đơn (DRAFT/SUBMITTED/APPROVED/REJECTED/CANCELLED)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: request_types
--- MÔ TẢ: Các loại đơn từ (Đơn nghỉ phép, Đơn tăng ca, Đơn giải trình…).
--- JOIN: requests r JOIN request_types rt ON r.request_type_id = rt.id
--- =============================================================================
 CREATE TABLE `request_types` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `request_group_id` int NOT NULL,                           -- FK → request_groups.id
-  `name` varchar(255) NOT NULL,                              -- Tên loại đơn (VD: "Đơn nghỉ phép có lương")
-  `description` text,
-  `status` varchar(50) NOT NULL DEFAULT 'ACTIVE',
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID loại đơn cụ thể
+  `request_group_id` int, -- FK -> request_groups.id (Mã nhóm đơn cha)
+  `name` varchar, -- Tên loại đơn (VD: Đơn nghỉ phép có lương, Đơn xin tăng ca, Đơn giải trình đi muộn)
+  `status` varchar, -- Trạng thái hoạt động (ACTIVE/INACTIVE)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: request_groups
--- MÔ TẢ: Nhóm đơn từ (Nhóm Nghỉ phép, Nhóm Tăng ca, Nhóm Công tác…).
--- =============================================================================
 CREATE TABLE `request_groups` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  `code` varchar(100) NOT NULL,                              -- Mã nhóm (VD: LEAVE, OVERTIME, BUSINESS_TRIP)
-  `status` varchar(50) NOT NULL DEFAULT 'ACTIVE',
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID nhóm đơn từ lớn
+  `name` varchar, -- Tên nhóm đơn từ (VD: Nghỉ phép, Tăng ca, Giải trình chấm công)
+  `code` varchar, -- Mã nhóm viết tắt (LEAVE = Nghỉ phép, OVERTIME = Tăng ca, ATTENDANCE = Giải trình)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: holiday_list
--- MÔ TẢ: Danh sách các ngày nghỉ lễ (Tết, Quốc khánh…).
--- DÙNG CHO CÂU HỎI: ngày X có phải ngày lễ không, các ngày lễ tháng Y.
--- =============================================================================
 CREATE TABLE `holiday_list` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `holiday_name` varchar(255) NOT NULL,                      -- Tên ngày lễ (VD: "Tết Nguyên Đán")
-  `start_date` date DEFAULT NULL,                            -- Ngày bắt đầu nghỉ lễ
-  `end_date` date DEFAULT NULL,                              -- Ngày kết thúc nghỉ lễ
-  `holiday_type` varchar(255) DEFAULT NULL,                  -- Loại (NATIONAL, COMPANY, RELIGIOUS…)
-  `is_paid` tinyint NOT NULL DEFAULT '0',                    -- 1=lễ có lương, 0=không lương
-  `holiday_group_id` int DEFAULT NULL,                       -- FK → holiday_groups.id
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID ngày lễ cụ thể
+  `holiday_name` varchar, -- Tên ngày nghỉ lễ quy định (VD: Tết Nguyên Đán, Nghi lễ 30/1- 1/5)
+  `start_date` date, -- Ngày bắt đầu nghỉ lễ thực tế
+  `end_date` date, -- Ngày kết thúc kỳ nghỉ lễ thực tế
+  `is_paid` tinyint, -- Ngày lễ có được hưởng lương không (1 = Có lương, 0 = Không lương)
+  `holiday_group_id` int, -- FK -> holiday_groups.id (Mã nhóm kỳ nghỉ lễ năm)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
-
--- =============================================================================
--- BẢNG: holiday_groups
--- MÔ TẢ: Nhóm lịch nghỉ lễ theo năm (mỗi năm tạo 1 nhóm).
--- =============================================================================
 CREATE TABLE `holiday_groups` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `group_name` varchar(255) NOT NULL,
-  `group_code` varchar(255) NOT NULL,
-  `year` int NOT NULL,                                       -- Năm áp dụng
-  `applicable_scope` varchar(255) NOT NULL DEFAULT 'GLOBAL', -- GLOBAL=toàn công ty
-  `status` varchar(255) NOT NULL DEFAULT 'ACTIVE',
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID nhóm ngày lễ theo năm
+  `group_name` varchar, -- Tên nhóm kỳ nghỉ lễ năm (VD: Holidays -2026)
+  `group_code` varchar, -- Mã nhóm năm (VD: 2026)
+  `year` int, -- Năm áp dụng kỳ nghỉ lễ (VD: 2026)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
+CREATE TABLE `employee_bank_accounts` (
+  `id` int, -- Khóa chính
+  `employee_id` int, -- FK -> employees.id (ID nhân viên sở hữu tài khoản)
+  `account_number` varchar, -- Số tài khoản ngân hàng nhận lương (STK)
+  `account_holder_name` varchar, -- Tên chủ tài khoản ngân hàng viết hoa không dấu
+  `bank_name` varchar, -- Tên ngân hàng nhận lương (VD: Vietcombank)
+  `status` varchar, -- Trạng thái hoạt động (ACTIVE/INACTIVE)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
+  PRIMARY KEY (`id`)
+);
 
--- =============================================================================
--- BẢNG: roles & users
--- MÔ TẢ: Tài khoản hệ thống và vai trò.
--- =============================================================================
+CREATE TABLE `employee_dependents` (
+  `id` int, -- Khóa chính
+  `employee_id` int, -- FK -> employees.id (ID nhân viên)
+  `relationship` varchar, -- Mối quan hệ (PARENT = cha/mẹ, CHILD = con, SPOUSE = vợ/chồng)
+  `full_name` varchar, -- Họ tên đầy đủ người phụ thuộc
+  `date_of_birth` date, -- Ngày sinh người phụ thuộc
+  `is_dependent` tinyint, -- Có đang là người phụ thuộc được tính giảm trừ thuế hợp lệ không (1 = Hợp lệ, 0 = Không)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
+  PRIMARY KEY (`id`)
+);
+
 CREATE TABLE `users` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `username` varchar(255) NOT NULL,
-  `email` varchar(255) NOT NULL,
-  `status` varchar(255) NOT NULL DEFAULT 'ACTIVE',
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính
+  `username` varchar, -- Tên tài khoản đăng nhập (VD: admin, employee, hr)
+  `email` varchar, -- Địa chỉ email tài khoản
+  `status` varchar, -- Trạng thái tài khoản (ACTIVE/INACTIVE)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+);
 
 CREATE TABLE `roles` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `role_name` varchar(255) NOT NULL,                         -- ADMIN, HR, MANAGER, EMPLOYEE
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `id` int, -- Khóa chính, ID quyền hạn
+  `role_name` varchar, -- Tên vai trò quyền hạn hệ thống (ADMIN, HR, MANAGER, EMPLOYEE)
+  `is_deleted` tinyint, -- Trạng thái xóa mềm (LUÔN lọc is_deleted = 0)
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
--- =============================================================================
--- BẢNG: employee_bank_accounts
--- MÔ TẢ: Tài khoản ngân hàng của nhân viên để nhận lương.
--- =============================================================================
-CREATE TABLE `employee_bank_accounts` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,
-  `account_number` varchar(255) NOT NULL,                    -- Số tài khoản
-  `account_holder_name` varchar(255) NOT NULL,               -- Tên chủ tài khoản
-  `bank_name` varchar(255) NOT NULL,                         -- Tên ngân hàng
-  `bank_branch` varchar(255) DEFAULT NULL,                   -- Chi nhánh
-  `status` varchar(255) DEFAULT NULL,                        -- ACTIVE/INACTIVE
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
--- =============================================================================
--- BẢNG: employee_dependents
--- MÔ TẢ: Người phụ thuộc của nhân viên (gia đình, con cái để tính giảm trừ thuế).
--- =============================================================================
-CREATE TABLE `employee_dependents` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `employee_id` int NOT NULL,
-  `full_name` varchar(255) NOT NULL,                         -- Tên người phụ thuộc
-  `relationship` varchar(255) DEFAULT NULL,                  -- Quan hệ (cha/mẹ/con/vợ/chồng)
-  `date_of_birth` date DEFAULT NULL,
-  `is_dependent` tinyint NOT NULL DEFAULT '0',               -- 1=đang là người phụ thuộc hợp lệ
-  `dependent_from` date DEFAULT NULL,
-  `dependent_to` date DEFAULT NULL,
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
--- =============================================================================
--- BẢNG: attendance_security_configs & attendance_allowed_ips
--- MÔ TẢ: Cấu hình bảo mật chấm công (giới hạn IP được phép chấm công từ xa).
--- =============================================================================
-CREATE TABLE `attendance_allowed_ips` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `ip_range` varchar(50) NOT NULL,                           -- Dải IP cho phép
-  `description` varchar(255) DEFAULT NULL,
-  `is_active` tinyint NOT NULL DEFAULT '1',
-  `attendance_security_config_id` int NOT NULL,
-  `is_deleted` tinyint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
--- =============================================================================
--- BẢNG: ai_configurations
--- MÔ TẢ: Lưu API Key và Model AI Gemini để hệ thống dùng khi gọi AI.
--- LƯU Ý: Không bao giờ truy vấn bảng này (chứa secret key).
--- =============================================================================
--- (Bảng này không được phép query bởi AI vì lý do bảo mật)
-
-
--- =============================================================================
--- HƯỚNG DẪN JOIN THEO CÁC CÂU HỎI PHỔ BIẾN:
--- =============================================================================
--- [Q1] Lương cơ bản của nhân viên X?
---   SELECT e.full_name, es.base_salary, es.performance_salary, es.lunch_allowance, es.fuel_allowance
---   FROM employees e JOIN employee_salaries es ON es.employee_id = e.id AND es.salary_status = 'ACTIVE' AND es.is_deleted = 0
---   WHERE e.full_name LIKE '%X%' AND e.is_deleted = 0
-
--- [Q2] Ngày phép còn lại của nhân viên X?
---   SELECT e.full_name, lt.leave_type_name, lt.is_paid, lp.days_per_year, lb.used_days,
---          (lp.days_per_year - lb.used_days) AS remaining_days
---   FROM employees e
---   JOIN leave_balances lb ON lb.employee_id = e.id AND lb.is_deleted = 0 AND lb.year = YEAR(CURDATE())
---   JOIN leave_types lt ON lt.id = lb.leave_type_id AND lt.is_deleted = 0
---   JOIN leave_policies lp ON lp.leave_type_id = lt.id AND lp.is_deleted = 0
---   WHERE e.full_name LIKE '%X%' AND e.is_deleted = 0
-
--- [Q3] Tháng M năm Y chấm công bao nhiêu buổi?
---   SELECT e.full_name, COUNT(*) AS total_sessions, SUM(par.work_value) AS total_work_value
---   FROM employees e
---   JOIN processed_attendance_records par ON par.employee_id = e.id AND par.is_deleted = 0
---   WHERE e.full_name LIKE '%X%' AND MONTH(par.work_date) = M AND YEAR(par.work_date) = Y AND e.is_deleted = 0
---   GROUP BY e.id
-
--- [Q4] Nhân viên X đang ở phòng ban nào?
---   SELECT e.full_name, d.department_name, p.position_name
---   FROM employees e
---   JOIN departments d ON d.id = e.department_id AND d.is_deleted = 0
---   JOIN positions p ON p.id = e.position_id AND p.is_deleted = 0
---   WHERE e.full_name LIKE '%X%' AND e.is_deleted = 0
-
--- [Q5] Đi muộn 15 phút bị trừ bao nhiêu tiếng công?
---   SELECT violation_type, from_minute, to_minute, converted_hours, note
---   FROM penalties
---   WHERE violation_type = 'LATE' AND status = 'ACTIVE' AND is_deleted = 0
---     AND from_minute <= 15 AND to_minute >= 15
---     AND effective_from <= CURDATE() AND (effective_to IS NULL OR effective_to >= CURDATE())
-
--- [Q6] Nhân viên X đang làm ca gì?
---   SELECT e.full_name, ws.shift_name, ws.start_time, ws.end_time, sa.effective_from, sa.effective_to
---   FROM employees e
---   JOIN shift_assignments sa ON sa.employee_id = e.id AND sa.is_deleted = 0
---   JOIN working_shifts ws ON ws.id = sa.shift_id AND ws.is_deleted = 0
---   WHERE e.full_name LIKE '%X%' AND e.is_deleted = 0
---     AND (sa.effective_to IS NULL OR sa.effective_to >= CURDATE())
--- =============================================================================
+);

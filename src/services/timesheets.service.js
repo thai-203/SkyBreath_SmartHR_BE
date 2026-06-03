@@ -1909,7 +1909,18 @@ export class TimesheetsService {
     return (rawMinutes - breakOverlap) / 60;
   }
 
-
+  /**
+   * Half-day calculation based on actual hours vs shift hours
+   * @param {number} actualHours
+   * @param {number} shiftHours
+   * @returns {number} 1, 0.5, or 0
+   */
+  _calcWorkingDay(actualHours, shiftHours) {
+    if (!shiftHours || shiftHours <= 0) return 0;
+    if (actualHours >= shiftHours) return 1;
+    if (actualHours >= shiftHours / 2) return 0.5;
+    return 0;
+  }
 
   _buildDailyDetails(
     records,
@@ -3011,23 +3022,29 @@ export class TimesheetsService {
       where: { isDeleted: false },
     });
 
-    const otDetailRepo = AppDataSource.getRepository(
-      OvertimeRequestDetailEntity,
-    );
-    const otDetails = await otDetailRepo
-      .createQueryBuilder('otd')
-      .leftJoinAndSelect('otd.request', 'req')
-      .leftJoinAndSelect('req.requestGroup', 'rg')
-      .leftJoinAndSelect('otd.overtimeRule', 'rule')
-      .leftJoinAndSelect('rule.overtimeType', 'type')
-      .where('MONTH(otd.workDate) = :month AND YEAR(otd.workDate) = :year', {
-        month,
-        year,
-      })
+    // Lấy OT trực tiếp từ bảng requests (nguồn dữ liệu chính xác, đầy đủ cho mọi nhân viên)
+    const otRequestsAll = await AppDataSource.getRepository(RequestEntity)
+      .createQueryBuilder('req')
+      .innerJoinAndSelect('req.requestGroup', 'rg')
+      .where('req.employeeId IN (:...empIds)', { empIds })
       .andWhere('req.status = :status', { status: 'APPROVED' })
       .andWhere('rg.code = :groupCode', { groupCode: 'OVERTIME' })
-      .andWhere('req.employeeId IN (:...empIds)', { empIds })
+      .andWhere('req.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('MONTH(req.startDate) = :month', { month })
+      .andWhere('YEAR(req.startDate) = :year', { year })
       .getMany();
+
+    const otDetails = otRequestsAll.map(req => ({
+      workDate: req.startDate,
+      totalHours: req.quantity,
+      overtimeTypeId: req.overtimeTypeId,
+      startTime: req.startTime,
+      endTime: req.endTime,
+      overtimeRule: null,
+      overtimeRuleId: null,
+      request: req,
+      requestId: req.id,
+    }));
 
     // 5. Map and Aggregate using the specialized helper
     const items = employees.map((emp) => {
@@ -3348,24 +3365,29 @@ export class TimesheetsService {
       .andWhere('par.employeeId = :employeeId', { employeeId })
       .getMany();
 
-    // 3. Get OT Details
-    const otDetailRepo = AppDataSource.getRepository(
-      OvertimeRequestDetailEntity,
-    );
-    const otDetails = await otDetailRepo
-      .createQueryBuilder('otd')
-      .leftJoinAndSelect('otd.request', 'req')
-      .leftJoinAndSelect('req.requestGroup', 'rg')
-      .leftJoinAndSelect('otd.overtimeRule', 'rule')
-      .leftJoinAndSelect('rule.overtimeType', 'type')
-      .where('MONTH(otd.workDate) = :m AND YEAR(otd.workDate) = :y', {
-        m: month,
-        y: year,
-      })
-      .andWhere('req.status = :s', { s: 'APPROVED' })
+    // 3. Get OT Details — Lấy trực tiếp từ bảng requests (nguồn dữ liệu chính xác)
+    const otRequests = await AppDataSource.getRepository(RequestEntity)
+      .createQueryBuilder('req')
+      .innerJoinAndSelect('req.requestGroup', 'rg')
+      .where('req.employeeId = :employeeId', { employeeId })
+      .andWhere('req.status = :status', { status: 'APPROVED' })
       .andWhere('rg.code = :groupCode', { groupCode: 'OVERTIME' })
-      .andWhere('req.employeeId = :employeeId', { employeeId })
+      .andWhere('req.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere('MONTH(req.startDate) = :m', { m: month })
+      .andWhere('YEAR(req.startDate) = :y', { y: year })
       .getMany();
+
+    const otDetails = otRequests.map(req => ({
+      workDate: req.startDate,
+      totalHours: req.quantity,
+      overtimeTypeId: req.overtimeTypeId,
+      startTime: req.startTime,
+      endTime: req.endTime,
+      overtimeRule: null,
+      overtimeRuleId: null,
+      request: req,
+      requestId: req.id,
+    }));
 
     // Rules for OT resolution
     const ruleRepo = AppDataSource.getRepository(OvertimeRuleEntity);
@@ -3576,8 +3598,16 @@ export class TimesheetsService {
           });
         }
       }
-      if (effectiveRule)
+      if (effectiveRule) {
         typeCode = effectiveRule.overtimeType?.code || 'WEEKDAY';
+      } else {
+        // Fallback khi Rule ở trạng thái DRAFT hoặc không tìm thấy rule phù hợp phòng ban
+        // overtimeTypeId: 1=WEEKDAY, 2=WEEKEND, 3=HOLIDAY
+        const fallbackTypeId = ot.overtimeTypeId || ot.request?.overtimeTypeId;
+        if (fallbackTypeId === 2) typeCode = 'WEEKEND';
+        else if (fallbackTypeId === 3) typeCode = 'HOLIDAY';
+        else typeCode = 'WEEKDAY';
+      }
       const isNight =
         ot.startTime &&
         (ot.startTime >= '22:00:00' || ot.startTime < '06:00:00');

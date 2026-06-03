@@ -40,6 +40,10 @@ export const AppMessages = {
       DELETED: 'Xóa phòng ban thành công',
     },
 
+    DepartmentTransfer: {
+      TRANSFERRED: 'Chuyển nhân viên thành công',
+    },
+
     Permission: {
       CREATED: 'Tạo quyền thành công',
       RETRIEVED_ALL: 'Lấy danh sách quyền thành công',
@@ -336,6 +340,13 @@ export const AppMessages = {
         code: 'DEPT_006',
         message: 'Không thể chọn chính phòng ban này làm phòng ban cha',
       },
+    },
+    DepartmentTransfer: {
+      NOT_FOUND: { code: 'TRANSFER_001', message: 'Không tìm thấy lịch sử chuyển' },
+      SAME_DEPARTMENT: { code: 'TRANSFER_002', message: 'Phòng ban đích phải khác phòng ban nguồn' },
+      EMPLOYEE_NOT_IN_DEPARTMENT: { code: 'TRANSFER_003', message: 'Một hoặc nhiều nhân viên không thuộc phòng ban nguồn' },
+      INVALID_EMPLOYEE_STATUS: { code: 'TRANSFER_004', message: 'Chỉ được chuyển nhân viên đang làm việc hoặc thử việc' },
+      NO_EMPLOYEES_SELECTED: { code: 'TRANSFER_005', message: 'Vui lòng chọn ít nhất 1 nhân viên' },
     },
     Contract: {
       NOT_FOUND: { code: 'CONTRACT_001', message: 'Không tìm thấy hợp đồng' },

@@ -318,6 +318,19 @@ export class ShiftAssignmentsService {
     return this.scheduleRepo.bulkCreate(rowsWithAssignmentId);
   }
 
+  _buildScheduleRowsForPayload(targetEmployees = [], shiftIds = [], payload = {}) {
+    const normalizedShiftIds = this._toNumberArray(payload.shiftIds, shiftIds);
+    const normalizedWeekdays = this._toNumberArray(payload.weekdays);
+    const workDates = this._generateDates(
+      payload.startDate,
+      payload.endDate,
+      normalizedWeekdays,
+      payload.repeatType,
+    );
+
+    return this._buildScheduleRows(targetEmployees, normalizedShiftIds, workDates);
+  }
+
   _buildScheduleRows(employees = [], shiftIds = [], workDates = []) {
     const rows = [];
     for (const emp of employees) {
@@ -424,6 +437,20 @@ export class ShiftAssignmentsService {
         'Không tìm thấy nhân viên phù hợp để tạo lịch phân ca',
       );
     }
+
+    const scheduleRows = this._buildScheduleRowsForPayload(
+      target.employees,
+      normalizedShiftIds,
+      {
+        shiftIds: normalizedShiftIds,
+        startDate,
+        endDate,
+        weekdays: normalizedWeekdays,
+        repeatType: repeatType || 'weekly',
+      },
+    );
+
+    await this._assertNoDuplicateSchedules(scheduleRows);
 
     const assignment = await this.assignRepo.create({
       assignmentName: normalizedAssignmentName,
@@ -555,6 +582,20 @@ export class ShiftAssignmentsService {
         'Không tìm thấy nhân viên phù hợp để cập nhật lịch phân ca',
       );
     }
+
+    const scheduleRows = this._buildScheduleRowsForPayload(
+      target.employees,
+      nextShiftIds,
+      {
+        shiftIds: nextShiftIds,
+        startDate: nextStartDate,
+        endDate: nextEndDate,
+        weekdays: nextWeekdays,
+        repeatType: nextRepeatType,
+      },
+    );
+
+    await this._assertNoDuplicateSchedules(scheduleRows, id);
 
     const updated = await this.assignRepo.update(id, {
       assignmentName: nextAssignmentName,

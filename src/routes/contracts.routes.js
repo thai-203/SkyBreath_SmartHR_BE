@@ -317,8 +317,8 @@ router.get(
 );
 router.put(
   '/:id',
-  uploadCloud.array('attachments'),
   authMiddleware,
+  uploadCloud.array('attachments'),
   permissionsMiddleware('CONTRACT_UPDATE'),
   contractsController.update,
 );
