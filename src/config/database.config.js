@@ -59,8 +59,6 @@ import { AiChatMessageEntity } from '../models/entities/ai-chat-message.entity.j
 import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
 import { AiPromptEntity } from '../models/entities/ai-prompt.entity.js';
 import { PerformanceReviewEntity } from '../models/entities/performance-review.entity.js';
-import { DepartmentTransferEntity } from '../models/entities/department-transfer.entity.js';
-import { DepartmentTransferDetailEntity } from '../models/entities/department-transfer-detail.entity.js';
 
 import { config } from './env.config.js';
 import { AuditSubscriber } from '../common/subscribers/audit.subscriber.js';
@@ -146,8 +144,6 @@ export const databaseConfig = {
     AiPromptEntity,
     PayrollConfigEntity,
     PerformanceReviewEntity,
-    DepartmentTransferEntity,
-    DepartmentTransferDetailEntity,
   ],
   subscribers: [AuditSubscriber],
   migrations: [],
