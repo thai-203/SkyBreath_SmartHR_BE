@@ -167,6 +167,7 @@ export class UpdateEmployeeDto {
     @Expose()
     @IsString({ message: 'Số tài khoản ngân hàng phải là chuỗi ký tự' })
     @IsOptional()
+    @Matches(/^[0-9]{8,20}$/, { message: 'Số tài khoản ngân hàng chỉ được chứa từ 8 đến 20 chữ số' })
     accountNumber;
 
     @Expose()
@@ -177,5 +178,6 @@ export class UpdateEmployeeDto {
     @Expose()
     @IsString({ message: 'Tên chủ tài khoản phải là chuỗi ký tự' })
     @IsOptional()
+    @Matches(/^[a-zA-ZÀ-ỹ\s]+$/, { message: 'Tên chủ tài khoản chỉ được chứa chữ cái và khoảng trắng' })
     accountHolderName;
 }

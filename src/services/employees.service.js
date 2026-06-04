@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { AppMessages } from '../common/constants/index.js';
 import {
   NotFoundException,
@@ -268,6 +269,9 @@ export class EmployeesService {
       employeeData.employmentStatus &&
       employeeData.employmentStatus !== employee.employmentStatus
     ) {
+      if (employeeData.employmentStatus === 'TERMINATED') {
+        await this._validateContractExpiration(employee.id, employee.fullName);
+      }
       const allowedTransitions = {
         PROBATION: ['ACTIVE', 'TERMINATED'],
         ACTIVE: ['ON_LEAVE', 'TERMINATED'],
@@ -328,6 +332,32 @@ export class EmployeesService {
     return this.findById(employee.id);
   }
 
+  async _validateContractExpiration(employeeId, employeeName) {
+    const { ContractEntity } = await import('../models/entities/contract.entity.js');
+    const contractRepo = AppDataSource.getRepository(ContractEntity);
+    const contracts = await contractRepo.find({
+      where: { employeeId, isDeleted: false },
+      order: { id: 'DESC' },
+    });
+
+    if (!contracts || contracts.length === 0) {
+      return;
+    }
+
+    const latestContract = contracts[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const endDate = latestContract.endDate ? new Date(latestContract.endDate) : null;
+    const isExpired = latestContract.contractStatus === 'EXPIRED' ||
+                      latestContract.contractStatus === 'TERMINATED' ||
+                      (endDate && endDate < today);
+
+    if (!isExpired) {
+      throw new BadRequestException('Hợp đồng lao động của nhân viên vẫn còn hiệu lực. Không thể cho nghỉ việc.');
+    }
+  }
+
   async delete(id) {
     const employee = await this.findById(id);
 
@@ -366,6 +396,9 @@ export class EmployeesService {
       );
     }
 
+    // Check contract expiration before termination
+    await this._validateContractExpiration(employee.id, employee.fullName);
+
     // Cập nhật trạng thái nhân viên sang TERMINATED và khóa tài khoản người dùng liên kết
     await this.employeesRepository.update(employee.id, {
       employmentStatus: 'TERMINATED',
@@ -389,6 +422,20 @@ export class EmployeesService {
       page: 1,
     });
 
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+    const employeeIds = items.map(e => e.id);
+    let bankAccountMap = new Map();
+    if (employeeIds.length > 0) {
+      const bankAccounts = await bankRepo.find({
+        where: {
+          employeeId: In(employeeIds),
+          status: 'ACTIVE',
+        },
+      });
+      bankAccountMap = new Map(bankAccounts.map(ba => [ba.employeeId, ba]));
+    }
+
     const statusLabels = {
       PROBATION: 'Thử việc',
       ACTIVE: 'Đang làm việc',
@@ -409,41 +456,47 @@ export class EmployeesService {
       OTHER: 'Khác',
     };
 
-    const data = items.map((e, index) => ({
-      index: index + 1,
-      employeeCode: e.employeeCode || '',
-      fullName: e.fullName,
-      gender: genderLabels[e.gender] || e.gender,
-      dateOfBirth: e.dateOfBirth
-        ? new Date(e.dateOfBirth).toLocaleDateString('vi-VN')
-        : '',
-      nationalId: e.nationalId || '',
-      nationalIdIssuedDate: e.nationalIdIssuedDate
-        ? new Date(e.nationalIdIssuedDate).toLocaleDateString('vi-VN')
-        : '',
-      nationalIdIssuedPlace: e.nationalIdIssuedPlace || '',
-      nationality: e.nationality || '',
-      maritalStatus: maritalStatusLabels[e.maritalStatus] || e.maritalStatus,
-      taxCode: e.taxCode || '',
-      companyEmail: e.companyEmail || '',
-      personalEmail: e.personalEmail || '',
-      phoneNumber: e.phoneNumber || '',
-      educationLevel: e.educationLevel || '',
-      currentAddress: e.currentAddress || '',
-      permanentAddress: e.permanentAddress || '',
-      department: e.department?.departmentName || '',
-      position: e.position?.positionName || '',
-      jobGrade: e.jobGrade?.gradeName || '',
-      directManager: e.directManager?.fullName || '',
-      hrMentor: e.hrMentor?.fullName || '',
-      joinDate: e.joinDate
-        ? new Date(e.joinDate).toLocaleDateString('vi-VN')
-        : '',
-      officialStartDate: e.officialStartDate
-        ? new Date(e.officialStartDate).toLocaleDateString('vi-VN')
-        : '',
-      status: statusLabels[e.employmentStatus] || e.employmentStatus,
-    }));
+    const data = items.map((e, index) => {
+      const bankAccount = bankAccountMap.get(e.id);
+      return {
+        index: index + 1,
+        employeeCode: e.employeeCode || '',
+        fullName: e.fullName,
+        gender: genderLabels[e.gender] || e.gender,
+        dateOfBirth: e.dateOfBirth
+          ? new Date(e.dateOfBirth).toLocaleDateString('vi-VN')
+          : '',
+        nationalId: e.nationalId || '',
+        nationalIdIssuedDate: e.nationalIdIssuedDate
+          ? new Date(e.nationalIdIssuedDate).toLocaleDateString('vi-VN')
+          : '',
+        nationalIdIssuedPlace: e.nationalIdIssuedPlace || '',
+        nationality: e.nationality || '',
+        maritalStatus: maritalStatusLabels[e.maritalStatus] || e.maritalStatus,
+        taxCode: e.taxCode || '',
+        accountNumber: bankAccount?.accountNumber || '',
+        bankName: bankAccount?.bankName || '',
+        accountHolderName: bankAccount?.accountHolderName || '',
+        companyEmail: e.companyEmail || '',
+        personalEmail: e.personalEmail || '',
+        phoneNumber: e.phoneNumber || '',
+        educationLevel: e.educationLevel || '',
+        currentAddress: e.currentAddress || '',
+        permanentAddress: e.permanentAddress || '',
+        department: e.department?.departmentName || '',
+        position: e.position?.positionName || '',
+        jobGrade: e.jobGrade?.gradeName || '',
+        directManager: e.directManager?.fullName || '',
+        hrMentor: e.hrMentor?.fullName || '',
+        joinDate: e.joinDate
+          ? new Date(e.joinDate).toLocaleDateString('vi-VN')
+          : '',
+        officialStartDate: e.officialStartDate
+          ? new Date(e.officialStartDate).toLocaleDateString('vi-VN')
+          : '',
+        status: statusLabels[e.employmentStatus] || e.employmentStatus,
+      };
+    });
 
     const columns = [
       { header: 'STT', key: 'index', width: 8 },
@@ -457,6 +510,9 @@ export class EmployeesService {
       { header: 'Quốc tịch', key: 'nationality', width: 15 },
       { header: 'Tình trạng hôn nhân', key: 'maritalStatus', width: 20 },
       { header: 'Mã số thuế', key: 'taxCode', width: 15 },
+      { header: 'Số tài khoản', key: 'accountNumber', width: 20 },
+      { header: 'Ngân hàng', key: 'bankName', width: 20 },
+      { header: 'Chủ tài khoản', key: 'accountHolderName', width: 25 },
       { header: 'Email công ty', key: 'companyEmail', width: 25 },
       { header: 'Email cá nhân', key: 'personalEmail', width: 25 },
       { header: 'Số điện thoại', key: 'phoneNumber', width: 15 },
