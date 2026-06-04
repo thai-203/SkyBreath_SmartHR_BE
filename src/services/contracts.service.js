@@ -72,9 +72,19 @@ export class ContractsService {
       return {
         ...contract,
         employeeName: employee.fullName || null,
-        departmentName: employee.department?.departmentName || null,
-        positionName: employee.position?.positionName || null,
-        jobGradeName: salary?.jobGrade?.name || employee.jobGrade?.name || null,
+        departmentName:
+          contract.departmentName ||
+          employee.department?.departmentName ||
+          null,
+        positionName:
+          contract.positionName || employee.position?.positionName || null,
+        jobGradeName:
+          contract.jobGradeName ||
+          salary?.jobGrade?.gradeName ||
+          salary?.jobGrade?.name ||
+          employee.jobGrade?.gradeName ||
+          employee.jobGrade?.name ||
+          null,
         baseSalary:
           salary?.baseSalary !== undefined && salary?.baseSalary !== null
             ? Number(salary.baseSalary)
@@ -320,18 +330,21 @@ export class ContractsService {
     if (!deptExists) {
       throw new BadRequestException('Phòng ban không tồn tại');
     }
+    dto.departmentName = deptExists.departmentName;
     const posExists = await AppDataSource.getRepository(PositionEntity).findOne(
       { where: { id: dto.positionId, isDeleted: false } },
     );
     if (!posExists) {
       throw new BadRequestException('Vị trí không tồn tại');
     }
+    dto.positionName = posExists.positionName;
     const gradeExists = await AppDataSource.getRepository(
       JobGradeEntity,
     ).findOne({ where: { id: dto.jobGradeId, isDeleted: false } });
     if (!gradeExists) {
       throw new BadRequestException('Ngạch lương không tồn tại');
     }
+    dto.jobGradeName = gradeExists.gradeName;
 
     // ensure baseSalary fits grade range
     if (dto.baseSalary !== undefined && dto.baseSalary !== null) {
@@ -475,6 +488,7 @@ export class ContractsService {
       if (!exists) {
         throw new BadRequestException('Phòng ban không tồn tại');
       }
+      updateDto.departmentName = exists.departmentName;
     }
     if (updateDto.positionId) {
       const exists = await AppDataSource.getRepository(PositionEntity).findOne({
@@ -483,6 +497,7 @@ export class ContractsService {
       if (!exists) {
         throw new BadRequestException('Vị trí không tồn tại');
       }
+      updateDto.positionName = exists.positionName;
     }
     if (updateDto.jobGradeId) {
       const exists = await AppDataSource.getRepository(JobGradeEntity).findOne({
@@ -491,6 +506,7 @@ export class ContractsService {
       if (!exists) {
         throw new BadRequestException('Ngạch lương không tồn tại');
       }
+      updateDto.jobGradeName = exists.gradeName;
     }
 
     // salary range based on grade (use updated grade if provided else existing)
@@ -712,8 +728,14 @@ export class ContractsService {
         index: index + 1,
         contractNumber: contract.contractNumber,
         employeeName: contract.employee?.fullName || '',
-        department: contract.employee?.department?.departmentName || '',
-        position: contract.employee?.position?.positionName || '',
+        department:
+          contract.departmentName ||
+          contract.employee?.department?.departmentName ||
+          '',
+        position:
+          contract.positionName ||
+          contract.employee?.position?.positionName ||
+          '',
         contractType: contract.contractType,
         startDate: this.formatDate(contract.startDate),
         endDate: contract.endDate ? this.formatDate(contract.endDate) : 'N/A',
