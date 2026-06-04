@@ -18,8 +18,12 @@ export class DepartmentsService {
             throw new ConflictException(AppMessages.Errors.Department.ALREADY_EXISTS);
         }
 
-        if (createDto.managerEmployeeId) {
-            await this._validateDepartmentManager(createDto.managerEmployeeId);
+        if (createDto.managerEmployeeId !== undefined) {
+            const rawValue = createDto.managerEmployeeId;
+            createDto.managerEmployeeId = (rawValue === "" || rawValue === null) ? null : Number(rawValue);
+            if (createDto.managerEmployeeId) {
+                await this._validateDepartmentManager(createDto.managerEmployeeId);
+            }
         }
 
         const department = await this.departmentsRepository.create(createDto);
@@ -30,6 +34,15 @@ export class DepartmentsService {
             await AppDataSource.getRepository(EmployeeEntity).update(createDto.managerEmployeeId, {
                 departmentId: department.id
             });
+            await AppDataSource.getRepository(EmployeeEntity)
+                .createQueryBuilder()
+                .update(EmployeeEntity)
+                .set({ directManagerId: createDto.managerEmployeeId })
+                .where('departmentId = :deptId AND isDeleted = false AND id != :managerId', {
+                    deptId: department.id,
+                    managerId: createDto.managerEmployeeId
+                })
+                .execute();
         }
 
         return department;
@@ -76,18 +89,53 @@ export class DepartmentsService {
             }
         }
 
-        if (updateDto.managerEmployeeId) {
-            await this._validateDepartmentManager(updateDto.managerEmployeeId, id);
+        let managerChanged = false;
+        if (updateDto.managerEmployeeId !== undefined) {
+            const rawValue = updateDto.managerEmployeeId;
+            const newManagerId = (rawValue === "" || rawValue === null) ? null : Number(rawValue);
+            const currentDept = await this.findById(id);
+            const currentManagerId = currentDept.managerEmployeeId ? Number(currentDept.managerEmployeeId) : null;
+            if (newManagerId !== currentManagerId) {
+                managerChanged = true;
+                updateDto.managerEmployeeId = newManagerId;
+                if (newManagerId !== null) {
+                    await this._validateDepartmentManager(newManagerId, id);
+                }
+            }
         }
 
         const result = await this.departmentsRepository.update(id, updateDto);
 
-        if (updateDto.managerEmployeeId) {
+        if (managerChanged) {
             const { EmployeeEntity } = await import('../models/entities/employee.entity.js');
             const { AppDataSource } = await import('../database/data-source.js');
-            await AppDataSource.getRepository(EmployeeEntity).update(updateDto.managerEmployeeId, {
-                departmentId: id
-            });
+            const newManagerId = updateDto.managerEmployeeId;
+
+            if (newManagerId) {
+                await AppDataSource.getRepository(EmployeeEntity).update(newManagerId, {
+                    departmentId: id
+                });
+            }
+
+            const query = AppDataSource.getRepository(EmployeeEntity)
+                .createQueryBuilder()
+                .update(EmployeeEntity)
+                .set({ directManagerId: newManagerId });
+
+            if (newManagerId) {
+                query.where('departmentId = :id AND isDeleted = :isDeleted AND id != :newManagerId', {
+                    id,
+                    isDeleted: false,
+                    newManagerId
+                });
+            } else {
+                query.where('departmentId = :id AND isDeleted = :isDeleted', {
+                    id,
+                    isDeleted: false
+                });
+            }
+
+            await query.execute();
         }
 
         return result;

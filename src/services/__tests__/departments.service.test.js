@@ -45,9 +45,17 @@ describe('DepartmentsService', () => {
       findList: jest.fn(),
     };
 
+    const queryBuilderMock = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({}),
+    };
+
     employeeRepoMock = {
       findOne: jest.fn(),
       update: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilderMock),
     };
 
     departmentRepoMock = {
@@ -199,6 +207,61 @@ describe('DepartmentsService', () => {
       });
       expect(employeeRepoMock.update).toHaveBeenCalledWith(99, { departmentId: 5 });
       expect(result).toEqual({ id: 5, departmentName: 'HR' });
+      
+      const queryBuilder = employeeRepoMock.createQueryBuilder();
+      expect(queryBuilder.update).toHaveBeenCalled();
+      expect(queryBuilder.set).toHaveBeenCalledWith({ directManagerId: 99 });
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'departmentId = :deptId AND isDeleted = false AND id != :managerId',
+        { deptId: 5, managerId: 99 }
+      );
+      expect(queryBuilder.execute).toHaveBeenCalled();
+    });
+
+    it('successfully updates department manager and syncs employees directManagerId to new manager', async () => {
+      departmentsRepo.findById.mockResolvedValue({ id: 5, managerEmployeeId: 10 });
+      employeeRepoMock.findOne.mockResolvedValue({
+        id: 99,
+        user: { userRoles: [{ role: { roleName: 'MANAGER' } }] },
+      });
+      departmentRepoMock.createQueryBuilder().getOne.mockResolvedValue(null);
+      departmentsRepo.update.mockResolvedValue({ id: 5, departmentName: 'HR', managerEmployeeId: 99 });
+
+      const result = await service.update(5, { managerEmployeeId: 99 });
+
+      expect(departmentsRepo.update).toHaveBeenCalledWith(5, {
+        managerEmployeeId: 99,
+      });
+      expect(employeeRepoMock.update).toHaveBeenCalledWith(99, { departmentId: 5 });
+      
+      const queryBuilder = employeeRepoMock.createQueryBuilder();
+      expect(queryBuilder.update).toHaveBeenCalled();
+      expect(queryBuilder.set).toHaveBeenCalledWith({ directManagerId: 99 });
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'departmentId = :id AND isDeleted = :isDeleted AND id != :newManagerId',
+        { id: 5, isDeleted: false, newManagerId: 99 }
+      );
+      expect(queryBuilder.execute).toHaveBeenCalled();
+    });
+
+    it('successfully removes department manager (sets to null) and clears employees directManagerId', async () => {
+      departmentsRepo.findById.mockResolvedValue({ id: 5, managerEmployeeId: 10 });
+      departmentsRepo.update.mockResolvedValue({ id: 5, departmentName: 'HR', managerEmployeeId: null });
+
+      const result = await service.update(5, { managerEmployeeId: null });
+
+      expect(departmentsRepo.update).toHaveBeenCalledWith(5, {
+        managerEmployeeId: null,
+      });
+      
+      const queryBuilder = employeeRepoMock.createQueryBuilder();
+      expect(queryBuilder.update).toHaveBeenCalled();
+      expect(queryBuilder.set).toHaveBeenCalledWith({ directManagerId: null });
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'departmentId = :id AND isDeleted = :isDeleted',
+        { id: 5, isDeleted: false }
+      );
+      expect(queryBuilder.execute).toHaveBeenCalled();
     });
   });
 });
