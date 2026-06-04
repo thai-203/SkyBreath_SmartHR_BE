@@ -3,14 +3,23 @@ import { DepartmentsService } from '../departments.service.js';
 import { DepartmentsRepository } from '../../repositories/departments.repository.js';
 import { ConflictException, NotFoundException } from '../../common/exceptions/index.js';
 import { AppMessages } from '../../common/constants/index.js';
+import { AppDataSource } from '../../database/data-source.js';
 
 jest.mock('../../repositories/departments.repository.js', () => ({
   DepartmentsRepository: jest.fn(),
 }));
 
-describe('DepartmentsService Tests based on Test Cases', () => {
+jest.mock('../../database/data-source.js', () => ({
+  AppDataSource: {
+    getRepository: jest.fn(),
+  },
+}));
+
+describe('DepartmentsService', () => {
   let service;
   let departmentsRepo;
+  let employeeRepoMock;
+  let departmentRepoMock;
 
   const expectRejectWithStatus = async (promise, statusCode) => {
     try {
@@ -37,6 +46,34 @@ describe('DepartmentsService Tests based on Test Cases', () => {
       findWithChildren: jest.fn(),
       findList: jest.fn(),
     };
+
+    const queryBuilderMock = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({}),
+    };
+
+    employeeRepoMock = {
+      findOne: jest.fn(),
+      update: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilderMock),
+    };
+
+    departmentRepoMock = {
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn(),
+      }),
+    };
+
+    AppDataSource.getRepository.mockImplementation((entity) => {
+      const name = entity?.name;
+      if (name === 'EmployeeEntity') return employeeRepoMock;
+      if (name === 'DepartmentEntity') return departmentRepoMock;
+      return {};
+    });
 
     DepartmentsRepository.mockImplementation(() => departmentsRepo);
     service = new DepartmentsService();

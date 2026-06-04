@@ -23,6 +23,12 @@ export class ContractsRepository {
 
       const contract = queryRunner.manager.create(ContractEntity, {
         employeeId: data.employeeId,
+        departmentId: data.departmentId ?? null,
+        departmentName: data.departmentName ?? null,
+        positionId: data.positionId ?? null,
+        positionName: data.positionName ?? null,
+        jobGradeId: data.jobGradeId ?? null,
+        jobGradeName: data.jobGradeName ?? null,
         contractNumber: data.contractNumber,
         contractType: data.contractType,
         startDate: data.startDate,
@@ -146,6 +152,9 @@ export class ContractsRepository {
         'employee.department',
         'employee.position',
         'employee.jobGrade',
+        'department',
+        'position',
+        'jobGrade',
       ],
       order,
       skip,
@@ -162,6 +171,9 @@ export class ContractsRepository {
         'employee.department',
         'employee.position',
         'employee.jobGrade',
+        'department',
+        'position',
+        'jobGrade',
       ],
     });
   }
@@ -175,6 +187,9 @@ export class ContractsRepository {
         'employee.department',
         'employee.position',
         'employee.jobGrade',
+        'department',
+        'position',
+        'jobGrade',
       ],
       order: { startDate: 'DESC' },
     });
@@ -199,6 +214,30 @@ export class ContractsRepository {
         ContractEntity,
         { id },
         {
+          departmentId:
+            data.departmentId !== undefined
+              ? data.departmentId
+              : contract.departmentId,
+          departmentName:
+            data.departmentName !== undefined
+              ? data.departmentName
+              : contract.departmentName,
+          positionId:
+            data.positionId !== undefined
+              ? data.positionId
+              : contract.positionId,
+          positionName:
+            data.positionName !== undefined
+              ? data.positionName
+              : contract.positionName,
+          jobGradeId:
+            data.jobGradeId !== undefined
+              ? data.jobGradeId
+              : contract.jobGradeId,
+          jobGradeName:
+            data.jobGradeName !== undefined
+              ? data.jobGradeName
+              : contract.jobGradeName,
           contractType: data.contractType ?? contract.contractType,
           startDate: data.startDate ?? contract.startDate,
           endDate: data.endDate ?? contract.endDate,
@@ -377,7 +416,7 @@ export class ContractsRepository {
   async findByStatus(status) {
     return this.repository.find({
       where: { contractStatus: status, isDeleted: false },
-      relations: ['employee'],
+      relations: ['employee', 'department', 'position', 'jobGrade'],
     });
   }
 

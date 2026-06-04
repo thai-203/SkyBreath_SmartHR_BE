@@ -19,7 +19,7 @@ export class PerformanceReviewsController {
             const queryDto = plainToInstance(PerformanceReviewQueryDto, req.query, {
                 enableImplicitConversion: true,
             });
-            const result = await this.performanceReviewsService.findAll(queryDto);
+            const result = await this.performanceReviewsService.findAll(queryDto, req.user);
             ResponseUtil.sendResponse(res, 'Lấy danh sách đánh giá thành công', result);
         } catch (error) {
             next(error);
@@ -49,7 +49,7 @@ export class PerformanceReviewsController {
                 return ResponseUtil.sendResponse(res, 'Không tìm thấy nhân viên', []);
             }
 
-            const result = await this.performanceReviewsService.getManagedEmployees(employee.id);
+            const result = await this.performanceReviewsService.getManagedEmployees(employee.id, req.user);
             ResponseUtil.sendResponse(res, 'Lấy danh sách nhân viên thành công', result);
         } catch (error) {
             next(error);
@@ -76,7 +76,7 @@ export class PerformanceReviewsController {
                 return ResponseUtil.sendResponse(res, 'Không tìm thấy nhân viên', null, 400);
             }
 
-            const result = await this.performanceReviewsService.create(dto, { employeeId: employee.id });
+            const result = await this.performanceReviewsService.create(dto, { employeeId: employee.id }, req.user);
             ResponseUtil.sendResponse(res, 'Tạo đánh giá thành công', result);
         } catch (error) {
             next(error);
@@ -96,6 +96,7 @@ export class PerformanceReviewsController {
             const result = await this.performanceReviewsService.update(
                 parseInt(req.params.id),
                 dto,
+                req.user,
             );
             ResponseUtil.sendResponse(res, 'Cập nhật đánh giá thành công', result);
         } catch (error) {
@@ -105,7 +106,7 @@ export class PerformanceReviewsController {
 
     delete = async (req, res, next) => {
         try {
-            await this.performanceReviewsService.delete(parseInt(req.params.id));
+            await this.performanceReviewsService.delete(parseInt(req.params.id), req.user);
             ResponseUtil.sendResponse(res, 'Xóa đánh giá thành công', null);
         } catch (error) {
             next(error);
