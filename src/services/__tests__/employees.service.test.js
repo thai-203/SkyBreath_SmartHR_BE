@@ -146,6 +146,7 @@ describe('EmployeesService - Unit Tests', () => {
     });
 
     service = new EmployeesService(employeesRepo);
+    jest.spyOn(service, '_validateEmailDomain').mockResolvedValue(true);
   });
 
   describe('CreateEmployee (Thêm nhân viên)', () => {
@@ -385,6 +386,15 @@ describe('EmployeesService - Unit Tests', () => {
       const validationError = await validateDto(CreateEmployeeDto, payload);
       expect(validationError).toBe('Số điện thoại không hợp lệ (VD: 0901234567)');
     });
+
+    it('should throw BadRequestException if companyEmail domain is invalid on create', async () => {
+      const payload = getValidPayload();
+      jest.spyOn(service, '_validateEmailDomain').mockResolvedValueOnce(false);
+
+      await expect(service.create(payload)).rejects.toThrow(
+        'Email công ty không tồn tại (tên miền không hỗ trợ nhận thư).'
+      );
+    });
   });
 
   describe('EditEmployee (Cập nhật nhân viên)', () => {
@@ -547,6 +557,27 @@ describe('EmployeesService - Unit Tests', () => {
       const payload = { backIdCardFilePath: 'file.txt' };
       const validationError = await validateDto(UpdateEmployeeDto, payload);
       expect(validationError).toBeNull();
+    });
+
+    it('should throw BadRequestException if companyEmail domain is invalid on update', async () => {
+      const payload = { companyEmail: 'invalid@non-existent-domain.com' };
+      employeesRepo.findById.mockResolvedValue({ id: 1, employeeCode: 'NV-001', companyEmail: 'old@company.com' });
+      jest.spyOn(service, '_validateEmailDomain').mockResolvedValueOnce(false);
+
+      await expect(service.update(1, payload)).rejects.toThrow(
+        'Email công ty không tồn tại (tên miền không hỗ trợ nhận thư).'
+      );
+    });
+
+    it('should not validate domain if companyEmail has not changed on update', async () => {
+      const payload = { companyEmail: 'old@company.com' };
+      employeesRepo.findById.mockResolvedValue({ id: 1, employeeCode: 'NV-001', companyEmail: 'old@company.com' });
+      employeesRepo.update.mockResolvedValue({ id: 1 });
+      
+      const spy = jest.spyOn(service, '_validateEmailDomain');
+
+      await service.update(1, payload);
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 

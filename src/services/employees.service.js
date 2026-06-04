@@ -97,6 +97,13 @@ export class EmployeesService {
       }
     }
 
+    if (createDto.companyEmail) {
+      const isValid = await this._validateEmailDomain(createDto.companyEmail);
+      if (!isValid) {
+        throw new BadRequestException('Email công ty không tồn tại (tên miền không hỗ trợ nhận thư).');
+      }
+    }
+
     if (createDto.phoneNumber) {
       const existing = await this.employeesRepository.findByField(
         'phoneNumber',
@@ -261,6 +268,13 @@ export class EmployeesService {
         throw new ConflictException(
           AppMessages.Errors.Employee.EMAIL_DUPLICATE,
         );
+      }
+    }
+
+    if (employeeData.companyEmail && employeeData.companyEmail !== employee.companyEmail) {
+      const isValid = await this._validateEmailDomain(employeeData.companyEmail);
+      if (!isValid) {
+        throw new BadRequestException('Email công ty không tồn tại (tên miền không hỗ trợ nhận thư).');
       }
     }
     // Kiểm tra đủ 18 tuổi nếu cập nhật ngày sinh
@@ -579,5 +593,17 @@ export class EmployeesService {
 
   async findByUserId(userId) {
     return this.employeesRepository.findByUserId(userId);
+  }
+
+  async _validateEmailDomain(email) {
+    const domain = email.split('@')[1];
+    if (!domain) return false;
+    try {
+      const { resolveMx } = await import('dns/promises');
+      const mx = await resolveMx(domain);
+      return mx && mx.length > 0;
+    } catch (e) {
+      return false;
+    }
   }
 }
