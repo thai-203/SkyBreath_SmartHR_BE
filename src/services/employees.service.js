@@ -268,6 +268,9 @@ export class EmployeesService {
       employeeData.employmentStatus &&
       employeeData.employmentStatus !== employee.employmentStatus
     ) {
+      if (employeeData.employmentStatus === 'TERMINATED') {
+        await this._validateContractExpiration(employee.id, employee.fullName);
+      }
       const allowedTransitions = {
         PROBATION: ['ACTIVE', 'TERMINATED'],
         ACTIVE: ['ON_LEAVE', 'TERMINATED'],
@@ -328,6 +331,32 @@ export class EmployeesService {
     return this.findById(employee.id);
   }
 
+  async _validateContractExpiration(employeeId, employeeName) {
+    const { ContractEntity } = await import('../models/entities/contract.entity.js');
+    const contractRepo = AppDataSource.getRepository(ContractEntity);
+    const contracts = await contractRepo.find({
+      where: { employeeId, isDeleted: false },
+      order: { id: 'DESC' },
+    });
+
+    if (!contracts || contracts.length === 0) {
+      return;
+    }
+
+    const latestContract = contracts[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const endDate = latestContract.endDate ? new Date(latestContract.endDate) : null;
+    const isExpired = latestContract.contractStatus === 'EXPIRED' ||
+                      latestContract.contractStatus === 'TERMINATED' ||
+                      (endDate && endDate < today);
+
+    if (!isExpired) {
+      throw new BadRequestException('Hợp đồng lao động của nhân viên vẫn còn hiệu lực. Không thể cho nghỉ việc.');
+    }
+  }
+
   async delete(id) {
     const employee = await this.findById(id);
 
@@ -365,6 +394,9 @@ export class EmployeesService {
         `Không thể cho nhân viên "${employee.fullName}" nghỉ việc vì họ đang là ${roles.join(' và ')} của: ${names}. Vui lòng cập nhật thông tin những nhân viên này trước.`,
       );
     }
+
+    // Check contract expiration before termination
+    await this._validateContractExpiration(employee.id, employee.fullName);
 
     // Cập nhật trạng thái nhân viên sang TERMINATED và khóa tài khoản người dùng liên kết
     await this.employeesRepository.update(employee.id, {

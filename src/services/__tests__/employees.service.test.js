@@ -45,6 +45,7 @@ describe('EmployeesService - Unit Tests', () => {
   let userRepo;
   let roleRepo;
   let userRoleRepo;
+  let contractRepo;
 
   // Helper function to validate DTO
   const validateDto = async (DtoClass, payload) => {
@@ -112,6 +113,10 @@ describe('EmployeesService - Unit Tests', () => {
       save: jest.fn(),
     };
 
+    contractRepo = {
+      find: jest.fn().mockResolvedValue([{ contractStatus: 'EXPIRED' }]),
+    };
+
     EmployeesRepository.mockImplementation(() => employeesRepo);
     DepartmentsRepository.mockImplementation(() => departmentsRepo);
 
@@ -123,6 +128,7 @@ describe('EmployeesService - Unit Tests', () => {
       if (name === 'UserEntity') return userRepo;
       if (name === 'RoleEntity') return roleRepo;
       if (name === 'UserRoleEntity') return userRoleRepo;
+      if (name === 'ContractEntity') return contractRepo;
       if (name === 'EmployeeEntity') {
         return {
           createQueryBuilder: jest.fn().mockReturnValue({
@@ -600,6 +606,28 @@ describe('EmployeesService - Unit Tests', () => {
         employmentStatus: 'TERMINATED'
       });
       expect(result).toEqual({ affected: 1 });
+    });
+
+    it('should allow delete if contract does not exist', async () => {
+      employeesRepo.findById.mockResolvedValue({ id: 7, fullName: 'Test', userId: 15 });
+      employeesRepo.update.mockResolvedValue({ id: 7, employmentStatus: 'TERMINATED' });
+      contractRepo.find.mockResolvedValueOnce([]); // no contracts
+
+      const result = await service.delete(7);
+
+      expect(employeesRepo.update).toHaveBeenCalledWith(7, {
+        employmentStatus: 'TERMINATED'
+      });
+      expect(result).toEqual({ affected: 1 });
+    });
+
+    it('should throw BadRequestException if contract is still active on delete', async () => {
+      employeesRepo.findById.mockResolvedValue({ id: 7, fullName: 'Test', userId: 15 });
+      contractRepo.find.mockResolvedValueOnce([{ contractStatus: 'ACTIVE', endDate: null }]); // active contract
+
+      await expect(service.delete(7)).rejects.toThrow(
+        'Hợp đồng lao động của nhân viên vẫn còn hiệu lực. Không thể cho nghỉ việc.'
+      );
     });
 
     it('exports employee rows to excel with mapped labels', async () => {
