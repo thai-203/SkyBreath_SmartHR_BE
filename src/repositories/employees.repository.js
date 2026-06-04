@@ -51,7 +51,15 @@ export class EmployeesRepository {
     }
 
     if (departmentId) {
-      query.andWhere('employee.departmentId = :departmentId', { departmentId });
+      if (Array.isArray(departmentId)) {
+        if (departmentId.length > 0) {
+          query.andWhere('employee.departmentId IN (:...departmentId)', { departmentId });
+        } else {
+          query.andWhere('1 = 0');
+        }
+      } else {
+        query.andWhere('employee.departmentId = :departmentId', { departmentId });
+      }
     }
 
     if (positionId) {

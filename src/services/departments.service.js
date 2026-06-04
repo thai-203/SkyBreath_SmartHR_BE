@@ -17,7 +17,22 @@ export class DepartmentsService {
         if (existing) {
             throw new ConflictException(AppMessages.Errors.Department.ALREADY_EXISTS);
         }
-        return this.departmentsRepository.create(createDto);
+
+        if (createDto.managerEmployeeId) {
+            await this._validateDepartmentManager(createDto.managerEmployeeId);
+        }
+
+        const department = await this.departmentsRepository.create(createDto);
+
+        if (createDto.managerEmployeeId) {
+            const { EmployeeEntity } = await import('../models/entities/employee.entity.js');
+            const { AppDataSource } = await import('../database/data-source.js');
+            await AppDataSource.getRepository(EmployeeEntity).update(createDto.managerEmployeeId, {
+                departmentId: department.id
+            });
+        }
+
+        return department;
     }
 
     async findAll(queryDto) {
@@ -61,7 +76,21 @@ export class DepartmentsService {
             }
         }
 
-        return this.departmentsRepository.update(id, updateDto);
+        if (updateDto.managerEmployeeId) {
+            await this._validateDepartmentManager(updateDto.managerEmployeeId, id);
+        }
+
+        const result = await this.departmentsRepository.update(id, updateDto);
+
+        if (updateDto.managerEmployeeId) {
+            const { EmployeeEntity } = await import('../models/entities/employee.entity.js');
+            const { AppDataSource } = await import('../database/data-source.js');
+            await AppDataSource.getRepository(EmployeeEntity).update(updateDto.managerEmployeeId, {
+                departmentId: id
+            });
+        }
+
+        return result;
     }
 
     async remove(id) {
@@ -133,4 +162,40 @@ export class DepartmentsService {
             .replace(/\s+/g, ' ');
     }
 
+    async _validateDepartmentManager(managerEmployeeId, currentDeptId = null) {
+        const { EmployeeEntity } = await import('../models/entities/employee.entity.js');
+        const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+        const { BadRequestException } = await import('../common/exceptions/index.js');
+        const { AppDataSource } = await import('../database/data-source.js');
+
+        // 1. Check if employee exists and has MANAGER role
+        const employee = await AppDataSource.getRepository(EmployeeEntity).findOne({
+            where: { id: managerEmployeeId, isDeleted: false },
+            relations: ['user', 'user.userRoles', 'user.userRoles.role']
+        });
+
+        if (!employee) {
+            throw new NotFoundException('Nhân viên quản lý được chọn không tồn tại.');
+        }
+
+        const roles = employee.user?.userRoles?.map(ur => ur.role?.roleName?.toUpperCase()) || [];
+        if (!roles.includes('MANAGER')) {
+            throw new BadRequestException('Nhân viên được chọn làm quản lý phải có vai trò MANAGER.');
+        }
+
+        // 2. Check if manager is already managing another department
+        const query = AppDataSource.getRepository(DepartmentEntity)
+            .createQueryBuilder('department')
+            .where('department.managerEmployeeId = :managerEmployeeId', { managerEmployeeId })
+            .andWhere('department.isDeleted = :isDeleted', { isDeleted: false });
+
+        if (currentDeptId) {
+            query.andWhere('department.id != :currentDeptId', { currentDeptId });
+        }
+
+        const existingDept = await query.getOne();
+        if (existingDept) {
+            throw new ConflictException(`Người quản lý này đã quản lý một phòng ban khác (${existingDept.departmentName}).`);
+        }
+    }
 }

@@ -665,4 +665,167 @@ describe('EmployeesService - Unit Tests', () => {
       expect(result).toBe('excel-buffer');
     });
   });
+
+  describe('findAll and exportExcel with MANAGER role filtering', () => {
+    const restoreGetRepository = () => {
+      AppDataSource.getRepository.mockImplementation((entity) => {
+        const name = entity?.name;
+        if (name === 'PositionEntity') return positionRepo;
+        if (name === 'JobGradeEntity') return jobGradeRepo;
+        if (name === 'EmployeeBankAccountEntity') return bankRepo;
+        if (name === 'UserEntity') return userRepo;
+        if (name === 'RoleEntity') return roleRepo;
+        if (name === 'UserRoleEntity') return userRoleRepo;
+        if (name === 'ContractEntity') return contractRepo;
+        if (name === 'EmployeeEntity') {
+          return {
+            createQueryBuilder: jest.fn().mockReturnValue({
+              select: jest.fn().mockReturnThis(),
+              leftJoinAndSelect: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              getMany: jest.fn().mockResolvedValue([]),
+            }),
+            findOne: jest.fn(),
+          };
+        }
+        return {};
+      });
+    };
+
+    afterEach(() => {
+      restoreGetRepository();
+    });
+
+    it('returns all employees for ADMIN or HR role without filtering by manager departments', async () => {
+      employeesRepo.findAll.mockResolvedValue({ items: [{ id: 1 }], total: 1 });
+      const userContext = { id: 10, roles: ['HR'] };
+      const queryDto = { page: 1, limit: 10 };
+
+      const result = await service.findAll(queryDto, userContext);
+
+      expect(employeesRepo.findAll).toHaveBeenCalledWith(queryDto);
+      expect(result.items).toEqual([{ id: 1 }]);
+    });
+
+    it('filters employees by managed department for MANAGER role', async () => {
+      // Mock manager's employee record
+      employeesRepo.findByUserId.mockResolvedValue({ id: 5 });
+
+      // Mock DepartmentEntity repository find
+      const mockDeptFind = jest.fn().mockResolvedValue([{ id: 3 }, { id: 4 }]);
+      AppDataSource.getRepository.mockImplementation((entity) => {
+        if (entity && entity.name === 'DepartmentEntity') {
+          return { find: mockDeptFind };
+        }
+        if (entity && entity.name === 'EmployeeBankAccountEntity') return bankRepo;
+        return {};
+      });
+
+      employeesRepo.findAll.mockResolvedValue({ items: [{ id: 2, departmentId: 3 }], total: 1 });
+      const userContext = { id: 10, roles: ['MANAGER'] };
+      const queryDto = { page: 1, limit: 10 };
+
+      const result = await service.findAll(queryDto, userContext);
+
+      expect(employeesRepo.findByUserId).toHaveBeenCalledWith(10);
+      expect(mockDeptFind).toHaveBeenCalledWith({
+        where: { managerEmployeeId: 5 },
+        select: ['id'],
+      });
+      expect(employeesRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ departmentId: [3, 4] })
+      );
+      expect(result.items).toEqual([{ id: 2, departmentId: 3 }]);
+    });
+
+    it('filters queryDto departmentId to empty if MANAGER queries a department they do not manage', async () => {
+      employeesRepo.findByUserId.mockResolvedValue({ id: 5 });
+
+      const mockDeptFind = jest.fn().mockResolvedValue([{ id: 3 }]);
+      AppDataSource.getRepository.mockImplementation((entity) => {
+        if (entity && entity.name === 'DepartmentEntity') {
+          return { find: mockDeptFind };
+        }
+        if (entity && entity.name === 'EmployeeBankAccountEntity') return bankRepo;
+        return {};
+      });
+
+      employeesRepo.findAll.mockResolvedValue({ items: [], total: 0 });
+      const userContext = { id: 10, roles: ['MANAGER'] };
+      
+      // Querying department 4 which manager does NOT manage
+      const queryDto = { page: 1, limit: 10, departmentId: 4 };
+
+      await service.findAll(queryDto, userContext);
+
+      expect(employeesRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ departmentId: [] })
+      );
+    });
+
+    it('allows querying department if MANAGER queries a department they do manage', async () => {
+      employeesRepo.findByUserId.mockResolvedValue({ id: 5 });
+
+      const mockDeptFind = jest.fn().mockResolvedValue([{ id: 3 }, { id: 4 }]);
+      AppDataSource.getRepository.mockImplementation((entity) => {
+        if (entity && entity.name === 'DepartmentEntity') {
+          return { find: mockDeptFind };
+        }
+        if (entity && entity.name === 'EmployeeBankAccountEntity') return bankRepo;
+        return {};
+      });
+
+      employeesRepo.findAll.mockResolvedValue({ items: [], total: 0 });
+      const userContext = { id: 10, roles: ['MANAGER'] };
+      
+      // Querying department 3 which manager DOES manage
+      const queryDto = { page: 1, limit: 10, departmentId: 3 };
+
+      await service.findAll(queryDto, userContext);
+
+      expect(employeesRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ departmentId: 3 })
+      );
+    });
+
+    it('exportExcel filters employees by manager departments and calls ExcelUtil.export', async () => {
+      employeesRepo.findByUserId.mockResolvedValue({ id: 5 });
+      const mockDeptFind = jest.fn().mockResolvedValue([{ id: 3 }]);
+      AppDataSource.getRepository.mockImplementation((entity) => {
+        if (entity && entity.name === 'DepartmentEntity') {
+          return { find: mockDeptFind };
+        }
+        if (entity && entity.name === 'EmployeeBankAccountEntity') return bankRepo;
+        return {};
+      });
+
+      employeesRepo.findAll.mockResolvedValue({
+        items: [
+          {
+            employeeCode: 'EMP-001',
+            fullName: 'Nguyen Van A',
+            gender: 'MALE',
+            maritalStatus: 'MARRIED',
+            employmentStatus: 'ACTIVE',
+            dateOfBirth: '1990-01-01',
+            joinDate: '2024-01-01',
+            department: { departmentName: 'HR' },
+            position: { positionName: 'HR Specialist' },
+            jobGrade: { gradeName: 'G1' },
+          },
+        ],
+        total: 1,
+      });
+      ExcelUtil.export.mockResolvedValue('excel-buffer');
+
+      const userContext = { id: 10, roles: ['MANAGER'] };
+      const result = await service.exportExcel(userContext);
+
+      expect(employeesRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ departmentId: [3] })
+      );
+      expect(result).toBe('excel-buffer');
+    });
+  });
 });

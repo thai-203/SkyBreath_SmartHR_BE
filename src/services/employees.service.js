@@ -26,7 +26,44 @@ export class EmployeesService {
     this.employeesRepository = employeesRepository;
   }
 
-  async findAll(queryDto) {
+  _isManager(userContext) {
+    const roles = userContext?.roles || [];
+    const upperRoles = roles.map(r => String(r).toUpperCase());
+    return (
+      upperRoles.includes('MANAGER') &&
+      !upperRoles.includes('ADMIN') &&
+      !upperRoles.includes('HR')
+    );
+  }
+
+  async findAll(queryDto, userContext) {
+    if (userContext && this._isManager(userContext)) {
+      console.log('debug employees all userContext:', userContext);
+      const managerEmployee = await this.employeesRepository.findByUserId(userContext.id);
+      if (managerEmployee) {
+        const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+        const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+        const managedDepts = await deptRepo.find({
+          where: { managerEmployeeId: managerEmployee.id },
+          select: ['id'],
+        });
+        const deptIds = managedDepts.map((d) => d.id);
+
+        if (queryDto.departmentId) {
+          const queriedDeptId = parseInt(queryDto.departmentId);
+          if (deptIds.includes(queriedDeptId)) {
+            queryDto.departmentId = queriedDeptId;
+          } else {
+            queryDto.departmentId = [];
+          }
+        } else {
+          queryDto.departmentId = deptIds;
+        }
+      } else {
+        queryDto.departmentId = [];
+      }
+    }
+
     const result = await this.employeesRepository.findAll(queryDto);
     return {
       ...result,
@@ -350,8 +387,8 @@ export class EmployeesService {
 
     const endDate = latestContract.endDate ? new Date(latestContract.endDate) : null;
     const isExpired = latestContract.contractStatus === 'EXPIRED' ||
-                      latestContract.contractStatus === 'TERMINATED' ||
-                      (endDate && endDate < today);
+      latestContract.contractStatus === 'TERMINATED' ||
+      (endDate && endDate < today);
 
     if (!isExpired) {
       throw new BadRequestException('Hợp đồng lao động của nhân viên vẫn còn hiệu lực. Không thể cho nghỉ việc.');
@@ -416,11 +453,11 @@ export class EmployeesService {
     return this.employeesRepository.findValidationData();
   }
 
-  async exportExcel() {
-    const { items } = await this.employeesRepository.findAll({
+  async exportExcel(userContext) {
+    const { items } = await this.findAll({
       limit: 10000,
       page: 1,
-    });
+    }, userContext);
 
     const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
     const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);

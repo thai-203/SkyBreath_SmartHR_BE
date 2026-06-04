@@ -1,14 +1,23 @@
 import 'reflect-metadata';
 import { DepartmentsService } from '../departments.service.js';
 import { DepartmentsRepository } from '../../repositories/departments.repository.js';
+import { AppDataSource } from '../../database/data-source.js';
 
 jest.mock('../../repositories/departments.repository.js', () => ({
   DepartmentsRepository: jest.fn(),
 }));
 
+jest.mock('../../database/data-source.js', () => ({
+  AppDataSource: {
+    getRepository: jest.fn(),
+  },
+}));
+
 describe('DepartmentsService', () => {
   let service;
   let departmentsRepo;
+  let employeeRepoMock;
+  let departmentRepoMock;
 
   const expectRejectWithStatus = async (promise, statusCode) => {
     try {
@@ -35,6 +44,26 @@ describe('DepartmentsService', () => {
       findWithChildren: jest.fn(),
       findList: jest.fn(),
     };
+
+    employeeRepoMock = {
+      findOne: jest.fn(),
+      update: jest.fn(),
+    };
+
+    departmentRepoMock = {
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn(),
+      }),
+    };
+
+    AppDataSource.getRepository.mockImplementation((entity) => {
+      const name = entity?.name;
+      if (name === 'EmployeeEntity') return employeeRepoMock;
+      if (name === 'DepartmentEntity') return departmentRepoMock;
+      return {};
+    });
 
     DepartmentsRepository.mockImplementation(() => departmentsRepo);
     service = new DepartmentsService();
@@ -110,5 +139,66 @@ describe('DepartmentsService', () => {
     expect(result[0].totalEmployeeCount).toBe(5);
     expect(result[0].totalProbationCount).toBe(3);
     expect(result[0].children).toHaveLength(1);
+  });
+
+  describe('Manager Validations on Create/Update', () => {
+    it('throws NotFoundException if manager employee does not exist', async () => {
+      departmentsRepo.findByName.mockResolvedValue(null);
+      employeeRepoMock.findOne.mockResolvedValue(null);
+
+      await expectRejectWithStatus(
+        service.create({ departmentName: 'HR', managerEmployeeId: 99 }),
+        404
+      );
+    });
+
+    it('throws BadRequestException if manager employee does not have MANAGER role', async () => {
+      departmentsRepo.findByName.mockResolvedValue(null);
+      employeeRepoMock.findOne.mockResolvedValue({
+        id: 99,
+        user: { userRoles: [{ role: { roleName: 'EMPLOYEE' } }] },
+      });
+
+      await expectRejectWithStatus(
+        service.create({ departmentName: 'HR', managerEmployeeId: 99 }),
+        400
+      );
+    });
+
+    it('throws ConflictException if manager is already managing another department', async () => {
+      departmentsRepo.findByName.mockResolvedValue(null);
+      employeeRepoMock.findOne.mockResolvedValue({
+        id: 99,
+        user: { userRoles: [{ role: { roleName: 'MANAGER' } }] },
+      });
+      departmentRepoMock.createQueryBuilder().getOne.mockResolvedValue({
+        id: 3,
+        departmentName: 'IT',
+      });
+
+      await expectRejectWithStatus(
+        service.create({ departmentName: 'HR', managerEmployeeId: 99 }),
+        409
+      );
+    });
+
+    it('successfully creates department and updates manager employee departmentId', async () => {
+      departmentsRepo.findByName.mockResolvedValue(null);
+      employeeRepoMock.findOne.mockResolvedValue({
+        id: 99,
+        user: { userRoles: [{ role: { roleName: 'MANAGER' } }] },
+      });
+      departmentRepoMock.createQueryBuilder().getOne.mockResolvedValue(null);
+      departmentsRepo.create.mockResolvedValue({ id: 5, departmentName: 'HR' });
+
+      const result = await service.create({ departmentName: 'HR', managerEmployeeId: 99 });
+
+      expect(departmentsRepo.create).toHaveBeenCalledWith({
+        departmentName: 'HR',
+        managerEmployeeId: 99,
+      });
+      expect(employeeRepoMock.update).toHaveBeenCalledWith(99, { departmentId: 5 });
+      expect(result).toEqual({ id: 5, departmentName: 'HR' });
+    });
   });
 });
