@@ -93,6 +93,7 @@ describe('EmployeesService - Unit Tests', () => {
 
     bankRepo = {
       findOne: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       save: jest.fn(),
     };

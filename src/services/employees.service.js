@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { AppMessages } from '../common/constants/index.js';
 import {
   NotFoundException,
@@ -421,6 +422,20 @@ export class EmployeesService {
       page: 1,
     });
 
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+    const employeeIds = items.map(e => e.id);
+    let bankAccountMap = new Map();
+    if (employeeIds.length > 0) {
+      const bankAccounts = await bankRepo.find({
+        where: {
+          employeeId: In(employeeIds),
+          status: 'ACTIVE',
+        },
+      });
+      bankAccountMap = new Map(bankAccounts.map(ba => [ba.employeeId, ba]));
+    }
+
     const statusLabels = {
       PROBATION: 'Thử việc',
       ACTIVE: 'Đang làm việc',
@@ -441,41 +456,47 @@ export class EmployeesService {
       OTHER: 'Khác',
     };
 
-    const data = items.map((e, index) => ({
-      index: index + 1,
-      employeeCode: e.employeeCode || '',
-      fullName: e.fullName,
-      gender: genderLabels[e.gender] || e.gender,
-      dateOfBirth: e.dateOfBirth
-        ? new Date(e.dateOfBirth).toLocaleDateString('vi-VN')
-        : '',
-      nationalId: e.nationalId || '',
-      nationalIdIssuedDate: e.nationalIdIssuedDate
-        ? new Date(e.nationalIdIssuedDate).toLocaleDateString('vi-VN')
-        : '',
-      nationalIdIssuedPlace: e.nationalIdIssuedPlace || '',
-      nationality: e.nationality || '',
-      maritalStatus: maritalStatusLabels[e.maritalStatus] || e.maritalStatus,
-      taxCode: e.taxCode || '',
-      companyEmail: e.companyEmail || '',
-      personalEmail: e.personalEmail || '',
-      phoneNumber: e.phoneNumber || '',
-      educationLevel: e.educationLevel || '',
-      currentAddress: e.currentAddress || '',
-      permanentAddress: e.permanentAddress || '',
-      department: e.department?.departmentName || '',
-      position: e.position?.positionName || '',
-      jobGrade: e.jobGrade?.gradeName || '',
-      directManager: e.directManager?.fullName || '',
-      hrMentor: e.hrMentor?.fullName || '',
-      joinDate: e.joinDate
-        ? new Date(e.joinDate).toLocaleDateString('vi-VN')
-        : '',
-      officialStartDate: e.officialStartDate
-        ? new Date(e.officialStartDate).toLocaleDateString('vi-VN')
-        : '',
-      status: statusLabels[e.employmentStatus] || e.employmentStatus,
-    }));
+    const data = items.map((e, index) => {
+      const bankAccount = bankAccountMap.get(e.id);
+      return {
+        index: index + 1,
+        employeeCode: e.employeeCode || '',
+        fullName: e.fullName,
+        gender: genderLabels[e.gender] || e.gender,
+        dateOfBirth: e.dateOfBirth
+          ? new Date(e.dateOfBirth).toLocaleDateString('vi-VN')
+          : '',
+        nationalId: e.nationalId || '',
+        nationalIdIssuedDate: e.nationalIdIssuedDate
+          ? new Date(e.nationalIdIssuedDate).toLocaleDateString('vi-VN')
+          : '',
+        nationalIdIssuedPlace: e.nationalIdIssuedPlace || '',
+        nationality: e.nationality || '',
+        maritalStatus: maritalStatusLabels[e.maritalStatus] || e.maritalStatus,
+        taxCode: e.taxCode || '',
+        accountNumber: bankAccount?.accountNumber || '',
+        bankName: bankAccount?.bankName || '',
+        accountHolderName: bankAccount?.accountHolderName || '',
+        companyEmail: e.companyEmail || '',
+        personalEmail: e.personalEmail || '',
+        phoneNumber: e.phoneNumber || '',
+        educationLevel: e.educationLevel || '',
+        currentAddress: e.currentAddress || '',
+        permanentAddress: e.permanentAddress || '',
+        department: e.department?.departmentName || '',
+        position: e.position?.positionName || '',
+        jobGrade: e.jobGrade?.gradeName || '',
+        directManager: e.directManager?.fullName || '',
+        hrMentor: e.hrMentor?.fullName || '',
+        joinDate: e.joinDate
+          ? new Date(e.joinDate).toLocaleDateString('vi-VN')
+          : '',
+        officialStartDate: e.officialStartDate
+          ? new Date(e.officialStartDate).toLocaleDateString('vi-VN')
+          : '',
+        status: statusLabels[e.employmentStatus] || e.employmentStatus,
+      };
+    });
 
     const columns = [
       { header: 'STT', key: 'index', width: 8 },
@@ -489,6 +510,9 @@ export class EmployeesService {
       { header: 'Quốc tịch', key: 'nationality', width: 15 },
       { header: 'Tình trạng hôn nhân', key: 'maritalStatus', width: 20 },
       { header: 'Mã số thuế', key: 'taxCode', width: 15 },
+      { header: 'Số tài khoản', key: 'accountNumber', width: 20 },
+      { header: 'Ngân hàng', key: 'bankName', width: 20 },
+      { header: 'Chủ tài khoản', key: 'accountHolderName', width: 25 },
       { header: 'Email công ty', key: 'companyEmail', width: 25 },
       { header: 'Email cá nhân', key: 'personalEmail', width: 25 },
       { header: 'Số điện thoại', key: 'phoneNumber', width: 15 },
