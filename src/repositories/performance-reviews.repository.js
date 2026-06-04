@@ -16,6 +16,7 @@ export class PerformanceReviewsRepository {
             year,
             employeeId,
             managerId,
+            departmentIds,
         } = options;
 
         const query = this.repository
@@ -47,6 +48,18 @@ export class PerformanceReviewsRepository {
 
         if (managerId) {
             query.andWhere('review.managerId = :managerId', { managerId });
+        }
+
+        if (departmentIds) {
+            if (Array.isArray(departmentIds)) {
+                if (departmentIds.length > 0) {
+                    query.andWhere('employee.departmentId IN (:...departmentIds)', { departmentIds });
+                } else {
+                    query.andWhere('1 = 0');
+                }
+            } else {
+                query.andWhere('employee.departmentId = :departmentIds', { departmentIds });
+            }
         }
 
         const [items, total] = await query
