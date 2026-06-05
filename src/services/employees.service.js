@@ -606,4 +606,65 @@ export class EmployeesService {
       return false;
     }
   }
+
+  async generateEmployeeCode(fullName) {
+    if (!fullName) {
+      throw new BadRequestException('Họ và tên không được để trống');
+    }
+
+    const prefix = this._generatePrefix(fullName);
+    if (!prefix) {
+      throw new BadRequestException('Họ và tên không hợp lệ');
+    }
+
+    // Generate random 3-digit number (e.g., between 100 and 999)
+    let suffix = Math.floor(100 + Math.random() * 900);
+    let code = `${prefix}${suffix}`;
+
+    // Loop to ensure uniqueness in db
+    let isDuplicate = true;
+    let attempts = 0;
+    const maxAttempts = 1000;
+
+    while (isDuplicate && attempts < maxAttempts) {
+      const existing = await this.employeesRepository.findByField('employeeCode', code);
+      if (!existing) {
+        isDuplicate = false;
+      } else {
+        suffix = (suffix + 1) % 1000;
+        if (suffix < 100) suffix += 100;
+        code = `${prefix}${suffix}`;
+        attempts++;
+      }
+    }
+
+    if (isDuplicate) {
+      code = `${prefix}${Date.now().toString().slice(-6)}`;
+    }
+
+    return { employeeCode: code };
+  }
+
+  _generatePrefix(fullName) {
+    const normalized = fullName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+
+    // Keep only letters and spaces
+    const cleanStr = normalized.replace(/[^a-zA-Z\s]/g, '');
+    const words = cleanStr.trim().split(/\s+/).filter(Boolean).map(w => w.toUpperCase());
+
+    if (words.length === 0) return '';
+
+    const lastName = words[words.length - 1]; // Tên chính (e.g., Thái)
+    if (words.length === 1) {
+      return lastName;
+    }
+
+    // Other words (initials of Đàm Trong -> D, T)
+    const initials = words.slice(0, words.length - 1).map(w => w[0]).join('');
+    return lastName + initials;
+  }
 }
