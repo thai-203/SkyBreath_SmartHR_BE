@@ -19,55 +19,46 @@ const assignmentsController = new TaskAssignmentsController();
 router.get(
   '/plans',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   plansController.findAll,
 );
 router.get(
   '/plans/:id',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   plansController.findOne,
 );
 router.post(
   '/plans',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_CREATE'),
   plansController.create,
 );
 router.put(
   '/plans/:id',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_UPDATE'),
   plansController.update,
 );
 router.delete(
   '/plans/:id',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_DELETE'),
   plansController.remove,
 );
 router.get(
   '/plans/:id/stats',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   plansController.getStatistics,
 );
 router.get(
   '/plans/department/:departmentId',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   plansController.findByDepartment,
 );
 router.get(
   '/plans-templates/list',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   plansController.findTemplates,
 );
 router.post(
   '/plans/:id/duplicate',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_CREATE'),
   plansController.duplicate,
 );
 

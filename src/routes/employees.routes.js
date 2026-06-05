@@ -35,7 +35,6 @@ router.get(
 router.get(
   '/no-plan',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   employeesController.getEmployeeNoPlanId,
 );
 router.get('/user/:userId', authMiddleware, employeesController.getByUserId);
