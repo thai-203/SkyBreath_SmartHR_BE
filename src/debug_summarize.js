@@ -6,6 +6,7 @@ import { HolidayListEntity } from './models/entities/holiday-list.entity.js';
 import { OvertimeRuleEntity } from './models/entities/overtime-rule.entity.js';
 import { OvertimeRuleDepartmentEntity } from './models/entities/overtime-rule-department.entity.js';
 import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { toYmd } from './common/utils/date.util.js';
 
 function _countWorkingDays(year, month, holidayDates) {
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -44,8 +45,8 @@ async function run() {
             where: [
                 {
                     startDate: Between(
-                        startDate.toISOString().split('T')[0],
-                        endDate.toISOString().split('T')[0],
+                        toYmd(startDate),
+                        toYmd(endDate),
                     ),
                     isDeleted: false,
                 },

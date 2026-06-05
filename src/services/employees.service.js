@@ -18,7 +18,34 @@ import { mailService } from './mail.service.js';
 import crypto from 'crypto';
 
 const generateRandomPassword = () => {
-  return crypto.randomBytes(6).toString('base64').slice(0, 10) + 'A1!';
+  const lower = 'abcdefghijklmnopqrstuvwxyz';
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const digits = '0123456789';
+  const specials = '@$!%*?&';
+  const all = lower + upper + digits + specials;
+
+  const getRandomChar = (chars) => chars.charAt(crypto.randomInt(0, chars.length));
+
+  // Ensure at least one of each required character type
+  const chars = [
+    getRandomChar(lower),
+    getRandomChar(upper),
+    getRandomChar(digits),
+    getRandomChar(specials),
+  ];
+
+  const targetLength = 10; // keep same approximate length as before
+  while (chars.length < targetLength) {
+    chars.push(getRandomChar(all));
+  }
+
+  // Shuffle to avoid predictable positions
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
 };
 
 export class EmployeesService {
