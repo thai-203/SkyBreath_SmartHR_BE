@@ -114,7 +114,7 @@ export class CreateContractDto {
 
   @IsString()
   @IsNotEmpty()
-  @Matches(/^HDLD\/\d{4}\/[A-Za-z0-9-]+$/, {
+  @Matches(/^(HDLD)\/\d{4}\/[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$/, {
     message:
       'Mã hợp đồng phải có dạng HDLD/{năm}/{mã nhân viên} và chỉ dùng chữ, số, dấu gạch ngang',
   })

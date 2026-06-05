@@ -9,6 +9,7 @@ import { WorkingShiftEntity } from '../../models/entities/working-shift.entity.j
 import { EmployeeEntity } from '../../models/entities/employee.entity.js';
 import { DepartmentEntity } from '../../models/entities/department.entity.js';
 import { AppDataSource } from '../data-source.js';
+import { toYmd } from '../../common/utils/date.util.js';
 
 /**
  * Seed dữ liệu phân ca (Shift Assignments & Schedules) và chấm công (Attendance)
@@ -58,7 +59,7 @@ async function seedAttendance() {
   console.log('--- BƯỚC 1: TẠO PHÂN CA & LỊCH LÀM VIỆC (FEB - MAY 2026) ---');
   for (let month = 2; month <= 5; month++) {
     const monthStart = `2026-${String(month).padStart(2, '0')}-01`;
-    const monthEnd = new Date(2026, month, 0).toISOString().split('T')[0]; // ngày cuối của tháng
+    const monthEnd = toYmd(new Date(2026, month, 0)); // ngày cuối của tháng
 
     const assignment = await upsert(assignmentRepo, { assignmentName: `Phân ca tháng ${month}` }, {
       assignmentName: `Phân ca tháng ${month}`,
@@ -80,7 +81,7 @@ async function seedAttendance() {
     for (let d = new Date(startObj); d <= endObj; d.setDate(d.getDate() + 1)) {
       const dayNum = d.getDay(); // 0: Sun, 1: Mon, ... 6: Sat
       if (dayNum >= 1 && dayNum <= 5) { // T2-T6
-        const workDate = d.toISOString().split('T')[0];
+        const workDate = toYmd(d);
         for (const emp of employees) {
           scheduleRows.push({
             assignmentId: assignment.id,
@@ -106,7 +107,7 @@ async function seedAttendance() {
     .createQueryBuilder('schedule')
     .where('schedule.workDate >= :startDate', { startDate: '2026-02-01' })
     .andWhere('schedule.workDate <= :endDate', {
-      endDate: endDate.toISOString().split('T')[0],
+      endDate: toYmd(endDate),
     })
     .getMany();
 

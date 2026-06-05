@@ -1,6 +1,7 @@
 import { PaginatedResponseDto } from '../common/dto/index.js';
 import { BadRequestException, NotFoundException } from '../common/exceptions/index.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
+import { toYmd, parseYmd, getTodayYmd } from '../common/utils/date.util.js';
 import { EmployeesRepository } from '../repositories/employees.repository.js';
 import { HolidayListRepository } from '../repositories/holiday-list.repository.js';
 import { HolidayConfigRepository } from '../repositories/holiday-configs.repository.js';
@@ -31,8 +32,7 @@ export class HolidayListService {
     _validateCompensatoryDays(compensatoryDays) {
         if (!compensatoryDays || !Array.isArray(compensatoryDays)) return;
         
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const today = parseYmd(getTodayYmd());
 
         for (let i = 0; i < compensatoryDays.length; i++) {
             const cd = compensatoryDays[i];
@@ -40,8 +40,8 @@ export class HolidayListService {
                 throw new BadRequestException(`Vui lòng chọn ngày làm bù cho dòng thứ ${i + 1}`);
             }
 
-            const compDate = new Date(cd.date + "T00:00:00");
-            if (isNaN(compDate.getTime()) || compDate < today) {
+            const compDate = parseYmd(cd.date);
+            if (!compDate || compDate < today) {
                 throw new BadRequestException(`Tại ngày làm bù thứ ${i + 1}: Ngày làm bù không được chọn trong quá khứ hoặc không hợp lệ.`);
             }
 
@@ -69,14 +69,14 @@ export class HolidayListService {
             throw new BadRequestException('Danh mục ngày lễ là bắt buộc');
         }
 
-        if (typeof data.startDate === 'number' || isNaN(new Date(data.startDate).getTime())) {
+        if (typeof data.startDate === 'number' || !parseYmd(data.startDate)) {
             throw new BadRequestException('Ngày bắt đầu không hợp lệ');
         }
-        if (typeof data.endDate === 'number' || isNaN(new Date(data.endDate).getTime())) {
+        if (typeof data.endDate === 'number' || !parseYmd(data.endDate)) {
             throw new BadRequestException('Ngày kết thúc không hợp lệ');
         }
 
-        if (new Date(data.startDate) > new Date(data.endDate)) {
+        if (parseYmd(data.startDate) > parseYmd(data.endDate)) {
             throw new BadRequestException('Ngày kết thúc không được trước ngày bắt đầu');
         }
     }
@@ -115,7 +115,7 @@ export class HolidayListService {
         const holiday = await this.findById(id);
         
         // Extract month and year
-        const startDate = new Date(holiday.startDate);
+        const startDate = parseYmd(holiday.startDate);
         const month = startDate.getMonth() + 1;
         const year = startDate.getFullYear();
 
@@ -188,16 +188,16 @@ export class HolidayListService {
 
         // Shift them to the next year
         return items.map(item => {
-            const start = new Date(item.startDate);
-            const end = new Date(item.endDate);
+            const start = parseYmd(item.startDate);
+            const end = parseYmd(item.endDate);
 
-            start.setFullYear(start.getFullYear() + 1);
-            end.setFullYear(end.getFullYear() + 1);
+            if (start) start.setFullYear(start.getFullYear() + 1);
+            if (end) end.setFullYear(end.getFullYear() + 1);
 
             return {
                 holidayName: item.holidayName,
-                startDate: start.toISOString().split('T')[0],
-                endDate: end.toISOString().split('T')[0],
+                startDate: toYmd(start),
+                endDate: toYmd(end),
                 holidayType: item.holidayType,
                 isPaid: item.isPaid,
                 description: item.description,
@@ -224,8 +224,8 @@ export class HolidayListService {
         }
 
         const subject = `Thông báo nghỉ lễ: ${holiday.holidayName}`;
-        const startDate = new Date(holiday.startDate).toLocaleDateString('vi-VN');
-        const endDate = new Date(holiday.endDate).toLocaleDateString('vi-VN');
+        const startDate = parseYmd(holiday.startDate)?.toLocaleDateString('vi-VN');
+        const endDate = parseYmd(holiday.endDate)?.toLocaleDateString('vi-VN');
         
         const content = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
@@ -279,9 +279,9 @@ export class HolidayListService {
         }
 
         const leadTime = config.reminderLeadTime || 0;
-        const targetDate = new Date();
+        const targetDate = parseYmd(getTodayYmd());
         targetDate.setDate(targetDate.getDate() + leadTime);
-        const dateString = targetDate.toISOString().split('T')[0];
+        const dateString = toYmd(targetDate);
 
         console.log(`[HolidayReminder] Checking for holidays on ${dateString} (Lead time: ${leadTime} days)`);
 
@@ -314,8 +314,8 @@ export class HolidayListService {
             }
 
             const subject = `Nhắc nhở ngày nghỉ lễ sắp tới: ${holiday.holidayName}`;
-            const startDate = new Date(holiday.startDate).toLocaleDateString('vi-VN');
-            const endDate = new Date(holiday.endDate).toLocaleDateString('vi-VN');
+            const startDate = parseYmd(holiday.startDate)?.toLocaleDateString('vi-VN');
+            const endDate = parseYmd(holiday.endDate)?.toLocaleDateString('vi-VN');
 
             const content = `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">

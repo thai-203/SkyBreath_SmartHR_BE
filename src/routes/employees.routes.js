@@ -35,7 +35,6 @@ router.get(
 router.get(
   '/no-plan',
   authMiddleware,
-  permissionsMiddleware('ONBOARDING_PLAN_READ'),
   employeesController.getEmployeeNoPlanId,
 );
 router.get('/user/:userId', authMiddleware, employeesController.getByUserId);
@@ -56,6 +55,12 @@ router.get(
   authMiddleware,
   permissionsMiddleware('EMPLOYEE_READ'),
   employeesController.getValidationData,
+);
+
+router.get(
+  '/generate-code',
+  authMiddleware,
+  employeesController.generateCode,
 );
 // Export permission
 router.get(

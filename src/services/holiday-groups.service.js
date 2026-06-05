@@ -1,5 +1,6 @@
 import { HolidayGroupRepository } from '../repositories/holiday-groups.repository.js';
 import { BadRequestException, NotFoundException } from '../common/exceptions/index.js';
+import { toYmd, parseYmd } from '../common/utils/date.util.js';
 
 export class HolidayGroupService {
     constructor() {
@@ -127,36 +128,36 @@ export class HolidayGroupService {
             
             for (const sourceHoliday of sourceGroup.holidays) {
                 // Adjust dates
-                const startDate = new Date(sourceHoliday.startDate);
-                startDate.setFullYear(startDate.getFullYear() + yearDiff);
+                const startDate = parseYmd(sourceHoliday.startDate);
+                if (startDate) startDate.setFullYear(startDate.getFullYear() + yearDiff);
                 
-                const endDate = new Date(sourceHoliday.endDate);
-                endDate.setFullYear(endDate.getFullYear() + yearDiff);
+                const endDate = parseYmd(sourceHoliday.endDate);
+                if (endDate) endDate.setFullYear(endDate.getFullYear() + yearDiff);
 
                 const newHolidayData = {
                     holidayName: sourceHoliday.holidayName,
                     holidayType: sourceHoliday.holidayType,
                     isPaid: sourceHoliday.isPaid,
                     description: sourceHoliday.description,
-                    startDate: startDate.toISOString().split('T')[0],
-                    endDate: endDate.toISOString().split('T')[0],
+                    startDate: toYmd(startDate),
+                    endDate: toYmd(endDate),
                     holidayGroupId: newGroup.id,
                     employeeIds: sourceHoliday.employees?.map(e => e.id) || [],
                     // Copy and shift compensatory days
                     compensatoryDays: Array.isArray(sourceHoliday.compensatoryDays) 
                         ? sourceHoliday.compensatoryDays.map(cd => {
-                            const newDate = new Date(cd.date);
-                            newDate.setFullYear(newDate.getFullYear() + yearDiff);
+                            const newDate = parseYmd(cd.date);
+                            if (newDate) newDate.setFullYear(newDate.getFullYear() + yearDiff);
                             
-                            const newReplacesDate = cd.replacesDate ? new Date(cd.replacesDate) : null;
+                            const newReplacesDate = cd.replacesDate ? parseYmd(cd.replacesDate) : null;
                             if (newReplacesDate) {
                                 newReplacesDate.setFullYear(newReplacesDate.getFullYear() + yearDiff);
                             }
 
                             return {
                                 ...cd,
-                                date: newDate.toISOString().split('T')[0],
-                                replacesDate: newReplacesDate ? newReplacesDate.toISOString().split('T')[0] : ""
+                                date: toYmd(newDate),
+                                replacesDate: newReplacesDate ? toYmd(newReplacesDate) : ""
                             };
                         })
                         : []

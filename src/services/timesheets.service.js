@@ -11,6 +11,7 @@ import {
   NotFoundException,
 } from '../common/exceptions/index.js';
 import { ExcelUtil } from '../common/utils/excel.util.js';
+import { toYmd } from '../common/utils/date.util.js';
 import { AppDataSource } from '../database/data-source.js';
 import { AttendanceRecordEntity } from '../models/entities/attendance-record.entity.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
@@ -157,21 +158,21 @@ export class TimesheetsService {
       where: [
         {
           startDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
           endDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
-          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
-          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          startDate: LessThanOrEqual(toYmd(startDate)),
+          endDate: MoreThanOrEqual(toYmd(endDate)),
           isDeleted: false,
         },
       ],
@@ -181,7 +182,7 @@ export class TimesheetsService {
       const current = new Date(h.startDate);
       const stop = new Date(h.endDate || h.startDate);
       while (current <= stop) {
-        holidayDates.add(current.toISOString().split('T')[0]);
+        holidayDates.add(toYmd(current));
         current.setDate(current.getDate() + 1);
       }
     });
@@ -267,10 +268,10 @@ export class TimesheetsService {
           .andWhere('request.status = :status', { status: 'APPROVED' })
           .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
           .andWhere('detail.workDate >= :startDate', {
-            startDate: startDate.toISOString().split('T')[0],
+            startDate: toYmd(startDate),
           })
           .andWhere('detail.workDate <= :endDate', {
-            endDate: endDate.toISOString().split('T')[0],
+            endDate: toYmd(endDate),
           })
           .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
           .getMany();
@@ -282,8 +283,8 @@ export class TimesheetsService {
             employeeId: employee.id,
             status: 'APPROVED',
             requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
-            startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
-            endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+            startDate: LessThanOrEqual(toYmd(endDate)),
+            endDate: MoreThanOrEqual(toYmd(startDate)),
             isDeleted: false,
           },
           relations: ['requestGroup'],
@@ -428,21 +429,21 @@ export class TimesheetsService {
       where: [
         {
           startDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
           endDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
-          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
-          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          startDate: LessThanOrEqual(toYmd(startDate)),
+          endDate: MoreThanOrEqual(toYmd(endDate)),
           isDeleted: false,
         },
       ],
@@ -452,7 +453,7 @@ export class TimesheetsService {
       const current = new Date(h.startDate);
       const stop = new Date(h.endDate || h.startDate);
       while (current <= stop) {
-        holidayDates.add(current.toISOString().split('T')[0]);
+        holidayDates.add(toYmd(current));
         current.setDate(current.getDate() + 1);
       }
     });
@@ -503,10 +504,10 @@ export class TimesheetsService {
       .andWhere('request.status = :status', { status: 'APPROVED' })
       .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('detail.workDate >= :startDate', {
-        startDate: startDate.toISOString().split('T')[0],
+        startDate: toYmd(startDate),
       })
       .andWhere('detail.workDate <= :endDate', {
-        endDate: endDate.toISOString().split('T')[0],
+        endDate: toYmd(endDate),
       })
       .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
       .getMany();
@@ -811,21 +812,21 @@ export class TimesheetsService {
       where: [
         {
           startDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
           endDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
-          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
-          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          startDate: LessThanOrEqual(toYmd(startDate)),
+          endDate: MoreThanOrEqual(toYmd(endDate)),
           isDeleted: false,
         },
       ],
@@ -835,7 +836,7 @@ export class TimesheetsService {
       const current = new Date(h.startDate);
       const stop = new Date(h.endDate || h.startDate);
       while (current <= stop) {
-        holidayDates.add(current.toISOString().split('T')[0]);
+        holidayDates.add(toYmd(current));
         current.setDate(current.getDate() + 1);
       }
     });
@@ -847,8 +848,8 @@ export class TimesheetsService {
         employeeId: timesheet.employeeId,
         status: 'APPROVED',
         requestGroup: { code: 'LEAVE' },
-        startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
-        endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+        startDate: LessThanOrEqual(toYmd(endDate)),
+        endDate: MoreThanOrEqual(toYmd(startDate)),
         isDeleted: false,
       },
       relations: ['requestGroup', 'requestType'],
@@ -868,10 +869,10 @@ export class TimesheetsService {
       .andWhere('request.status = :status', { status: 'APPROVED' })
       .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('detail.workDate >= :startDate', {
-        startDate: startDate.toISOString().split('T')[0],
+        startDate: toYmd(startDate),
       })
       .andWhere('detail.workDate <= :endDate', {
-        endDate: endDate.toISOString().split('T')[0],
+        endDate: toYmd(endDate),
       })
       .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
       .getMany();
@@ -881,8 +882,8 @@ export class TimesheetsService {
       where: {
         employeeId: timesheet.employeeId,
         requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
-        startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
-        endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+        startDate: LessThanOrEqual(toYmd(endDate)),
+        endDate: MoreThanOrEqual(toYmd(startDate)),
         isDeleted: false,
       },
       relations: ['requestGroup'],
@@ -1037,8 +1038,8 @@ export class TimesheetsService {
         where: {
           employeeId: employee.id,
           requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
-          startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
-          endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+          startDate: LessThanOrEqual(toYmd(endDate)),
+          endDate: MoreThanOrEqual(toYmd(startDate)),
           isDeleted: false,
         },
         relations: ['requestGroup'],
@@ -1149,10 +1150,10 @@ export class TimesheetsService {
       .andWhere('request.status = :status', { status: 'APPROVED' })
       .andWhere('requestGroup.code = :groupCode', { groupCode: 'OVERTIME' })
       .andWhere('detail.workDate >= :startDate', {
-        startDate: startDate.toISOString().split('T')[0],
+        startDate: toYmd(startDate),
       })
       .andWhere('detail.workDate <= :endDate', {
-        endDate: endDate.toISOString().split('T')[0],
+        endDate: toYmd(endDate),
       })
       .andWhere('request.isDeleted = :isDeleted', { isDeleted: false })
       .getMany();
@@ -1164,8 +1165,8 @@ export class TimesheetsService {
         employeeId: timesheet.employeeId,
         status: 'APPROVED',
         requestGroup: { code: In(['LATE_EARLY', 'ATTENDANCE_CORRECTION']) },
-        startDate: LessThanOrEqual(endDate.toISOString().split('T')[0]),
-        endDate: MoreThanOrEqual(startDate.toISOString().split('T')[0]),
+        startDate: LessThanOrEqual(toYmd(endDate)),
+        endDate: MoreThanOrEqual(toYmd(startDate)),
         isDeleted: false,
       },
       relations: ['requestGroup'],
@@ -1317,6 +1318,18 @@ export class TimesheetsService {
         AppMessages.Errors.Timesheet.ALREADY_LOCKED,
       );
     }
+
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+    const bankAccount = await bankRepo.findOne({
+      where: { employeeId: timesheet.employeeId, status: 'ACTIVE' },
+    });
+    if (!bankAccount || typeof bankAccount.accountNumber !== 'string' || !bankAccount.accountNumber.trim() || typeof bankAccount.bankName !== 'string' || !bankAccount.bankName.trim() || typeof bankAccount.accountHolderName !== 'string' || !bankAccount.accountHolderName.trim()) {
+      throw new BadRequestException(
+        `Nhân viên ${timesheet.employee?.fullName || ''} chưa được cấu hình tài khoản ngân hàng nhận lương. Vui lòng cập nhật thông tin ngân hàng trước khi chốt công.`,
+      );
+    }
+
     const result = await this.timesheetsRepository.update(id, {
       isLocked: true,
     });
@@ -1351,6 +1364,33 @@ export class TimesheetsService {
 
     if (items.length === 0) {
       return { locked: 0 };
+    }
+
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+
+    // Get all employee IDs in the timesheets list
+    const employeeIds = items.map(ts => ts.employeeId);
+
+    // Query active bank accounts for all these employees
+    const bankAccounts = await bankRepo.find({
+      where: {
+        employeeId: In(employeeIds),
+        status: 'ACTIVE',
+      },
+    });
+
+    const bankAccountMap = new Map(bankAccounts.map(ba => [ba.employeeId, ba]));
+
+    // Check each timesheet
+    for (const timesheet of items) {
+      if (timesheet.isLocked) continue;
+      const bankAccount = bankAccountMap.get(timesheet.employeeId);
+      if (!bankAccount || typeof bankAccount.accountNumber !== 'string' || !bankAccount.accountNumber.trim() || typeof bankAccount.bankName !== 'string' || !bankAccount.bankName.trim() || typeof bankAccount.accountHolderName !== 'string' || !bankAccount.accountHolderName.trim()) {
+        throw new BadRequestException(
+          `Nhân viên ${timesheet.employee?.fullName || ''} chưa được cấu hình tài khoản ngân hàng nhận lương. Vui lòng cập nhật thông tin ngân hàng trước khi chốt công.`,
+        );
+      }
     }
 
     let lockedCount = 0;
@@ -2956,21 +2996,21 @@ export class TimesheetsService {
       where: [
         {
           startDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
           endDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
-          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
-          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          startDate: LessThanOrEqual(toYmd(startDate)),
+          endDate: MoreThanOrEqual(toYmd(endDate)),
           isDeleted: false,
         },
       ],
@@ -2980,7 +3020,7 @@ export class TimesheetsService {
       const current = new Date(h.startDate);
       const stop = new Date(h.endDate || h.startDate);
       while (current <= stop) {
-        holidayDates.add(current.toISOString().split('T')[0]);
+        holidayDates.add(toYmd(current));
         current.setDate(current.getDate() + 1);
       }
     });
@@ -3354,21 +3394,21 @@ export class TimesheetsService {
       where: [
         {
           startDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
           endDate: Between(
-            startDate.toISOString().split('T')[0],
-            endDate.toISOString().split('T')[0],
+            toYmd(startDate),
+            toYmd(endDate),
           ),
           isDeleted: false,
         },
         {
-          startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]),
-          endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]),
+          startDate: LessThanOrEqual(toYmd(startDate)),
+          endDate: MoreThanOrEqual(toYmd(endDate)),
           isDeleted: false,
         },
       ],
@@ -3378,7 +3418,7 @@ export class TimesheetsService {
       let cur = new Date(h.startDate);
       let stop = new Date(h.endDate || h.startDate);
       while (cur <= stop) {
-        holidayDates.add(cur.toISOString().split('T')[0]);
+        holidayDates.add(toYmd(cur));
         cur.setDate(cur.getDate() + 1);
       }
     });

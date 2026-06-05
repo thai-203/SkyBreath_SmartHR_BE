@@ -22,6 +22,7 @@ import sendMail from '../common/utils/mail.util.js';
 import { AppDataSource } from '../database/data-source.js';
 import { EmployeeSalaryEntity } from '../models/entities/employee-salary.entity.js';
 import { EmployeeEntity } from '../models/entities/employee.entity.js';
+import { toYmd } from '../common/utils/date.util.js';
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { TimeSheetEntity } from '../models/entities/time-sheet.entity.js';
 import { PerformanceReviewEntity } from '../models/entities/performance-review.entity.js';
@@ -723,9 +724,9 @@ export class PayrollService {
         const holidayRepo = AppDataSource.getRepository(HolidayListEntity);
         const holidays = await holidayRepo.find({
             where: [
-                { startDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
-                { endDate: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]), isDeleted: false },
-                { startDate: LessThanOrEqual(startDate.toISOString().split('T')[0]), endDate: MoreThanOrEqual(endDate.toISOString().split('T')[0]), isDeleted: false },
+                { startDate: Between(toYmd(startDate), toYmd(endDate)), isDeleted: false },
+                { endDate: Between(toYmd(startDate), toYmd(endDate)), isDeleted: false },
+                { startDate: LessThanOrEqual(toYmd(startDate)), endDate: MoreThanOrEqual(toYmd(endDate)), isDeleted: false },
             ],
         });
         const holidayDates = new Set();
@@ -733,7 +734,7 @@ export class PayrollService {
             let cur = new Date(h.startDate);
             const stop = new Date(h.endDate || h.startDate);
             while (cur <= stop) {
-                holidayDates.add(cur.toISOString().split('T')[0]);
+                holidayDates.add(toYmd(cur));
                 cur.setDate(cur.getDate() + 1);
             }
         });
@@ -776,7 +777,7 @@ export class PayrollService {
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month - 1, day);
             const dayOfWeek = date.getDay();
-            const dateStr = date.toISOString().split('T')[0];
+            const dateStr = toYmd(date);
             // Trừ Thứ Bảy (6), Chủ Nhật (0) và ngày lễ
             if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateStr)) count++;
         }

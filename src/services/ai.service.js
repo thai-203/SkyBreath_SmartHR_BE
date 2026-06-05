@@ -8,6 +8,7 @@ import { AiConfigurationEntity } from '../models/entities/ai-configuration.entit
 import { AiPromptEntity } from '../models/entities/ai-prompt.entity.js';
 import fs from 'fs';
 import path from 'path';
+import { getTodayYmd } from '../common/utils/date.util.js';
 
 // ============================================================================
 // KEYWORD → TABLE RELEVANCE MAP
@@ -361,7 +362,7 @@ Tên: ${employee.fullName}
 Mã NV: ${employee.employeeCode}
 employee_id: ${employee.id}
 Vai trò: ${roles.join(', ')}
-Ngày hiện tại: ${new Date().toISOString().split('T')[0]}
+Ngày hiện tại: ${getTodayYmd()}
 
 Các bảng schema liên quan:
 ${schemaText}

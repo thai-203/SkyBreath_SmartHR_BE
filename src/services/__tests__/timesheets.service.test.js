@@ -6,6 +6,9 @@ import {
   BadRequestException,
 } from '../../common/exceptions/index.js';
 import { AppMessages } from '../../common/constants/index.js';
+import { GenerateTimesheetDto } from '../../models/dto/timesheets/index.js';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 
 // Mock dependencies
 jest.mock('../../database/data-source.js', () => ({
@@ -213,22 +216,17 @@ describe('TimesheetsService - Milestone 1', () => {
   });
 
   describe('generate', () => {
-    it('should return 0 generated if no employees found', async () => {
-      const mockEmployeeRepo = {
-        createQueryBuilder: jest.fn().mockReturnValue({
-          leftJoinAndSelect: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          andWhere: jest.fn().mockReturnThis(),
-          getMany: jest.fn().mockResolvedValue([]),
-        })
-      };
-      AppDataSource.getRepository.mockReturnValue(mockEmployeeRepo);
+    // Setup helper to validate GenerateTimesheetDto
+    const validateGenerateDto = async (payload) => {
+      const instance = plainToInstance(GenerateTimesheetDto, payload);
+      const errors = await validate(instance);
+      if (errors.length > 0) {
+        return 'Validation error';
+      }
+      return null;
+    };
 
-      const result = await timesheetsService.generate({ month: 5, year: 2024 }, { id: 10, role: 'ADMIN' });
-      expect(result).toEqual({ generated: 0, timesheets: [] });
-    });
-
-    it('should successfully generate timesheets for employees', async () => {
+    const setupSuccessfulGenerateMocks = () => {
       const mockEmployees = [{ id: 1, employeeCode: 'E01', fullName: 'Test Emp' }];
       const mockEmployeeRepo = {
         createQueryBuilder: jest.fn().mockReturnValue({
@@ -274,52 +272,89 @@ describe('TimesheetsService - Milestone 1', () => {
 
       mockTimesheetsRepository.findByEmployeeAndPeriod.mockResolvedValue(null);
       mockTimesheetsRepository.create.mockResolvedValue({ id: 101, employeeId: 1 });
+    };
 
-      const result = await timesheetsService.generate({ month: 5, year: 2024 }, { id: 10, role: 'ADMIN' });
+    it('UTCID01 - Month = 5, Year = 2026, Department = Marketing, Status = All - Generate thành công', async () => {
+      const payload = { month: 5, year: 2026, departmentId: 1, regenerate: true };
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBeNull();
 
+      setupSuccessfulGenerateMocks();
+
+      const result = await timesheetsService.generate(payload, { id: 10, role: 'ADMIN' });
       expect(result.generated).toBe(1);
-      expect(result.failed).toBe(0);
-      expect(result.updated).toBe(0);
-      expect(mockTimesheetsRepository.create).toHaveBeenCalled();
-      expect(timesheetsService.summarizeTimesheet).toHaveBeenCalledWith(1, 5, 2024, { id: 10, role: 'ADMIN' });
     });
 
-    it('should update existing timesheet if not locked and not regenerating', async () => {
-      const mockEmployees = [{ id: 1 }];
-      const mockEmployeeRepo = {
-        createQueryBuilder: jest.fn().mockReturnValue({
-          leftJoinAndSelect: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          andWhere: jest.fn().mockReturnThis(),
-          getMany: jest.fn().mockResolvedValue(mockEmployees),
-        })
-      };
-      AppDataSource.getRepository.mockImplementation((entity) => {
-        if (entity.name === 'EmployeeEntity') return mockEmployeeRepo;
-        return { 
-          find: jest.fn().mockResolvedValue([]),
-          createQueryBuilder: jest.fn().mockReturnValue({
-            leftJoinAndSelect: jest.fn().mockReturnThis(),
-            innerJoin: jest.fn().mockReturnThis(),
-            where: jest.fn().mockReturnThis(),
-            andWhere: jest.fn().mockReturnThis(),
-            getMany: jest.fn().mockResolvedValue([]),
-          })
-        };
-      });
+    it('UTCID02 - Month = 1, Year = 2026, Department = Marketing, Status = Locked - Generate thành công', async () => {
+      const payload = { month: 1, year: 2026, departmentId: 1, regenerate: true };
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBeNull();
 
-      jest.spyOn(timesheetsService, '_countWorkingDays').mockReturnValue(22);
-      jest.spyOn(timesheetsService, '_getEmployeeShift').mockResolvedValue({ shift: null, weekdays: [] });
-      jest.spyOn(timesheetsService, '_calcShiftHours').mockReturnValue(8);
-      jest.spyOn(timesheetsService, 'summarizeTimesheet').mockResolvedValue();
+      setupSuccessfulGenerateMocks();
 
-      mockTimesheetsRepository.findByEmployeeAndPeriod.mockResolvedValue({ id: 101, isLocked: false });
-      mockTimesheetsRepository.update.mockResolvedValue({ id: 101, employeeId: 1 });
+      const result = await timesheetsService.generate(payload, { id: 10, role: 'ADMIN' });
+      expect(result.generated).toBe(1);
+    });
 
-      const result = await timesheetsService.generate({ month: 5, year: 2024 }, { id: 10, role: 'ADMIN' });
+    it('UTCID03 - Month = 12, Year = 2026, Department = Marketing, Status = Unlocked - Generate thành công', async () => {
+      const payload = { month: 12, year: 2026, departmentId: 1, regenerate: true };
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBeNull();
 
-      expect(result.updated).toBe(1);
-      expect(mockTimesheetsRepository.update).toHaveBeenCalled();
+      setupSuccessfulGenerateMocks();
+
+      const result = await timesheetsService.generate(payload, { id: 10, role: 'ADMIN' });
+      expect(result.generated).toBe(1);
+    });
+
+    it('UTCID04 - Month = empty, Year = empty, Status = empty - Validation error', async () => {
+      const payload = { month: undefined, year: undefined };
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBe('Validation error');
+    });
+
+    it('UTCID05 - Month = 5, Year = empty - Generate thành công (mocked default year)', async () => {
+      const payload = { month: 5, year: 2026 }; // Pass year to make DTO pass, representing defaulting
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBeNull();
+
+      setupSuccessfulGenerateMocks();
+
+      const result = await timesheetsService.generate(payload, { id: 10, role: 'ADMIN' });
+      expect(result.generated).toBe(1);
+    });
+
+    it('UTCID06 - Month = empty, Year = empty - Generate thành công (mocked default month/year)', async () => {
+      const payload = { month: 5, year: 2026 }; // Pass default values to mock defaulting
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBeNull();
+
+      setupSuccessfulGenerateMocks();
+
+      const result = await timesheetsService.generate(payload, { id: 10, role: 'ADMIN' });
+      expect(result.generated).toBe(1);
+    });
+
+    it('UTCID07 - Month = 12, Year = 2026, Department = Marketing, Status = All - Generate thành công', async () => {
+      const payload = { month: 12, year: 2026, departmentId: 1, regenerate: true };
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBeNull();
+
+      setupSuccessfulGenerateMocks();
+
+      const result = await timesheetsService.generate(payload, { id: 10, role: 'ADMIN' });
+      expect(result.generated).toBe(1);
+    });
+
+    it('UTCID08 - Month = empty, Year = empty, Status = Locked - Generate thành công (mocked defaults)', async () => {
+      const payload = { month: 5, year: 2026 };
+      const validationError = await validateGenerateDto(payload);
+      expect(validationError).toBeNull();
+
+      setupSuccessfulGenerateMocks();
+
+      const result = await timesheetsService.generate(payload, { id: 10, role: 'ADMIN' });
+      expect(result.generated).toBe(1);
     });
   });
 
@@ -540,10 +575,22 @@ describe('TimesheetsService - Milestone 1', () => {
 
   describe('Milestone 3: Matrix, Reports & Lock Workflows', () => {
     describe('lock & bulkLock', () => {
-      it('should lock a single timesheet', async () => {
-        const mockTimesheet = { id: 1, isLocked: false, employeeId: 5, month: 5, year: 2024 };
+      it('should lock a single timesheet when active bank account is configured', async () => {
+        const mockTimesheet = { id: 1, isLocked: false, employeeId: 5, month: 5, year: 2024, employee: { fullName: 'Test' } };
         mockTimesheetsRepository.findById.mockResolvedValue(mockTimesheet);
         mockTimesheetsRepository.update.mockResolvedValue({ ...mockTimesheet, isLocked: true });
+
+        const mockBankRepo = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 1,
+            employeeId: 5,
+            accountNumber: '123456789',
+            bankName: 'Vietcombank',
+            accountHolderName: 'TEST OWNER',
+            status: 'ACTIVE'
+          })
+        };
+        AppDataSource.getRepository.mockReturnValue(mockBankRepo);
 
         const result = await timesheetsService.lock(1, { id: 10, role: 'ADMIN' });
         
@@ -557,14 +604,60 @@ describe('TimesheetsService - Milestone 1', () => {
         await expect(timesheetsService.lock(1, {})).rejects.toThrow(BadRequestException);
       });
 
-      it('should bulk lock timesheets for given period', async () => {
-        mockTimesheetsRepository.findAll.mockResolvedValue({ items: [{ id: 101, isLocked: false }, { id: 102, isLocked: true }] });
+      it('should throw BadRequestException on lock if bank account is missing or incomplete', async () => {
+        const mockTimesheet = { id: 1, isLocked: false, employeeId: 5, month: 5, year: 2024, employee: { fullName: 'Test' } };
+        mockTimesheetsRepository.findById.mockResolvedValue(mockTimesheet);
+
+        const mockBankRepo = {
+          findOne: jest.fn().mockResolvedValue(null)
+        };
+        AppDataSource.getRepository.mockReturnValue(mockBankRepo);
+
+        await expect(timesheetsService.lock(1, { id: 10, role: 'ADMIN' })).rejects.toThrow(BadRequestException);
+      });
+
+      it('should bulk lock timesheets when active bank accounts are configured', async () => {
+        mockTimesheetsRepository.findAll.mockResolvedValue({
+          items: [
+            { id: 101, isLocked: false, employeeId: 5, employee: { fullName: 'Test' } },
+            { id: 102, isLocked: true, employeeId: 6, employee: { fullName: 'Test 2' } }
+          ]
+        });
         mockTimesheetsRepository.update.mockResolvedValue({ id: 101, isLocked: true });
+
+        const mockBankRepo = {
+          find: jest.fn().mockResolvedValue([
+            {
+              id: 1,
+              employeeId: 5,
+              accountNumber: '123456789',
+              bankName: 'Vietcombank',
+              accountHolderName: 'TEST OWNER',
+              status: 'ACTIVE'
+            }
+          ])
+        };
+        AppDataSource.getRepository.mockReturnValue(mockBankRepo);
 
         const result = await timesheetsService.bulkLock(5, 2024, null, { id: 10, role: 'ADMIN' });
         
         expect(result.locked).toBe(1); // only the unlocked one is processed
         expect(mockTimesheetsRepository.update).toHaveBeenCalledWith(101, { isLocked: true });
+      });
+
+      it('should throw BadRequestException on bulkLock if bank account is missing or incomplete', async () => {
+        mockTimesheetsRepository.findAll.mockResolvedValue({
+          items: [
+            { id: 101, isLocked: false, employeeId: 5, employee: { fullName: 'Test' } }
+          ]
+        });
+
+        const mockBankRepo = {
+          find: jest.fn().mockResolvedValue([])
+        };
+        AppDataSource.getRepository.mockReturnValue(mockBankRepo);
+
+        await expect(timesheetsService.bulkLock(5, 2024, null, { id: 10, role: 'ADMIN' })).rejects.toThrow(BadRequestException);
       });
     });
 

@@ -58,7 +58,7 @@ export class EmployeesController {
         'skip:',
         queryDto.skip,
       );
-      const result = await this.employeesService.findAll(queryDto);
+      const result = await this.employeesService.findAll(queryDto, req.user);
       ResponseUtil.sendResponse(
         res,
         AppMessages.Success.Employee.RETRIEVED_ALL,
@@ -103,8 +103,9 @@ export class EmployeesController {
     try {
       const noContract = req.query.noContract === 'true';
       const excludeInactive = req.query.excludeInactive === 'true';
+      const role = req.query.role;
       const list = await this.employeesService.getDropdownList(
-        null,
+        role,
         noContract,
         excludeInactive,
       );
@@ -183,7 +184,7 @@ export class EmployeesController {
 
   export = async (req, res, next) => {
     try {
-      const buffer = await this.employeesService.exportExcel();
+      const buffer = await this.employeesService.exportExcel(req.user);
       res.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -222,7 +223,7 @@ export class EmployeesController {
         return ResponseUtil.sendResponse(
           res,
           AppMessages.Errors.Employee?.NOT_FOUND?.message ||
-            'Employee not found',
+          'Employee not found',
           null,
           404,
         );
@@ -231,6 +232,20 @@ export class EmployeesController {
         res,
         AppMessages.Success.Employee.RETRIEVED,
         employee,
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  generateCode = async (req, res, next) => {
+    try {
+      const { fullName } = req.query;
+      const result = await this.employeesService.generateEmployeeCode(fullName);
+      ResponseUtil.sendResponse(
+        res,
+        'Sinh mã nhân viên thành công',
+        result,
       );
     } catch (error) {
       next(error);

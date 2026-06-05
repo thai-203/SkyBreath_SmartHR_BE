@@ -1,4 +1,4 @@
-import { NotFoundException, ConflictException } from '../common/exceptions/index.js';
+import { NotFoundException, ConflictException, BadRequestException } from '../common/exceptions/index.js';
 import { REVIEW_STATUS } from '../models/entities/performance-review.entity.js';
 
 const SCORE_LIMITS = {
@@ -15,6 +15,16 @@ const MAX_BEHAVIOR_SCORE = 5.0;
 export class PerformanceReviewsService {
     constructor(performanceReviewsRepository) {
         this.performanceReviewsRepository = performanceReviewsRepository;
+    }
+
+    _isManager(userContext) {
+        const roles = userContext?.roles || [];
+        const upperRoles = roles.map(r => String(r).toUpperCase());
+        return (
+            upperRoles.includes('MANAGER') &&
+            !upperRoles.includes('ADMIN') &&
+            !upperRoles.includes('HR')
+        );
     }
 
     calculateTotalScore(scores) {
@@ -60,9 +70,28 @@ export class PerformanceReviewsService {
         return errors;
     }
 
-    async findAll(queryDto) {
+    async findAll(queryDto, userContext) {
         const skip = (queryDto.page - 1) * queryDto.limit;
         const take = queryDto.limit;
+
+        let departmentIds = null;
+        if (userContext && this._isManager(userContext)) {
+            const employeesRepoClass = (await import('../repositories/employees.repository.js')).EmployeesRepository;
+            const employeesRepo = new employeesRepoClass();
+            const managerEmployee = await employeesRepo.findByUserId(userContext.id);
+            if (managerEmployee) {
+                const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+                const { AppDataSource } = await import('../database/data-source.js');
+                const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+                const managedDepts = await deptRepo.find({
+                    where: { managerEmployeeId: managerEmployee.id },
+                    select: ['id'],
+                });
+                departmentIds = managedDepts.map((d) => d.id);
+            } else {
+                departmentIds = [];
+            }
+        }
 
         const result = await this.performanceReviewsRepository.findAll({
             skip,
@@ -72,6 +101,7 @@ export class PerformanceReviewsService {
             year: queryDto.year,
             employeeId: queryDto.employeeId,
             managerId: queryDto.managerId,
+            departmentIds,
         });
         return {
             data: result.items,
@@ -98,21 +128,59 @@ export class PerformanceReviewsService {
         );
     }
 
-    async getManagedEmployees(managerId) {
+    async getManagedEmployees(managerId, userContext) {
         const employeesRepo = (await import('../repositories/employees.repository.js')).EmployeesRepository;
         const repo = new employeesRepo();
         const query = repo.repository
             .createQueryBuilder('employee')
             .leftJoinAndSelect('employee.department', 'department')
             .leftJoinAndSelect('employee.position', 'position')
-            .where('employee.directManagerId = :managerId', { managerId })
-            .andWhere('employee.isDeleted = :isDeleted', { isDeleted: false });
+            .where('employee.isDeleted = :isDeleted', { isDeleted: false });
+
+        if (userContext && this._isManager(userContext)) {
+            const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+            const { AppDataSource } = await import('../database/data-source.js');
+            const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+            const managedDepts = await deptRepo.find({
+                where: { managerEmployeeId: managerId },
+                select: ['id'],
+            });
+            const deptIds = managedDepts.map((d) => d.id);
+            if (deptIds.length > 0) {
+                query.andWhere('employee.departmentId IN (:...deptIds)', { deptIds });
+            } else {
+                query.andWhere('1 = 0');
+            }
+        } else {
+            query.andWhere('employee.directManagerId = :managerId', { managerId });
+        }
 
         return query.orderBy('employee.fullName', 'ASC').getMany();
     }
 
-    async create(createDto, currentUser) {
+    async create(createDto, currentUser, userContext) {
         const { employeeId, reviewMonth, reviewYear } = createDto;
+
+        if (userContext && this._isManager(userContext)) {
+            const employeesRepoClass = (await import('../repositories/employees.repository.js')).EmployeesRepository;
+            const employeesRepo = new employeesRepoClass();
+            const targetEmployee = await employeesRepo.findById(employeeId);
+            if (!targetEmployee) {
+                throw new NotFoundException('Không tìm thấy nhân viên được đánh giá');
+            }
+
+            const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+            const { AppDataSource } = await import('../database/data-source.js');
+            const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+            const managedDepts = await deptRepo.find({
+                where: { managerEmployeeId: currentUser.employeeId },
+                select: ['id'],
+            });
+            const deptIds = managedDepts.map((d) => d.id);
+            if (!deptIds.includes(targetEmployee.departmentId)) {
+                throw new BadRequestException('Bạn chỉ có quyền đánh giá nhân viên thuộc phòng ban mình quản lý.');
+            }
+        }
 
         const existing = await this.performanceReviewsRepository.findByEmployeeAndPeriod(
             employeeId,
@@ -143,8 +211,34 @@ export class PerformanceReviewsService {
         return this.performanceReviewsRepository.create(reviewData);
     }
 
-    async update(id, updateDto) {
+    async update(id, updateDto, userContext) {
         const existing = await this.findById(id);
+
+        if (userContext && this._isManager(userContext)) {
+            const employeesRepoClass = (await import('../repositories/employees.repository.js')).EmployeesRepository;
+            const employeesRepo = new employeesRepoClass();
+            const managerEmployee = await employeesRepo.findByUserId(userContext.id);
+            if (!managerEmployee) {
+                throw new BadRequestException('Không tìm thấy nhân viên quản lý.');
+            }
+
+            const targetEmployee = await employeesRepo.findById(existing.employeeId);
+            if (!targetEmployee) {
+                throw new NotFoundException('Không tìm thấy nhân viên được đánh giá');
+            }
+
+            const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+            const { AppDataSource } = await import('../database/data-source.js');
+            const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+            const managedDepts = await deptRepo.find({
+                where: { managerEmployeeId: managerEmployee.id },
+                select: ['id'],
+            });
+            const deptIds = managedDepts.map((d) => d.id);
+            if (!deptIds.includes(targetEmployee.departmentId)) {
+                throw new BadRequestException('Bạn chỉ có quyền chỉnh sửa đánh giá của nhân viên thuộc phòng ban mình quản lý.');
+            }
+        }
 
         const mergedScores = {
             scoreCompliance: updateDto.scoreCompliance ?? existing.scoreCompliance,
@@ -189,8 +283,35 @@ export class PerformanceReviewsService {
         return this.performanceReviewsRepository.update(id, updateData);
     }
 
-    async delete(id) {
+    async delete(id, userContext) {
         const existing = await this.findById(id);
+
+        if (userContext && this._isManager(userContext)) {
+            const employeesRepoClass = (await import('../repositories/employees.repository.js')).EmployeesRepository;
+            const employeesRepo = new employeesRepoClass();
+            const managerEmployee = await employeesRepo.findByUserId(userContext.id);
+            if (!managerEmployee) {
+                throw new BadRequestException('Không tìm thấy nhân viên quản lý.');
+            }
+
+            const targetEmployee = await employeesRepo.findById(existing.employeeId);
+            if (!targetEmployee) {
+                throw new NotFoundException('Không tìm thấy nhân viên được đánh giá');
+            }
+
+            const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+            const { AppDataSource } = await import('../database/data-source.js');
+            const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+            const managedDepts = await deptRepo.find({
+                where: { managerEmployeeId: managerEmployee.id },
+                select: ['id'],
+            });
+            const deptIds = managedDepts.map((d) => d.id);
+            if (!deptIds.includes(targetEmployee.departmentId)) {
+                throw new BadRequestException('Bạn chỉ có quyền xóa đánh giá của nhân viên thuộc phòng ban mình quản lý.');
+            }
+        }
+
         return this.performanceReviewsRepository.softDelete(id);
     }
 }

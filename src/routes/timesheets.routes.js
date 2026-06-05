@@ -303,7 +303,6 @@ router.get(
 router.get(
   '/summary-matrix',
   authMiddleware,
-  permissionsMiddleware('TIMESHEET_READ'),
   timesheetsController.getSummaryMatrix,
 );
 

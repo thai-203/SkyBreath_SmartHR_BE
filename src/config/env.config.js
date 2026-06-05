@@ -17,10 +17,11 @@ export const config = {
   },
   database: {
     host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '3306'),
+    port: parseInt(process.env.DB_PORT || '3306', 10),
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     name: process.env.DB_DATABASE,
+    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10', 10),
   },
   mail: {
     host: process.env.MAIL_HOST,

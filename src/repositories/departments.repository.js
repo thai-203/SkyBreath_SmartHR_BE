@@ -133,7 +133,7 @@ export class DepartmentsRepository {
     async findList() {
         return this.repository.find({
             where: { isDeleted: false },
-            select: ['id', 'departmentName'],
+            select: ['id', 'departmentName', 'managerEmployeeId'],
             order: { departmentName: 'ASC' },
         });
     }

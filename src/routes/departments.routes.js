@@ -102,7 +102,7 @@ router.get(
 router.get(
   '/',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_READ'),
+  permissionsMiddleware(['CONTRACT_READ', 'DEPARTMENT_READ']),
   departmentsController.findAll,
 );
 
@@ -127,14 +127,14 @@ router.get(
 router.get(
   '/chart',
   authMiddleware,
-  permissionsMiddleware('DEPARTMENT_READ'),
+  permissionsMiddleware('DEPARTMENT_CHART_READ'),
   departmentsController.getOrgChart,
 );
 
 router.get(
   '/chart/holiday',
   authMiddleware,
-  permissionsMiddleware('HOLIDAY_READ'),
+  permissionsMiddleware('DEPARTMENT_CHART_READ'),
   departmentsController.getOrgChart,
 );
 

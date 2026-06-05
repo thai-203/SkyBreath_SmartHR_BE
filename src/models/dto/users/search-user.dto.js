@@ -7,7 +7,7 @@ import {
   Min,
 } from 'class-validator';
 
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class SearchUserDto {
   @IsOptional()
@@ -32,11 +32,13 @@ export class SearchUserDto {
   statuses; // Filter by status
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(1)
   page = 1;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(1)
   limit = 10;

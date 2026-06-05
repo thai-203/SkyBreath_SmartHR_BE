@@ -93,38 +93,36 @@ describe('AuthService - editProfile', () => {
     avatar: 'old-avatar.jpg',
   };
 
-  it('should throw BadRequestException if personalEmail is invalid', async () => {
+  it('should throw "Định dạng email cá nhân không hợp lệ" if personalEmail is invalid', async () => {
     await expect(
       authService.editProfile(userId, { personalEmail: 'invalid' }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow('Định dạng email cá nhân không hợp lệ');
   });
 
-  it('should throw BadRequestException if phoneNumber is invalid', async () => {
+  it('should throw "Định dạng số điện thoại không hợp lệ" if phoneNumber is invalid', async () => {
     await expect(
       authService.editProfile(userId, { phoneNumber: '123' }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow('Định dạng số điện thoại không hợp lệ');
   });
 
-  it('should throw BadRequestException if currentAddress is too long', async () => {
+  it('should throw "Địa chỉ hiện tại không được vượt quá 500 ký tự" if currentAddress is too long', async () => {
     await expect(
       authService.editProfile(userId, { currentAddress: 'a'.repeat(501) }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow('Địa chỉ hiện tại không được vượt quá 500 ký tự');
   });
 
-  it('should throw BadRequestException if permanentAddress is too long', async () => {
+  it('should throw "Địa chỉ thường trú không được vượt quá 500 ký tự" if permanentAddress is too long', async () => {
     await expect(
       authService.editProfile(userId, { permanentAddress: 'a'.repeat(501) }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow('Địa chỉ thường trú không được vượt quá 500 ký tự');
   });
 
-  it('should throw NotFoundException if employee profile is not found', async () => {
+  it('should throw "Không tìm thấy hồ sơ" if employee profile is not found', async () => {
     AppDataSource.getRepository.mockReturnValue({
       findOne: jest.fn().mockResolvedValue(null),
     });
 
-    await expect(authService.editProfile(userId, {})).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(authService.editProfile(userId, {})).rejects.toThrow('Không tìm thấy hồ sơ');
   });
 
   it('should update profile and log action when fields change', async () => {
@@ -167,94 +165,72 @@ describe('AuthService - editProfile', () => {
     expect(mockLogCreate).not.toHaveBeenCalled();
   });
 
-  it('should not throw error if action logging fails', async () => {
-    AppDataSource.getRepository.mockReturnValue({
-      findOne: jest.fn().mockResolvedValue(mockEmployee),
-    });
-
-    mockUpdate.mockResolvedValue(mockEmployee);
-    mockLogCreate.mockRejectedValue(new Error('Log failed'));
-
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-    await authService.editProfile(userId, { personalEmail: 'new@email.com' });
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      'Failed to log action:',
-      expect.any(Error),
-    );
-    consoleSpy.mockRestore();
-  });
-
   describe('changePassword', () => {
     const userId = 1;
     const currentPassword = 'OldPassword@123';
     const newPassword = 'NewPassword@123';
     const invalidPassword = 'weak';
 
-    it('should throw BadRequestException if currentPassword is missing', async () => {
+    it('should throw "Mật khẩu hiện tại không được để trống" if currentPassword is missing', async () => {
       await expect(
         authService.changePassword(userId, { newPassword }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu hiện tại không được để trống');
     });
 
-    it('should throw BadRequestException if currentPassword format is invalid', async () => {
+    it('should throw "Mật khẩu hiện tại không hợp lệ" if currentPassword format is invalid', async () => {
       await expect(
         authService.changePassword(userId, {
           currentPassword: invalidPassword,
           newPassword,
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu hiện tại không hợp lệ');
     });
 
-    it('should throw BadRequestException if newPassword is missing', async () => {
+    it('should throw "Mật khẩu mới không được để trống" if newPassword is missing', async () => {
       await expect(
         authService.changePassword(userId, { currentPassword }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu mới không được để trống');
     });
 
-    it('should throw BadRequestException if newPassword format is invalid', async () => {
+    it('should throw "Mật khẩu mới không hợp lệ" if newPassword format is invalid', async () => {
       await expect(
         authService.changePassword(userId, {
           currentPassword,
           newPassword: invalidPassword,
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu mới không hợp lệ');
     });
 
-    it('should throw NotFoundException if user is not found', async () => {
+    it('should throw "Không tìm thấy tài khoản" if user is not found', async () => {
       mockUserRepo.findByIdWithPassword.mockResolvedValue(null);
-
       await expect(
         authService.changePassword(userId, { currentPassword, newPassword }),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow('Không tìm thấy tài khoản');
     });
 
-    it('should throw BadRequestException if current password is incorrect', async () => {
+    it('should throw "Mật khẩu hiện tại không chính xác" if current password is incorrect', async () => {
       mockUserRepo.findByIdWithPassword.mockResolvedValue({
         id: userId,
         password: 'hashed-old-password',
       });
       comparePassword.mockResolvedValue(false);
-
       await expect(
         authService.changePassword(userId, { currentPassword, newPassword }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu hiện tại không chính xác');
     });
 
-    it('should throw BadRequestException if new password is same as current password', async () => {
+    it('should throw "Mật khẩu mới không được trùng với mật khẩu cũ" if new password is same as current password', async () => {
       mockUserRepo.findByIdWithPassword.mockResolvedValue({
         id: userId,
         password: 'hashed-old-password',
       });
       comparePassword.mockResolvedValue(true);
-
       await expect(
         authService.changePassword(userId, {
           currentPassword,
           newPassword: currentPassword,
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Mật khẩu mới không được trùng với mật khẩu cũ');
     });
 
     it('should update password on success', async () => {

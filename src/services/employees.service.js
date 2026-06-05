@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { AppMessages } from '../common/constants/index.js';
 import {
   NotFoundException,
@@ -17,7 +18,34 @@ import { mailService } from './mail.service.js';
 import crypto from 'crypto';
 
 const generateRandomPassword = () => {
-  return crypto.randomBytes(6).toString('base64').slice(0, 10) + 'A1!';
+  const lower = 'abcdefghijklmnopqrstuvwxyz';
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const digits = '0123456789';
+  const specials = '@$!%*?&';
+  const all = lower + upper + digits + specials;
+
+  const getRandomChar = (chars) => chars.charAt(crypto.randomInt(0, chars.length));
+
+  // Ensure at least one of each required character type
+  const chars = [
+    getRandomChar(lower),
+    getRandomChar(upper),
+    getRandomChar(digits),
+    getRandomChar(specials),
+  ];
+
+  const targetLength = 10; // keep same approximate length as before
+  while (chars.length < targetLength) {
+    chars.push(getRandomChar(all));
+  }
+
+  // Shuffle to avoid predictable positions
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
 };
 
 export class EmployeesService {
@@ -25,7 +53,44 @@ export class EmployeesService {
     this.employeesRepository = employeesRepository;
   }
 
-  async findAll(queryDto) {
+  _isManager(userContext) {
+    const roles = userContext?.roles || [];
+    const upperRoles = roles.map(r => String(r).toUpperCase());
+    return (
+      upperRoles.includes('MANAGER') &&
+      !upperRoles.includes('ADMIN') &&
+      !upperRoles.includes('HR')
+    );
+  }
+
+  async findAll(queryDto, userContext) {
+    if (userContext && this._isManager(userContext)) {
+      console.log('debug employees all userContext:', userContext);
+      const managerEmployee = await this.employeesRepository.findByUserId(userContext.id);
+      if (managerEmployee) {
+        const { DepartmentEntity } = await import('../models/entities/department.entity.js');
+        const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+        const managedDepts = await deptRepo.find({
+          where: { managerEmployeeId: managerEmployee.id },
+          select: ['id'],
+        });
+        const deptIds = managedDepts.map((d) => d.id);
+
+        if (queryDto.departmentId) {
+          const queriedDeptId = parseInt(queryDto.departmentId);
+          if (deptIds.includes(queriedDeptId)) {
+            queryDto.departmentId = queriedDeptId;
+          } else {
+            queryDto.departmentId = [];
+          }
+        } else {
+          queryDto.departmentId = deptIds;
+        }
+      } else {
+        queryDto.departmentId = [];
+      }
+    }
+
     const result = await this.employeesRepository.findAll(queryDto);
     return {
       ...result,
@@ -56,6 +121,13 @@ export class EmployeesService {
         throw new ConflictException(
           AppMessages.Errors.Employee.EMAIL_DUPLICATE,
         );
+      }
+    }
+
+    if (createDto.companyEmail) {
+      const isValid = await this._validateEmailDomain(createDto.companyEmail);
+      if (!isValid) {
+        throw new BadRequestException('Email công ty không tồn tại (tên miền không hỗ trợ nhận thư).');
       }
     }
 
@@ -199,16 +271,24 @@ export class EmployeesService {
     if (!employee) {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
     }
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+    const bankAccount = await bankRepo.findOne({
+      where: { employeeId: id, status: 'ACTIVE' },
+    });
+    employee.bankAccount = bankAccount;
     return employee;
   }
 
   async update(id, updateDto) {
     const employee = await this.findById(id);
 
-    if (updateDto.personalEmail) {
+    const { accountNumber, bankName, accountHolderName, ...employeeData } = updateDto;
+
+    if (employeeData.personalEmail) {
       const existing = await this.employeesRepository.findByField(
         'personalEmail',
-        updateDto.personalEmail,
+        employeeData.personalEmail,
         id,
       );
       if (existing) {
@@ -217,10 +297,17 @@ export class EmployeesService {
         );
       }
     }
+
+    if (employeeData.companyEmail && employeeData.companyEmail !== employee.companyEmail) {
+      const isValid = await this._validateEmailDomain(employeeData.companyEmail);
+      if (!isValid) {
+        throw new BadRequestException('Email công ty không tồn tại (tên miền không hỗ trợ nhận thư).');
+      }
+    }
     // Kiểm tra đủ 18 tuổi nếu cập nhật ngày sinh
-    if (updateDto.dateOfBirth) {
+    if (employeeData.dateOfBirth) {
       const today = new Date();
-      const dob = new Date(updateDto.dateOfBirth);
+      const dob = new Date(employeeData.dateOfBirth);
       let age = today.getFullYear() - dob.getFullYear();
       const m = today.getMonth() - dob.getMonth();
       if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
@@ -229,10 +316,10 @@ export class EmployeesService {
         throw new BadRequestException('Nhân viên phải đủ 18 tuổi.');
       }
     }
-    if (updateDto.phoneNumber) {
+    if (employeeData.phoneNumber) {
       const existing = await this.employeesRepository.findByField(
         'phoneNumber',
-        updateDto.phoneNumber,
+        employeeData.phoneNumber,
         id,
       );
       if (existing) {
@@ -242,10 +329,10 @@ export class EmployeesService {
       }
     }
 
-    if (updateDto.nationalId) {
+    if (employeeData.nationalId) {
       const existing = await this.employeesRepository.findByField(
         'nationalId',
-        updateDto.nationalId,
+        employeeData.nationalId,
         id,
       );
       if (existing) {
@@ -257,9 +344,12 @@ export class EmployeesService {
 
     // Status transition validation (BR-33)
     if (
-      updateDto.employmentStatus &&
-      updateDto.employmentStatus !== employee.employmentStatus
+      employeeData.employmentStatus &&
+      employeeData.employmentStatus !== employee.employmentStatus
     ) {
+      if (employeeData.employmentStatus === 'TERMINATED') {
+        await this._validateContractExpiration(employee.id, employee.fullName);
+      }
       const allowedTransitions = {
         PROBATION: ['ACTIVE', 'TERMINATED'],
         ACTIVE: ['ON_LEAVE', 'TERMINATED'],
@@ -268,20 +358,20 @@ export class EmployeesService {
       };
 
       const allowed = allowedTransitions[employee.employmentStatus] || [];
-      if (!allowed.includes(updateDto.employmentStatus)) {
+      if (!allowed.includes(employeeData.employmentStatus)) {
         throw new BadRequestException(
-          `Không thể chuyển trạng thái từ "${employee.employmentStatus}" sang "${updateDto.employmentStatus}". Trạng thái phải tuân theo vòng đời quy định.`,
+          `Không thể chuyển trạng thái từ "${employee.employmentStatus}" sang "${employeeData.employmentStatus}". Trạng thái phải tuân theo vòng đời quy định.`,
         );
       }
 
       // Sync associated User account status
-      if (updateDto.employmentStatus === 'TERMINATED' && employee.userId) {
+      if (employeeData.employmentStatus === 'TERMINATED' && employee.userId) {
         const userRepo = AppDataSource.getRepository(UserEntity);
         await userRepo.update(employee.userId, { status: 'LOCKED' });
       } else if (
         employee.employmentStatus === 'TERMINATED' &&
         ['ACTIVE', 'PROBATION', 'ON_LEAVE'].includes(
-          updateDto.employmentStatus,
+          employeeData.employmentStatus,
         ) &&
         employee.userId
       ) {
@@ -290,7 +380,60 @@ export class EmployeesService {
       }
     }
 
-    return this.employeesRepository.update(employee.id, updateDto);
+    // Update or create bank account if bank details are provided
+    if (accountNumber !== undefined || bankName !== undefined || accountHolderName !== undefined) {
+      const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+      const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+
+      let bankAccount = await bankRepo.findOne({
+        where: { employeeId: employee.id, status: 'ACTIVE' },
+      });
+
+      if (bankAccount) {
+        if (accountNumber !== undefined) bankAccount.accountNumber = accountNumber;
+        if (bankName !== undefined) bankAccount.bankName = bankName;
+        if (accountHolderName !== undefined) bankAccount.accountHolderName = accountHolderName;
+        await bankRepo.save(bankAccount);
+      } else {
+        bankAccount = bankRepo.create({
+          employeeId: employee.id,
+          accountNumber: accountNumber || '',
+          bankName: bankName || '',
+          accountHolderName: accountHolderName || employee.fullName,
+          status: 'ACTIVE',
+        });
+        await bankRepo.save(bankAccount);
+      }
+    }
+
+    await this.employeesRepository.update(employee.id, employeeData);
+    return this.findById(employee.id);
+  }
+
+  async _validateContractExpiration(employeeId, employeeName) {
+    const { ContractEntity } = await import('../models/entities/contract.entity.js');
+    const contractRepo = AppDataSource.getRepository(ContractEntity);
+    const contracts = await contractRepo.find({
+      where: { employeeId, isDeleted: false },
+      order: { id: 'DESC' },
+    });
+
+    if (!contracts || contracts.length === 0) {
+      return;
+    }
+
+    const latestContract = contracts[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const endDate = latestContract.endDate ? new Date(latestContract.endDate) : null;
+    const isExpired = latestContract.contractStatus === 'EXPIRED' ||
+      latestContract.contractStatus === 'TERMINATED' ||
+      (endDate && endDate < today);
+
+    if (!isExpired) {
+      throw new BadRequestException('Hợp đồng lao động của nhân viên vẫn còn hiệu lực. Không thể cho nghỉ việc.');
+    }
   }
 
   async delete(id) {
@@ -331,6 +474,9 @@ export class EmployeesService {
       );
     }
 
+    // Check contract expiration before termination
+    await this._validateContractExpiration(employee.id, employee.fullName);
+
     // Cập nhật trạng thái nhân viên sang TERMINATED và khóa tài khoản người dùng liên kết
     await this.employeesRepository.update(employee.id, {
       employmentStatus: 'TERMINATED',
@@ -348,11 +494,25 @@ export class EmployeesService {
     return this.employeesRepository.findValidationData();
   }
 
-  async exportExcel() {
-    const { items } = await this.employeesRepository.findAll({
+  async exportExcel(userContext) {
+    const { items } = await this.findAll({
       limit: 10000,
       page: 1,
-    });
+    }, userContext);
+
+    const { EmployeeBankAccountEntity } = await import('../models/entities/employee-bank-account.entity.js');
+    const bankRepo = AppDataSource.getRepository(EmployeeBankAccountEntity);
+    const employeeIds = items.map(e => e.id);
+    let bankAccountMap = new Map();
+    if (employeeIds.length > 0) {
+      const bankAccounts = await bankRepo.find({
+        where: {
+          employeeId: In(employeeIds),
+          status: 'ACTIVE',
+        },
+      });
+      bankAccountMap = new Map(bankAccounts.map(ba => [ba.employeeId, ba]));
+    }
 
     const statusLabels = {
       PROBATION: 'Thử việc',
@@ -374,41 +534,47 @@ export class EmployeesService {
       OTHER: 'Khác',
     };
 
-    const data = items.map((e, index) => ({
-      index: index + 1,
-      employeeCode: e.employeeCode || '',
-      fullName: e.fullName,
-      gender: genderLabels[e.gender] || e.gender,
-      dateOfBirth: e.dateOfBirth
-        ? new Date(e.dateOfBirth).toLocaleDateString('vi-VN')
-        : '',
-      nationalId: e.nationalId || '',
-      nationalIdIssuedDate: e.nationalIdIssuedDate
-        ? new Date(e.nationalIdIssuedDate).toLocaleDateString('vi-VN')
-        : '',
-      nationalIdIssuedPlace: e.nationalIdIssuedPlace || '',
-      nationality: e.nationality || '',
-      maritalStatus: maritalStatusLabels[e.maritalStatus] || e.maritalStatus,
-      taxCode: e.taxCode || '',
-      companyEmail: e.companyEmail || '',
-      personalEmail: e.personalEmail || '',
-      phoneNumber: e.phoneNumber || '',
-      educationLevel: e.educationLevel || '',
-      currentAddress: e.currentAddress || '',
-      permanentAddress: e.permanentAddress || '',
-      department: e.department?.departmentName || '',
-      position: e.position?.positionName || '',
-      jobGrade: e.jobGrade?.gradeName || '',
-      directManager: e.directManager?.fullName || '',
-      hrMentor: e.hrMentor?.fullName || '',
-      joinDate: e.joinDate
-        ? new Date(e.joinDate).toLocaleDateString('vi-VN')
-        : '',
-      officialStartDate: e.officialStartDate
-        ? new Date(e.officialStartDate).toLocaleDateString('vi-VN')
-        : '',
-      status: statusLabels[e.employmentStatus] || e.employmentStatus,
-    }));
+    const data = items.map((e, index) => {
+      const bankAccount = bankAccountMap.get(e.id);
+      return {
+        index: index + 1,
+        employeeCode: e.employeeCode || '',
+        fullName: e.fullName,
+        gender: genderLabels[e.gender] || e.gender,
+        dateOfBirth: e.dateOfBirth
+          ? new Date(e.dateOfBirth).toLocaleDateString('vi-VN')
+          : '',
+        nationalId: e.nationalId || '',
+        nationalIdIssuedDate: e.nationalIdIssuedDate
+          ? new Date(e.nationalIdIssuedDate).toLocaleDateString('vi-VN')
+          : '',
+        nationalIdIssuedPlace: e.nationalIdIssuedPlace || '',
+        nationality: e.nationality || '',
+        maritalStatus: maritalStatusLabels[e.maritalStatus] || e.maritalStatus,
+        taxCode: e.taxCode || '',
+        accountNumber: bankAccount?.accountNumber || '',
+        bankName: bankAccount?.bankName || '',
+        accountHolderName: bankAccount?.accountHolderName || '',
+        companyEmail: e.companyEmail || '',
+        personalEmail: e.personalEmail || '',
+        phoneNumber: e.phoneNumber || '',
+        educationLevel: e.educationLevel || '',
+        currentAddress: e.currentAddress || '',
+        permanentAddress: e.permanentAddress || '',
+        department: e.department?.departmentName || '',
+        position: e.position?.positionName || '',
+        jobGrade: e.jobGrade?.gradeName || '',
+        directManager: e.directManager?.fullName || '',
+        hrMentor: e.hrMentor?.fullName || '',
+        joinDate: e.joinDate
+          ? new Date(e.joinDate).toLocaleDateString('vi-VN')
+          : '',
+        officialStartDate: e.officialStartDate
+          ? new Date(e.officialStartDate).toLocaleDateString('vi-VN')
+          : '',
+        status: statusLabels[e.employmentStatus] || e.employmentStatus,
+      };
+    });
 
     const columns = [
       { header: 'STT', key: 'index', width: 8 },
@@ -422,6 +588,9 @@ export class EmployeesService {
       { header: 'Quốc tịch', key: 'nationality', width: 15 },
       { header: 'Tình trạng hôn nhân', key: 'maritalStatus', width: 20 },
       { header: 'Mã số thuế', key: 'taxCode', width: 15 },
+      { header: 'Số tài khoản', key: 'accountNumber', width: 20 },
+      { header: 'Ngân hàng', key: 'bankName', width: 20 },
+      { header: 'Chủ tài khoản', key: 'accountHolderName', width: 25 },
       { header: 'Email công ty', key: 'companyEmail', width: 25 },
       { header: 'Email cá nhân', key: 'personalEmail', width: 25 },
       { header: 'Số điện thoại', key: 'phoneNumber', width: 15 },
@@ -451,5 +620,78 @@ export class EmployeesService {
 
   async findByUserId(userId) {
     return this.employeesRepository.findByUserId(userId);
+  }
+
+  async _validateEmailDomain(email) {
+    const domain = email.split('@')[1];
+    if (!domain) return false;
+    try {
+      const { resolveMx } = await import('dns/promises');
+      const mx = await resolveMx(domain);
+      return mx && mx.length > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async generateEmployeeCode(fullName) {
+    if (!fullName) {
+      throw new BadRequestException('Họ và tên không được để trống');
+    }
+
+    const prefix = this._generatePrefix(fullName);
+    if (!prefix) {
+      throw new BadRequestException('Họ và tên không hợp lệ');
+    }
+
+    // Generate random 3-digit number (e.g., between 100 and 999)
+    let suffix = Math.floor(100 + Math.random() * 900);
+    let code = `${prefix}${suffix}`;
+
+    // Loop to ensure uniqueness in db
+    let isDuplicate = true;
+    let attempts = 0;
+    const maxAttempts = 1000;
+
+    while (isDuplicate && attempts < maxAttempts) {
+      const existing = await this.employeesRepository.findByField('employeeCode', code);
+      if (!existing) {
+        isDuplicate = false;
+      } else {
+        suffix = (suffix + 1) % 1000;
+        if (suffix < 100) suffix += 100;
+        code = `${prefix}${suffix}`;
+        attempts++;
+      }
+    }
+
+    if (isDuplicate) {
+      code = `${prefix}${Date.now().toString().slice(-6)}`;
+    }
+
+    return { employeeCode: code };
+  }
+
+  _generatePrefix(fullName) {
+    const normalized = fullName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+
+    // Keep only letters and spaces
+    const cleanStr = normalized.replace(/[^a-zA-Z\s]/g, '');
+    const words = cleanStr.trim().split(/\s+/).filter(Boolean).map(w => w.toUpperCase());
+
+    if (words.length === 0) return '';
+
+    const lastName = words[words.length - 1]; // Tên chính (e.g., Thái)
+    if (words.length === 1) {
+      return lastName;
+    }
+
+    // Other words (initials of Đàm Trong -> D, T)
+    const initials = words.slice(0, words.length - 1).map(w => w[0]).join('');
+    return lastName + initials;
   }
 }

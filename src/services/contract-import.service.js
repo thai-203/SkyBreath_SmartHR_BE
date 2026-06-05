@@ -8,6 +8,7 @@ import { DepartmentEntity } from '../models/entities/department.entity.js';
 import { PositionEntity } from '../models/entities/position.entity.js';
 import { JobGradeEntity } from '../models/entities/job-grade.entity.js';
 import { AiConfigurationEntity } from '../models/entities/ai-configuration.entity.js';
+import { toYmd } from '../common/utils/date.util.js';
 
 const CONTRACT_TYPE_MAP = [
   { value: 'probation', keywords: ['thu viec', 'thử việc', 'probation'] },
@@ -68,7 +69,7 @@ function padDatePart(part) {
 function toIsoDate(value) {
   if (!value) return '';
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().split('T')[0];
+    return toYmd(value);
   }
 
   const raw = String(value).trim();
@@ -88,7 +89,7 @@ function toIsoDate(value) {
 
   const date = new Date(raw);
   if (!Number.isNaN(date.getTime())) {
-    return date.toISOString().split('T')[0];
+    return toYmd(date);
   }
 
   return '';

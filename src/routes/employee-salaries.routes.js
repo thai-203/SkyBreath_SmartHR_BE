@@ -33,7 +33,6 @@ const employeeSalariesController = new EmployeeSalariesController();
 router.get(
   '/list',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => employeeSalariesController.findList(req, res, next)
 );
 
@@ -52,7 +51,6 @@ router.get(
 router.get(
   '/export/excel',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => employeeSalariesController.exportExcel(req, res, next)
 );
 
@@ -97,7 +95,6 @@ router.get(
 router.get(
   '/',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_READ'),
   employeeSalariesController.findAll
 );
 
@@ -119,14 +116,12 @@ router.get(
 router.get(
   '/employee/:employeeId',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => employeeSalariesController.findByEmployeeId(req, res, next)
 );
 
 router.post(
   '/',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_CREATE'),
   validationMiddleware(CreateEmployeeSalaryDto),
   (req, res, next) => employeeSalariesController.create(req, res, next)
 );
@@ -188,14 +183,12 @@ router.post(
 router.get(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_READ'),
   (req, res, next) => employeeSalariesController.findById(req, res, next)
 );
 
 router.put(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_UPDATE'),
   validationMiddleware(UpdateEmployeeSalaryDto),
   (req, res, next) => employeeSalariesController.update(req, res, next)
 );
@@ -203,7 +196,6 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
-  permissionsMiddleware('CONTRACT_DELETE'),
   (req, res, next) => employeeSalariesController.remove(req, res, next)
 );
 

@@ -2,6 +2,7 @@ import { AppDataSource } from '../database/data-source.js';
 import { OvertimeRuleEntity } from '../models/entities/overtime-rule.entity.js';
 import { OvertimeRuleDepartmentEntity } from '../models/entities/overtime-rule-department.entity.js';
 import { ConflictException } from '../common/exceptions/index.js';
+import { toYmd } from '../common/utils/date.util.js';
 
 export class OvertimeRulesRepository {
     constructor() {
@@ -281,8 +282,7 @@ export class OvertimeRulesRepository {
 
             if (newRule.effectiveFrom) {
                 // Handle date conversion if needed
-                const effectiveFromStr = newRule.effectiveFrom instanceof Date ?
-                    newRule.effectiveFrom.toISOString().split('T')[0] : newRule.effectiveFrom;
+                const effectiveFromStr = newRule.effectiveFrom ? toYmd(newRule.effectiveFrom) : newRule.effectiveFrom;
 
                 activeRulesQuery.andWhere(
                     '(rule.effectiveTo IS NULL OR rule.effectiveTo >= :effectiveFrom)',
@@ -291,8 +291,7 @@ export class OvertimeRulesRepository {
             }
 
             if (newRule.effectiveTo) {
-                const effectiveToStr = newRule.effectiveTo instanceof Date ?
-                    newRule.effectiveTo.toISOString().split('T')[0] : newRule.effectiveTo;
+                const effectiveToStr = newRule.effectiveTo ? toYmd(newRule.effectiveTo) : newRule.effectiveTo;
 
                 activeRulesQuery.andWhere(
                     '(rule.effectiveFrom <= :effectiveTo)',
