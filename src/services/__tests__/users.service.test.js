@@ -241,33 +241,33 @@ describe('UsersService - update', () => {
   };
 
   describe('Manual Validation', () => {
-    it('should throw BadRequestException if email is invalid', async () => {
+    it('should throw "Email không hợp lệ" if email is invalid', async () => {
       await expect(
         usersService.update(userId, { email: 'invalid' }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Email không hợp lệ');
     });
 
-    it('should throw BadRequestException if username is too long', async () => {
+    it('should throw "Tên đăng nhập không được vượt quá 50 ký tự" if username is too long', async () => {
       await expect(
         usersService.update(userId, { username: 'a'.repeat(51) }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Tên đăng nhập không được vượt quá 50 ký tự');
     });
 
-    it('should throw BadRequestException if roleIds is not an array', async () => {
+    it('should throw "Danh sách vai trò không hợp lệ" if roleIds is not an array', async () => {
       await expect(
         usersService.update(userId, { roleIds: 'not-an-array' }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Danh sách vai trò không hợp lệ');
     });
 
-    it('should throw BadRequestException if status is too long', async () => {
+    it('should throw "Trạng thái không hợp lệ" if status is too long', async () => {
       await expect(
         usersService.update(userId, { status: 'a'.repeat(21) }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('Trạng thái không hợp lệ');
     });
   });
 
   describe('Business Logic', () => {
-    it('should throw NotFoundException if user to update does not exist', async () => {
+    it('should throw "Không tìm thấy người dùng" if user to update does not exist', async () => {
       mockUsersRepo.findById.mockResolvedValue(null);
       // findById itself throws NotFoundException if user is null
       // Actually, looking at findById implementation:
@@ -284,48 +284,44 @@ describe('UsersService - update', () => {
       mockUsersRepo.findById.mockResolvedValue(null);
 
       await expect(usersService.update(userId, updateDto)).rejects.toThrow(
-        NotFoundException,
+        'Không tìm thấy người dùng',
       );
     });
 
-    it('should throw ConflictException if updated email already exists', async () => {
+    it('should throw "Email đã tồn tại" if updated email already exists', async () => {
       mockUsersRepo.findById.mockResolvedValue(existingUser);
       mockUsersRepo.findByEmail.mockResolvedValue({ id: 2, email: updateDto.email });
-
       await expect(usersService.update(userId, updateDto)).rejects.toThrow(
-        ConflictException,
+        'Email đã tồn tại',
       );
     });
 
-    it('should throw ConflictException if updated username already exists', async () => {
+    it('should throw "Tên đăng nhập đã tồn tại" if updated username already exists', async () => {
       mockUsersRepo.findById.mockResolvedValue(existingUser);
       mockUsersRepo.findByEmail.mockResolvedValue(null);
       mockUsersRepo.findOne.mockResolvedValue({ id: 2, username: updateDto.username });
-
       await expect(usersService.update(userId, updateDto)).rejects.toThrow(
-        ConflictException,
+        'Tên đăng nhập đã tồn tại',
       );
     });
 
-    it('should throw NotFoundException if role does not exist', async () => {
+    it('should throw "Không tìm thấy vai trò" if role does not exist', async () => {
       mockUsersRepo.findById.mockResolvedValue(existingUser);
       mockUsersRepo.findByEmail.mockResolvedValue(null);
       mockUsersRepo.findOne.mockResolvedValue(null);
       mockRolesRepo.findById.mockResolvedValue(null);
-
       await expect(usersService.update(userId, updateDto)).rejects.toThrow(
-        NotFoundException,
+        'Không tìm thấy vai trò',
       );
     });
 
-    it('should throw ForbiddenException if assigning ADMIN role', async () => {
+    it('should throw "Không thể gán vai trò admin" if assigning ADMIN role', async () => {
       mockUsersRepo.findById.mockResolvedValue(existingUser);
       mockUsersRepo.findByEmail.mockResolvedValue(null);
       mockUsersRepo.findOne.mockResolvedValue(null);
       mockRolesRepo.findById.mockResolvedValue({ id: 2, roleName: 'ADMIN' });
-
       await expect(usersService.update(userId, updateDto)).rejects.toThrow(
-        ForbiddenException,
+        'Không thể gán vai trò admin',
       );
     });
 

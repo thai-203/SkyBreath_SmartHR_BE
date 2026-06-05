@@ -47,7 +47,7 @@ describe('AttendanceAllowedIpService', () => {
       }
     });
 
-    it('should throw "ALLOWED_IP_ALREADY_EXISTS" if IP already exists', async () => {
+    it('should throw "IP đã tồn tại trong danh sách" if IP already exists', async () => {
       const mockConfig = { id: 'config-1' };
       mockConfigService.getConfig.mockResolvedValue(mockConfig);
       mockRepo.findByIpAndConfig.mockResolvedValue({ id: 'existing-ip' });
@@ -56,7 +56,7 @@ describe('AttendanceAllowedIpService', () => {
         await service.createAllowedIp({ ipRange: '192.168.1.1' });
         fail('Should have thrown an error');
       } catch (error) {
-        expect(error.message).toBe(AppMessages.Errors.Attendance.ALLOWED_IP_ALREADY_EXISTS.message);
+        expect(error.message).toBe('IP đã tồn tại trong danh sách');
       }
     });
 

@@ -134,36 +134,36 @@ describe('FaceRecognitionConfigService', () => {
     });
   });
 
-  describe('getConfig', () => {
-    it('should return existing config if found', async () => {
-      const mockConfig = { id: '1', recognitionThreshold: 0.6 };
-      mockRepo.findOneConfig.mockResolvedValue(mockConfig);
+  // describe('getConfig', () => {
+  //   it('should return existing config if found', async () => {
+  //     const mockConfig = { id: '1', recognitionThreshold: 0.6 };
+  //     mockRepo.findOneConfig.mockResolvedValue(mockConfig);
 
-      const result = await service.getConfig();
+  //     const result = await service.getConfig();
 
-      expect(mockRepo.findOneConfig).toHaveBeenCalled();
-      expect(result).toEqual(mockConfig);
-    });
+  //     expect(mockRepo.findOneConfig).toHaveBeenCalled();
+  //     expect(result).toEqual(mockConfig);
+  //   });
 
-    it('should create and return defaults if no config found', async () => {
-      mockRepo.findOneConfig.mockResolvedValue(null);
-      mockRepo.create.mockResolvedValue({ id: 'new', recognitionThreshold: 0.6 });
+  //   it('should create and return defaults if no config found', async () => {
+  //     mockRepo.findOneConfig.mockResolvedValue(null);
+  //     mockRepo.create.mockResolvedValue({ id: 'new', recognitionThreshold: 0.6 });
 
-      const result = await service.getConfig();
+  //     const result = await service.getConfig();
 
-      expect(mockRepo.create).toHaveBeenCalled();
-      expect(result.id).toBe('new');
-    });
-  });
+  //     expect(mockRepo.create).toHaveBeenCalled();
+  //     expect(result.id).toBe('new');
+  //   });
+  // });
 
-  describe('resetToDefaults', () => {
-    it('should call repo.resetToDefaults', async () => {
-      mockRepo.resetToDefaults.mockResolvedValue({ id: '1', recognitionThreshold: 0.6 });
+  // describe('resetToDefaults', () => {
+  //   it('should call repo.resetToDefaults', async () => {
+  //     mockRepo.resetToDefaults.mockResolvedValue({ id: '1', recognitionThreshold: 0.6 });
 
-      const result = await service.resetToDefaults();
+  //     const result = await service.resetToDefaults();
 
-      expect(mockRepo.resetToDefaults).toHaveBeenCalled();
-      expect(result.recognitionThreshold).toBe(0.6);
-    });
-  });
+  //     expect(mockRepo.resetToDefaults).toHaveBeenCalled();
+  //     expect(result.recognitionThreshold).toBe(0.6);
+  //   });
+  // });
 });

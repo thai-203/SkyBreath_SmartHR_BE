@@ -49,12 +49,12 @@ describe('AttendanceBlockingConfigService', () => {
       await expect(service.create(data)).rejects.toThrow('ID nhân viên phải là kiểu số');
     });
 
-    it('should throw "BLOCKING_RULE_ALREADY_EXISTS" if rule already exists for errorType', async () => {
+    it('should throw "Quy tắc cho loại vi phạm này đã tồn tại" if rule already exists for errorType', async () => {
       const data = { errorType: 'FACE', ruleName: 'Test Rule' };
       mockRepo.findByErrorType.mockResolvedValue({ id: 1, errorType: 'FACE' });
 
       await expect(service.create(data)).rejects.toThrow(BadRequestException);
-      await expect(service.create(data)).rejects.toThrow(AppMessages.Errors.Attendance.BLOCKING_RULE_ALREADY_EXISTS.message);
+      await expect(service.create(data)).rejects.toThrow('Quy tắc cho loại vi phạm này đã tồn tại');
     });
 
     it('should successfully create a new rule with empty targetIds when missing', async () => {
@@ -101,12 +101,12 @@ describe('AttendanceBlockingConfigService', () => {
       await expect(service.update(1, data)).rejects.toThrow('Tên quy tắc không được để trống');
     });
 
-    it('should throw "BLOCKING_RULE_NOT_FOUND" if rule not found', async () => {
+    it('should throw "Không tìm thấy cấu hình quy tắc" if rule not found', async () => {
       const data = { errorType: 'FACE', ruleName: 'Updated Rule' };
       mockRepo.findById.mockResolvedValue(null);
 
       await expect(service.update(999, data)).rejects.toThrow(BadRequestException);
-      await expect(service.update(999, data)).rejects.toThrow(AppMessages.Errors.Attendance.BLOCKING_RULE_NOT_FOUND.message);
+      await expect(service.update(999, data)).rejects.toThrow('Không tìm thấy cấu hình quy tắc');
     });
 
     it('should successfully update a rule with modified fields', async () => {

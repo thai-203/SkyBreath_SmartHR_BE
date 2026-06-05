@@ -62,7 +62,7 @@ describe('FaceDataService - registerFaces', () => {
     await expect(service.registerFaces(mockUserId, [])).rejects.toThrow('Vui lòng cung cấp ít nhất một ảnh để đăng ký khuôn mặt.');
   });
 
-  it('4. Quăng lỗi khi gọi ArcFaceService thất bại (Microservice lỗi)', async () => {
+  it('4. should throw "AI Engine Error" if ArcFaceService returns a failure message', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(mockEmployee);
     mockFaceDataRepo.findByEmployeeIdWithEmpInfo.mockResolvedValue(null);
     mockConfigRepo.findOneConfig.mockResolvedValue(mockConfig);
@@ -74,7 +74,7 @@ describe('FaceDataService - registerFaces', () => {
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow('AI Engine Error');
   });
 
-  it('5. Quăng lỗi Liveness score quá thấp (Nghi ngờ ảnh giả mạo)', async () => {
+  it('5. should throw "Ảnh chụp không đủ độ chân thực (nghi ngờ ảnh giả mạo). Vui lòng chụp ảnh người thật, rõ nét và trực diện hơn." if avg_liveness_score below threshold', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(mockEmployee);
     mockFaceDataRepo.findByEmployeeIdWithEmpInfo.mockResolvedValue(null);
     mockConfigRepo.findOneConfig.mockResolvedValue(mockConfig);
@@ -85,10 +85,10 @@ describe('FaceDataService - registerFaces', () => {
     });
 
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(BadRequestException);
-    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(/nghi ngờ ảnh giả mạo/);
+    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow('Ảnh chụp không đủ độ chân thực (nghi ngờ ảnh giả mạo). Vui lòng chụp ảnh người thật, rõ nét và trực diện hơn.');
   });
 
-  it('6. Quăng lỗi do Frame có nhiều hơn 1 khuôn mặt', async () => {
+  it('6. should throw "Ảnh thứ 1 chứa nhiều khuôn mặt. Vui lòng đảm bảo chỉ có duy nhất khuôn mặt của bạn trong khung hình." if frame contains multiple faces', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(mockEmployee);
     mockFaceDataRepo.findByEmployeeIdWithEmpInfo.mockResolvedValue(null);
     mockConfigRepo.findOneConfig.mockResolvedValue(mockConfig);
@@ -102,10 +102,10 @@ describe('FaceDataService - registerFaces', () => {
     });
 
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(BadRequestException);
-    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(/nhiều khuôn mặt/);
+    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow('Ảnh thứ 1 chứa nhiều khuôn mặt. Vui lòng đảm bảo chỉ có duy nhất khuôn mặt của bạn trong khung hình.');
   });
 
-  it('7. Quăng lỗi do khuôn mặt trong ảnh quá nhỏ', async () => {
+  it('7. should throw "Khuôn mặt trong ảnh thứ 1 quá nhỏ hoặc ở quá xa. Vui lòng đưa khuôn mặt lại gần camera hơn." if detected face is smaller than min size', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(mockEmployee);
     mockFaceDataRepo.findByEmployeeIdWithEmpInfo.mockResolvedValue(null);
     mockConfigRepo.findOneConfig.mockResolvedValue(mockConfig);
@@ -119,10 +119,10 @@ describe('FaceDataService - registerFaces', () => {
     });
 
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(BadRequestException);
-    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(/quá nhỏ hoặc ở quá xa/);
+    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow('Khuôn mặt trong ảnh thứ 1 quá nhỏ hoặc ở quá xa. Vui lòng đưa khuôn mặt lại gần camera hơn.');
   });
 
-  it('8. Quăng lỗi do ảnh các frame không phải cùng một người (Cross-compare fail)', async () => {
+  it('8. should throw "Khuôn mặt trong ảnh thứ 2 không khớp với ảnh đầu tiên. Vui lòng đảm bảo tất cả các ảnh đều là của cùng một người." if frames are from different people', async () => {
     mockEmployeeRepo.findByUserId.mockResolvedValue(mockEmployee);
     mockFaceDataRepo.findByEmployeeIdWithEmpInfo.mockResolvedValue(null);
     mockConfigRepo.findOneConfig.mockResolvedValue(mockConfig);
@@ -138,7 +138,7 @@ describe('FaceDataService - registerFaces', () => {
     });
 
     await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(BadRequestException);
-    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow(/không khớp với ảnh đầu tiên/);
+    await expect(service.registerFaces(mockUserId, mockFiles)).rejects.toThrow('Khuôn mặt trong ảnh thứ 2 không khớp với ảnh đầu tiên. Vui lòng đảm bảo tất cả các ảnh đều là của cùng một người.');
   });
 
   it('9. Đăng ký thành công và lưu database', async () => {
