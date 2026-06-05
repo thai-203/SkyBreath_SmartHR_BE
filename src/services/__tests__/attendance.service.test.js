@@ -42,23 +42,23 @@ describe('AttendanceService - checkIn / checkOut', () => {
   const mockEmployee = { id: mockUserId, fullName: 'Test User' };
   
   describe('checkIn', () => {
-    it('1. Quăng lỗi nếu employeeId không hợp lệ', async () => {
+    it('1. Quăng lỗi "Không tìm thấy nhân viên" nếu employeeId không hợp lệ', async () => {
       await expect(service.checkIn(null, mockFiles, mockLocation)).rejects.toThrow(BadRequestException);
       await expect(service.checkIn('abc', mockFiles, mockLocation)).rejects.toThrow(AppMessages.Errors.Employee.NOT_FOUND);
     });
 
-    it('2. Quăng lỗi nếu không có file ảnh', async () => {
+    it('2. Quăng lỗi "Không có ảnh được gửi lên" nếu không có file ảnh', async () => {
       await expect(service.checkIn(mockUserId, [], mockLocation)).rejects.toThrow(BadRequestException);
       await expect(service.checkIn(mockUserId, null, mockLocation)).rejects.toThrow(AppMessages.Errors.Attendance.NO_IMAGE_PROVIDED);
     });
 
-    it('3. Quăng lỗi nếu không tìm thấy nhân viên', async () => {
+    it('3. Quăng lỗi "Không tìm thấy nhân viên" nếu không tìm thấy nhân viên', async () => {
       service.employeeRepository.findById.mockResolvedValue(null);
       await expect(service.checkIn(mockUserId, mockFiles, mockLocation)).rejects.toThrow(NotFoundException);
       await expect(service.checkIn(mockUserId, mockFiles, mockLocation)).rejects.toThrow(AppMessages.Errors.Employee.NOT_FOUND);
     });
 
-    it('4. Quăng lỗi nếu nhân viên đang bị block check-in (vượt quá số lần thử)', async () => {
+    it('4. Quăng lỗi "Bạn đã vượt quá giới hạn check-in thất bại. Vui lòng liên hệ quản lý." nếu nhân viên đang bị block check-in', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       // Giả lập thời hạn block ở tương lai
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue({
@@ -69,7 +69,7 @@ describe('AttendanceService - checkIn / checkOut', () => {
       await expect(service.checkIn(mockUserId, mockFiles, mockLocation)).rejects.toThrow('Bạn đã vượt quá giới hạn check-in thất bại. Vui lòng liên hệ quản lý.');
     });
 
-    it('5. Quăng lỗi nếu không có ca làm việc và không có lịch tăng ca hôm nay', async () => {
+    it('5. Quăng lỗi "Không có ca làm việc hôm nay" nếu không có ca làm việc và không có lịch tăng ca hôm nay', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue(null);
       service.shiftRepo.findTodayShiftByEmpId.mockResolvedValue([]); // Không có ca chính
@@ -79,7 +79,7 @@ describe('AttendanceService - checkIn / checkOut', () => {
       await expect(service.checkIn(mockUserId, mockFiles, mockLocation)).rejects.toThrow(AppMessages.Errors.Attendance.NO_SHIFT_TODAY);
     });
 
-    it('6. Quăng lỗi nếu nhân viên đã check-in rồi', async () => {
+    it('6. Quăng lỗi "Nhân viên đã check-in hôm nay" nếu nhân viên đã check-in rồi', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue(null);
       service.shiftRepo.findTodayShiftByEmpId.mockResolvedValue([{ shiftId: 1, assignmentId: 10, shift: { id: 1 } }]);
@@ -115,7 +115,7 @@ describe('AttendanceService - checkIn / checkOut', () => {
   });
 
   describe('checkOut', () => {
-    it('1. Quăng lỗi nếu employeeId không hợp lệ', async () => {
+    it('1. Quăng lỗi "Không tìm thấy nhân viên" nếu employeeId không hợp lệ', async () => {
       await expect(service.checkOut(null, mockFiles, mockLocation)).rejects.toThrow(BadRequestException);
       await expect(service.checkOut('abc', mockFiles, mockLocation)).rejects.toThrow(AppMessages.Errors.Employee.NOT_FOUND);
     });
@@ -124,12 +124,12 @@ describe('AttendanceService - checkIn / checkOut', () => {
       await expect(service.checkOut(mockUserId, [], mockLocation)).rejects.toThrow(BadRequestException);
     });
 
-    it('3. Quăng lỗi nếu không tìm thấy nhân viên', async () => {
+    it('3. Quăng lỗi "Không tìm thấy nhân viên" nếu không tìm thấy nhân viên', async () => {
       service.employeeRepository.findById.mockResolvedValue(null);
       await expect(service.checkOut(mockUserId, mockFiles, mockLocation)).rejects.toThrow(NotFoundException);
     });
 
-    it('4. Quăng lỗi nếu nhân viên đang bị block check-out', async () => {
+    it('4. Quăng lỗi "Bạn đã vượt quá giới hạn check-out thất bại. Vui lòng liên hệ quản lý." nếu nhân viên đang bị block check-out', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue({
         blockedUntil: new Date(Date.now() + 10000).toISOString()
@@ -139,7 +139,7 @@ describe('AttendanceService - checkIn / checkOut', () => {
       await expect(service.checkOut(mockUserId, mockFiles, mockLocation)).rejects.toThrow('Bạn đã vượt quá giới hạn check-out thất bại. Vui lòng liên hệ quản lý.');
     });
 
-    it('5. Quăng lỗi nếu chưa check-in (không tìm thấy bản ghi)', async () => {
+    it('5. Quăng lỗi "Chưa check-in hôm nay" nếu chưa check-in (không tìm thấy bản ghi)', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue(null);
       service.requestRepo.getTodayOvertime.mockResolvedValue(null);
@@ -149,7 +149,7 @@ describe('AttendanceService - checkIn / checkOut', () => {
       await expect(service.checkOut(mockUserId, mockFiles, mockLocation)).rejects.toThrow(AppMessages.Errors.Attendance.NOT_CHECKED_IN);
     });
 
-    it('6. Quăng lỗi nếu đã check-out rồi', async () => {
+    it('6. Quăng lỗi "Đã check-out rồi" nếu đã check-out rồi', async () => {
       service.employeeRepository.findById.mockResolvedValue(mockEmployee);
       service.securityStatusRepo.findByEmployeeId.mockResolvedValue(null);
       service.requestRepo.getTodayOvertime.mockResolvedValue(null);

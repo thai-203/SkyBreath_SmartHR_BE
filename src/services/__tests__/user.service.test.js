@@ -89,63 +89,63 @@ describe('ActionLogsService', () => {
       expect(() => actionLogsService.validateDateRange(dto)).not.toThrow();
     });
 
-    it('should throw for invalid fromDate format', () => {
+    it('should throw "Ngày bắt đầu không hợp lệ" for invalid fromDate format', () => {
       expect(() =>
         actionLogsService.validateDateRange({ fromDate: 'invalid' }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Ngày bắt đầu không hợp lệ');
     });
 
-    it('should throw for fromDate in future', () => {
+    it('should throw "Ngày bắt đầu không được vượt quá ngày hiện tại" for fromDate in future', () => {
       expect(() =>
         actionLogsService.validateDateRange({ fromDate: '01/01/2099' }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Ngày bắt đầu không được vượt quá ngày hiện tại');
     });
 
-    it('should throw for invalid toDate format', () => {
+    it('should throw "Ngày kết thúc không hợp lệ" for invalid toDate format', () => {
       expect(() =>
         actionLogsService.validateDateRange({ toDate: 'invalid' }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Ngày kết thúc không hợp lệ');
     });
 
-    it('should throw for toDate in future', () => {
+    it('should throw "Ngày kết thúc không được vượt quá ngày hiện tại" for toDate in future', () => {
       expect(() =>
         actionLogsService.validateDateRange({ toDate: '01/01/2099' }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Ngày kết thúc không được vượt quá ngày hiện tại');
     });
 
-    it('should throw if fromDate > toDate', () => {
+    it('should throw "Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc" if fromDate > toDate', () => {
       expect(() =>
         actionLogsService.validateDateRange({
           fromDate: '10/01/2023',
           toDate: '01/01/2023',
         }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc');
     });
 
-    it('should throw for invalid status', () => {
+    it('should throw "Trạng thái không hợp lệ" for invalid status', () => {
       expect(() =>
         actionLogsService.validateDateRange({ status: 'INVALID' }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Trạng thái không hợp lệ');
     });
 
-    it('should throw for invalid sortOrder', () => {
+    it('should throw "Thứ tự sắp xếp không hợp lệ" for invalid sortOrder', () => {
       expect(() =>
         actionLogsService.validateDateRange({ sortOrder: 'INVALID' }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Thứ tự sắp xếp không hợp lệ');
     });
 
-    it('should throw for invalid page', () => {
+    it('should throw "Trang không hợp lệ" for invalid page', () => {
       expect(() => actionLogsService.validateDateRange({ page: 0 })).toThrow(
-        BadRequestException,
+        'Trang không hợp lệ',
       );
       expect(() =>
         actionLogsService.validateDateRange({ page: 'abc' }),
-      ).toThrow(BadRequestException);
+      ).toThrow('Trang không hợp lệ');
     });
 
-    it('should throw for invalid limit', () => {
+    it('should throw "Số lượng bản ghi không hợp lệ" for invalid limit', () => {
       expect(() => actionLogsService.validateDateRange({ limit: 0 })).toThrow(
-        BadRequestException,
+        'Số lượng bản ghi không hợp lệ',
       );
     });
   });
@@ -174,11 +174,11 @@ describe('ActionLogsService', () => {
       expect(result).toEqual(mockItem);
     });
 
-    it('should throw NotFoundException if not found', async () => {
+    it('should throw "Không tìm thấy tài nguyên" if not found', async () => {
       mockActionLogsRepository.findById.mockResolvedValue(null);
 
       await expect(actionLogsService.findById(1)).rejects.toThrow(
-        NotFoundException,
+        'Không tìm thấy tài nguyên',
       );
     });
   });
