@@ -76,6 +76,15 @@ export const databaseConfig = {
   database: config.database.name,
   synchronize: true, // Auto-create tables (dev only)
   logging: false,
+  extra: {
+    // MySQL connection pool settings. These limit the number of open connections
+    // and keep a small queue for waiting clients.
+    connectionLimit: config.database.connectionLimit,
+    waitForConnections: true,
+    queueLimit: 0,
+    connectTimeout: 10000,
+    acquireTimeout: 10000,
+  },
   entities: [
     UserEntity,
     RoleEntity,

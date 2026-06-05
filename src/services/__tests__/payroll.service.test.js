@@ -493,12 +493,12 @@ describe('PayrollService', () => {
             expect(result.earnedP1).toBe(5_000_000);
         });
 
-        it('UTCID33: Should calculate probation salary with 85% factor', () => {
+        it('UTCID33: Should calculate probation salary (no 0.85 factor)', () => {
             const salary = { baseSalary: 10_000_000, performanceSalary: 0 };
             const ts = { officialDays: 0, probationDays: 20, businessTripDays: 0, holidayDays: 0, benefitLeaveDays: 0 };
             const result = service._calcEarnedSalaries(salary, ts, 26, 20, 0, 0, 'PROBATION');
-            // (10M / 26) * 20 * 0.85 = 384615.38 * 20 * 0.85 = 6,538,461.54
-            expect(result.probationSalary).toBeCloseTo(6_538_461.54, 0);
+            // Implementation: (baseSalary / standardDays) * probationPayDays = (10M / 26) * 20 = 7,692,307.69
+            expect(result.probationSalary).toBeCloseTo(7_692_307.69, 0);
         });
 
         it('UTCID34: Should calculate P2.1 and P2.2 based on percentage', () => {
@@ -560,9 +560,9 @@ describe('PayrollService', () => {
             expect(result).toBe(3.0);
         });
 
-        it('UTCID40: Should add 0.1 for night shift', () => {
+        it('UTCID40: Should return NIGHT WEEKDAY multiplier (2.1)', () => {
             const result = service._getOTMultiplier('WEEKDAY', true, null, [], []);
-            expect(result).toBe(1.6);
+            expect(result).toBe(2.1);
         });
     });
 

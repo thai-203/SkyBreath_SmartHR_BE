@@ -41,14 +41,38 @@ function filterOutOTAssignments(assignments) {
 }
 
 /**
- * Helper nội bộ: Format Date thành 'YYYY-MM-DD' theo LOCAL timezone.
- * QUAN TRỌNG: Không dùng toISOString() vì nó trả UTC, gây lệch ngày ở UTC+7.
+ * Helper nội bộ: Format Date thành 'YYYY-MM-DD' theo timezone cố định.
+ * Sử dụng Asia/Ho_Chi_Minh để tránh lệch ngày khi máy chủ chạy UTC.
  */
+const DEFAULT_TIME_ZONE = 'Asia/Ho_Chi_Minh';
+
+function buildYmdFormatter(timeZone = DEFAULT_TIME_ZONE) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
+}
+
+function parseYmd(value, timeZone = DEFAULT_TIME_ZONE) {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value !== 'string') {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!parts) {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const [_, year, month, day] = parts;
+    return new Date(`${year}-${month}-${day}T00:00:00+07:00`);
+}
+
 function toLocalYMD(date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return buildYmdFormatter().format(date);
 }
 
 /**
@@ -69,9 +93,10 @@ function toLocalYMD(date) {
 export async function countWorkingDays(start, end, employeeId, dataSource, isOvertime = false) {
     // Nếu là Tăng ca, mặc định không quan tâm ca làm việc, cứ đếm đủ số ngày
     if (isOvertime) {
-        const d1 = new Date(start);
+        const d1 = parseYmd(start);
+        const d2 = parseYmd(end);
+        if (!d1 || !d2) return 0;
         d1.setHours(0, 0, 0, 0);
-        const d2 = new Date(end);
         d2.setHours(0, 0, 0, 0);
         return Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
     }
@@ -116,9 +141,10 @@ export async function countWorkingDays(start, end, employeeId, dataSource, isOve
 
     // Bước 3: Duyệt từng ngày và đếm
     let count = 0;
-    const cursor = new Date(start);
+    const cursor = parseYmd(start);
+    const endNorm = parseYmd(end);
+    if (!cursor || !endNorm) return 0;
     cursor.setHours(0, 0, 0, 0);
-    const endNorm = new Date(end);
     endNorm.setHours(23, 59, 59, 999);
 
     while (cursor <= endNorm) {
@@ -129,8 +155,8 @@ export async function countWorkingDays(start, end, employeeId, dataSource, isOve
             // NV theo ca → chỉ đếm ngày có ca chính cover
             if (hasAssignmentsInRange) {
                 const isWorking = regularAssignments.some(sa => {
-                    const from = sa.effectiveFrom ? new Date(sa.effectiveFrom) : null;
-                    const to = sa.effectiveTo ? new Date(sa.effectiveTo) : null;
+                        const from = sa.effectiveFrom ? parseYmd(sa.effectiveFrom) : null;
+                    const to = sa.effectiveTo ? parseYmd(sa.effectiveTo) : null;
                     const inRange = (!from || from <= cursor) && (!to || to >= cursor);
                     const weekdays = Array.isArray(sa.weekdays)
                         ? sa.weekdays.map(Number)
@@ -272,8 +298,8 @@ export async function getRequestedHours(startDate, endDate, reqStartTime, reqEnd
         where: { id: employeeId, isDeleted: false },
     });
 
-    const startD = new Date(startDate);
-    const endD = new Date(endDate);
+    const startD = parseYmd(startDate);
+    const endD = parseYmd(endDate);
 
     if (!employee) {
         // Fallback naive difference if no employee
@@ -289,9 +315,10 @@ export async function getRequestedHours(startDate, endDate, reqStartTime, reqEnd
 
     let totalRequestedHours = 0;
 
-    const cursor = new Date(startD);
+    const cursor = parseYmd(startDate);
+    const limit = parseYmd(endDate);
+    if (!cursor || !limit) return 0;
     cursor.setHours(0, 0, 0, 0);
-    const limit = new Date(endD);
     limit.setHours(0, 0, 0, 0);
 
     const startD_YMD = toLocalYMD(startD);
@@ -322,8 +349,8 @@ export async function getRequestedHours(startDate, endDate, reqStartTime, reqEnd
         let shift = null;
         if (regularAssignments.length > 0) {
             const match = regularAssignments.find(sa => {
-                const from = sa.effectiveFrom ? new Date(sa.effectiveFrom) : null;
-                const to = sa.effectiveTo ? new Date(sa.effectiveTo) : null;
+                const from = sa.effectiveFrom ? parseYmd(sa.effectiveFrom) : null;
+                const to = sa.effectiveTo ? parseYmd(sa.effectiveTo) : null;
                 const inRange = (!from || from <= cursor) && (!to || to >= cursor);
                 const weekdays = Array.isArray(sa.weekdays)
                     ? sa.weekdays.map(Number)

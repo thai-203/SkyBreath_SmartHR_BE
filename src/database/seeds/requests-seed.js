@@ -10,6 +10,7 @@ import { RequestGroupWorkflowEntity } from '../../models/entities/request-group-
 import { ApprovalLevelStatus, RequestStatus } from '../../common/enums/request.enum.js';
 import { AttendanceRecordEntity, AttendanceStatus, AttendanceType } from '../../models/entities/attendance-record.entity.js';
 import { OvertimeRequestDetailEntity } from '../../models/entities/overtime-request-detail.entity.js';
+import { toYmd } from '../../common/utils/date.util.js';
 
 const seedRequests = async () => {
   const dataSource = new DataSource(databaseConfig);
@@ -94,7 +95,7 @@ const seedRequests = async () => {
     for (const emp of employees) {
       // Loop over dates
       for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toYmd(d);
         const dayOfWeek = d.getDay(); // 0 is Sunday, 6 is Saturday
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
         const rand = Math.random();
@@ -146,7 +147,7 @@ const seedRequests = async () => {
 
       // Add a pending request for demonstration
       if (Math.random() < 0.5) {
-        const pendingDate = new Date().toISOString().split('T')[0];
+        const pendingDate = toYmd(new Date());
         addRequest(emp, overtimeGroup, otWeekdayType, pendingDate, RequestStatus.PENDING, {
           startDate: pendingDate, endDate: pendingDate,
           startTime: '17:30:00', endTime: '20:30:00',

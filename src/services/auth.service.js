@@ -41,6 +41,8 @@ export class AuthService {
     if (!isEmail(email)) {
       throw new BadRequestException(AppMessages.Errors.Auth.INVALID_EMAIL);
     }
+    console.log(password);
+    
     if (
       !matches(
         password,

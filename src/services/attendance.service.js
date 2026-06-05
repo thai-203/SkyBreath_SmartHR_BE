@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '../common/exceptions';
 import { AppMessages } from '../common/constants/app-messages.constant';
 import { parseUserAgent } from '../common/utils/user-agent.util';
 import { computeSimilarity } from '../common/utils/vector.utils';
+import { toYmd, parseYmd, getTodayYmd } from '../common/utils/date.util.js';
 import { ActionLogsRepository } from '../repositories/action-logs.repository';
 import { AttendanceSecurityConfigRepository } from '../repositories/attendance-security-config.repository';
 import { AttendanceRepository } from '../repositories/attendances.repository';
@@ -47,7 +48,7 @@ export class AttendanceService {
     }
 
     const employeeId = employee.id;
-    const today = new Date().toLocaleDateString('en-CA');
+    const today = getTodayYmd();
     const now = new Date();
 
     const shiftSchedule = await this.shiftRepo.findTodayShiftByEmpId({
@@ -218,7 +219,7 @@ export class AttendanceService {
       throw new NotFoundException(AppMessages.Errors.Employee.NOT_FOUND);
     }
 
-    const today = new Date().toLocaleDateString('en-CA');
+    const today = getTodayYmd();
     const startDate = String(query.startDate || today).slice(0, 10);
     const endDate = String(query.endDate || today).slice(0, 10);
 
@@ -571,21 +572,28 @@ export class AttendanceService {
       // Subtract break time from totalWorkMinutes if break time exists
       if (
         shift &&
+        shift.breakStartTime &&
+        shift.breakEndTime &&
         shift.breakStartTime !== '00:00:00' &&
         shift.breakEndTime !== '00:00:00'
       ) {
         const breakStartMinutes = this._timeToMinutes(shift.breakStartTime);
         const breakEndMinutes = this._timeToMinutes(shift.breakEndTime);
-        const breakDurationMinutes = breakEndMinutes - breakStartMinutes;
-        if (breakDurationMinutes > 0) {
+        if (
+          breakStartMinutes !== null &&
+          breakEndMinutes !== null &&
+          breakEndMinutes > breakStartMinutes
+        ) {
           totalWorkMinutes = Math.max(
             0,
-            totalWorkMinutes - breakDurationMinutes,
+            totalWorkMinutes - (breakEndMinutes - breakStartMinutes),
           );
         }
       }
 
-      earlyLeaveMinutes = shift ? this._calcEarlyLeave(now, shift.endTime) : 0;
+      earlyLeaveMinutes = shift
+        ? this._calcEarlyLeave(now, shift.endTime)
+        : 0;
     } else if (overtime) {
       earlyLeaveMinutes = this._calcEarlyLeave(now, overtime.endTime) || 0;
     }
@@ -664,19 +672,28 @@ export class AttendanceService {
   }
 
   _timeToMinutes(timeStr) {
-    const [h, m] = timeStr.split(':').map(Number);
+    if (!timeStr || typeof timeStr !== 'string') {
+      return null;
+    }
+    const parts = timeStr.split(':').map(Number);
+    if (parts.length < 2 || parts.some((value) => Number.isNaN(value))) {
+      return null;
+    }
+    const [h, m] = parts;
     return h * 60 + m;
   }
 
   _calcLateMinutes(now, shiftStartTime) {
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
     const startMinutes = this._timeToMinutes(shiftStartTime);
+    if (startMinutes === null) return 0;
     return Math.max(0, nowMinutes - startMinutes);
   }
 
   _calcEarlyLeave(now, shiftEndTime) {
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
     const endMinutes = this._timeToMinutes(shiftEndTime);
+    if (endMinutes === null) return 0;
     return Math.max(0, endMinutes - nowMinutes);
   }
 

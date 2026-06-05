@@ -4,6 +4,7 @@ import { AppDataSource } from '../database/data-source.js';
 import { OvertimeTypeEntity } from '../models/entities/overtime-type.entity.js';
 import { DepartmentEntity } from '../models/entities/department.entity.js';
 import { In } from 'typeorm';
+import { toYmd } from '../common/utils/date.util.js';
 
 export class OvertimeRulesService {
     constructor() {
@@ -76,8 +77,8 @@ export class OvertimeRulesService {
 
             const hasActualChanges = keysToChange.some(k => {
                 if (k === 'effectiveFrom') {
-                    const newDate = data[k] ? new Date(data[k]).toISOString().split('T')[0] : null;
-                    const oldDate = existing[k] ? new Date(existing[k]).toISOString().split('T')[0] : null;
+                    const newDate = data[k] ? toYmd(data[k]) : null;
+                    const oldDate = existing[k] ? toYmd(existing[k]) : null;
                     return newDate !== oldDate;
                 }
                 return String(data[k]) !== String(existing[k]);
@@ -96,8 +97,8 @@ export class OvertimeRulesService {
                 if (data[field] === undefined) return false;
 
                 if (field === 'effectiveFrom') {
-                    const newDate = data[field] ? new Date(data[field]).toISOString().split('T')[0] : null;
-                    const oldDate = existing[field] ? new Date(existing[field]).toISOString().split('T')[0] : null;
+                    const newDate = data[field] ? toYmd(data[field]) : null;
+                    const oldDate = existing[field] ? toYmd(existing[field]) : null;
                     return newDate !== oldDate;
                 }
 
