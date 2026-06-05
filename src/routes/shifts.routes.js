@@ -135,7 +135,6 @@ router.get(
 router.get(
   '/list',
   authMiddleware,
-  permissionsMiddleware('SHIFT_READ'),
   workingShiftsController.list,
 );
 
