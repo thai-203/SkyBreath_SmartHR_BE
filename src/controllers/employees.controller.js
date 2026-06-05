@@ -237,4 +237,18 @@ export class EmployeesController {
       next(error);
     }
   };
+
+  generateCode = async (req, res, next) => {
+    try {
+      const { fullName } = req.query;
+      const result = await this.employeesService.generateEmployeeCode(fullName);
+      ResponseUtil.sendResponse(
+        res,
+        'Sinh mã nhân viên thành công',
+        result,
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
 }

@@ -57,6 +57,12 @@ router.get(
   permissionsMiddleware('EMPLOYEE_READ'),
   employeesController.getValidationData,
 );
+
+router.get(
+  '/generate-code',
+  authMiddleware,
+  employeesController.generateCode,
+);
 // Export permission
 router.get(
   '/export',
